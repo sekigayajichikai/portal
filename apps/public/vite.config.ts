@@ -3,7 +3,8 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, '../../', '');
+  // プロジェクトルートの.envを読み込む
+  const env = loadEnv(mode, path.resolve(__dirname, '../../'), '');
   return {
     root: '.',
     server: {
@@ -15,6 +16,13 @@ export default defineConfig(({ mode }) => {
       // Gemini AI
       'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY),
+      // AI Provider Selection
+      'process.env.AI_PROVIDER': JSON.stringify(env.VITE_AI_PROVIDER),
+      // OpenRouter
+      'process.env.OPENROUTER_API_KEY': JSON.stringify(env.VITE_OPENROUTER_API_KEY),
+      'process.env.OPENROUTER_MODEL': JSON.stringify(env.VITE_OPENROUTER_MODEL),
+      // Anthropic Claude
+      'process.env.ANTHROPIC_API_KEY': JSON.stringify(env.VITE_ANTHROPIC_API_KEY),
       // Supabase
       'process.env.SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
       'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),

@@ -1,22 +1,19 @@
-import { BusSchedule } from '@/types/types';
+/**
+ * バススケジュール関連のカスタムフック
+ */
 
-export const useBusSchedule = (currentTime: Date) => {
-  const getNextBus = (schedule: BusSchedule) => {
-    const now = currentTime.getHours() * 60 + currentTime.getMinutes();
-    const nextTime = schedule.times.find((time) => {
-      const [h, m] = time.split(':').map(Number);
-      return h * 60 + m > now;
-    });
-    return nextTime || schedule.times[0];
-  };
+import { BusScheduleForResident } from '@cc-saas/shared/types';
+import { getNextBusTime, calculateMinutesUntil } from '@cc-saas/shared/utils';
 
-  const calculateMinutesUntil = (timeStr: string) => {
-    const [h, m] = timeStr.split(':').map(Number);
-    const busMinutes = h * 60 + m;
-    const nowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
-    let diff = busMinutes - nowMinutes;
-    if (diff < 0) diff += 24 * 60; // Next day
-    return diff;
+/**
+ * バススケジュール関連の機能を提供するフック
+ *
+ * @deprecated currentTimeパラメータは不要になりました（互換性のため残していますが使用されません）
+ */
+// eslint-disable-next-line no-unused-vars
+export const useBusSchedule = (_currentTime?: Date) => {
+  const getNextBus = (schedule: BusScheduleForResident) => {
+    return getNextBusTime(schedule.times);
   };
 
   return { getNextBus, calculateMinutesUntil };
