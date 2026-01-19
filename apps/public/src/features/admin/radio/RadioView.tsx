@@ -15,4 +15,3 @@ const RadioView: React.FC = () => {
 };
 
 export default RadioView;
-

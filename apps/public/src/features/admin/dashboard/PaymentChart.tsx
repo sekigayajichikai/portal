@@ -26,8 +26,10 @@ const PaymentChart: React.FC<PaymentChartProps> = ({ data }) => {
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
-      <h3 className="text-lg font-semibold text-slate-800 mb-5 tracking-tight">班ごとの会費納入率</h3>
-      
+      <h3 className="text-lg font-semibold text-slate-800 mb-5 tracking-tight">
+        班ごとの会費納入率
+      </h3>
+
       {/* Y軸の目盛りとグラフエリア */}
       <div className="relative">
         {/* Y軸の目盛り */}
@@ -44,7 +46,7 @@ const PaymentChart: React.FC<PaymentChartProps> = ({ data }) => {
           {data.map((item) => {
             const heightPercent = (item.paymentRate / maxRate) * 100;
             const barColor = getBarColor(item.paymentRate, item.groupName);
-            
+
             return (
               <div key={item.groupName} className="flex-1 flex flex-col items-center h-full">
                 {/* 棒グラフ */}
@@ -53,16 +55,18 @@ const PaymentChart: React.FC<PaymentChartProps> = ({ data }) => {
                   <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs font-semibold text-slate-700 whitespace-nowrap tracking-tight">
                     {item.paymentRate}%
                   </div>
-                  
+
                   {/* 棒 */}
                   <div
                     className={`w-full ${barColor} rounded-t-lg transition-all hover:opacity-80`}
                     style={{ height: `${heightPercent}%` }}
                   />
                 </div>
-                
+
                 {/* X軸のラベル */}
-                <div className="mt-2 text-xs font-semibold text-slate-700 tracking-tight">{item.groupName}</div>
+                <div className="mt-2 text-xs font-semibold text-slate-700 tracking-tight">
+                  {item.groupName}
+                </div>
               </div>
             );
           })}

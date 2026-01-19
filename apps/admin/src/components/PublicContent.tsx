@@ -22,14 +22,16 @@ export const PublicContent: React.FC<PublicContentProps> = ({ events }) => {
       </div>
 
       <div className="bg-slate-100 p-6 rounded-3xl border border-slate-200">
-        <h3 className="text-center font-bold text-slate-400 mb-6 text-sm uppercase tracking-widest">Web Preview</h3>
-        
+        <h3 className="text-center font-bold text-slate-400 mb-6 text-sm uppercase tracking-widest">
+          Web Preview
+        </h3>
+
         {/* Mock Public View */}
         <div className="bg-white max-w-2xl mx-auto rounded-xl shadow-sm overflow-hidden min-h-[400px]">
           <div className="bg-primary-600 p-4 text-white">
             <h4 className="font-bold text-lg">コミュニティ・カレンダー</h4>
           </div>
-          
+
           <div className="p-0 divide-y divide-slate-100">
             {events.length === 0 ? (
               <div className="p-8 text-center text-slate-400">
@@ -41,11 +43,15 @@ export const PublicContent: React.FC<PublicContentProps> = ({ events }) => {
                 <div key={event.id} className="p-4 hover:bg-slate-50 transition-colors group">
                   <div className="flex gap-4">
                     <div className="flex-shrink-0 w-16 h-16 bg-primary-50 text-primary-600 rounded-xl flex flex-col items-center justify-center border border-primary-100">
-                      <span className="text-xs font-bold uppercase">{new Date(event.date).toLocaleString('en-US', { month: 'short' })}</span>
+                      <span className="text-xs font-bold uppercase">
+                        {new Date(event.date).toLocaleString('en-US', { month: 'short' })}
+                      </span>
                       <span className="text-xl font-bold">{new Date(event.date).getDate()}</span>
                     </div>
                     <div className="flex-1">
-                      <h5 className="font-bold text-slate-800 text-lg group-hover:text-primary-600 transition-colors">{event.title}</h5>
+                      <h5 className="font-bold text-slate-800 text-lg group-hover:text-primary-600 transition-colors">
+                        {event.title}
+                      </h5>
                       <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
                         <div className="flex items-center gap-1">
                           <Clock size={14} />
@@ -56,7 +62,9 @@ export const PublicContent: React.FC<PublicContentProps> = ({ events }) => {
                           <span>{event.location}</span>
                         </div>
                       </div>
-                      <p className="text-sm text-slate-600 mt-2 line-clamp-2">{event.description}</p>
+                      <p className="text-sm text-slate-600 mt-2 line-clamp-2">
+                        {event.description}
+                      </p>
                     </div>
                   </div>
                 </div>

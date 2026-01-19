@@ -5,17 +5,17 @@
  */
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
-  FileText, 
-  DollarSign, 
-  Bus, 
-  Radio, 
+import {
+  LayoutDashboard,
+  Users,
+  FileText,
+  DollarSign,
+  Bus,
+  Radio,
   Globe,
   Monitor,
   Bell,
-  User
+  User,
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -52,13 +52,17 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
             <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-xl bg-blue-600">
               C
             </div>
-            <h1 className="text-lg font-semibold text-slate-800 tracking-tight">CommunityConnect</h1>
+            <h1 className="text-lg font-semibold text-slate-800 tracking-tight">
+              CommunityConnect
+            </h1>
           </div>
         </div>
 
         {/* 管理メニュータイトル */}
         <div className="px-6 py-2.5 border-b border-slate-200">
-          <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">管理メニュー</h2>
+          <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+            管理メニュー
+          </h2>
         </div>
 
         {/* メインナビゲーション項目 */}
@@ -71,12 +75,14 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                 key={item.path}
                 to={item.path}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
-                  active
-                    ? 'bg-blue-50 text-blue-600 shadow-sm'
-                    : 'text-slate-700 hover:bg-slate-50'
+                  active ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                <Icon size={18} strokeWidth={1.5} className={active ? 'text-blue-600' : 'text-slate-500'} />
+                <Icon
+                  size={18}
+                  strokeWidth={1.5}
+                  className={active ? 'text-blue-600' : 'text-slate-500'}
+                />
                 <span className="text-sm font-medium tracking-tight">{item.label}</span>
               </Link>
             );
@@ -85,7 +91,9 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
 
         {/* AI・広報セクション見出し */}
         <div className="px-6 py-2.5 border-t border-slate-200">
-          <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">AI・広報</h2>
+          <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+            AI・広報
+          </h2>
         </div>
 
         {/* AI・広報ナビゲーション項目 */}
@@ -98,12 +106,14 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                 key={item.path}
                 to={item.path}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-200 ${
-                  active
-                    ? 'bg-blue-50 text-blue-600 shadow-sm'
-                    : 'text-slate-700 hover:bg-slate-50'
+                  active ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                <Icon size={18} strokeWidth={1.5} className={active ? 'text-blue-600' : 'text-slate-500'} />
+                <Icon
+                  size={18}
+                  strokeWidth={1.5}
+                  className={active ? 'text-blue-600' : 'text-slate-500'}
+                />
                 <span className="text-sm font-medium tracking-tight">{item.label}</span>
               </Link>
             );
@@ -140,9 +150,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
         </header>
 
         {/* メインコンテンツ */}
-        <main className="p-6">
-          {children}
-        </main>
+        <main className="p-6">{children}</main>
       </div>
     </div>
   );

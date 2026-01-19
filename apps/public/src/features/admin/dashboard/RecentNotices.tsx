@@ -17,14 +17,16 @@ const RecentNotices: React.FC<RecentNoticesProps> = ({ notices }) => {
   return (
     <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
       <h3 className="text-lg font-semibold text-slate-800 mb-5 tracking-tight">最新のお知らせ</h3>
-      
+
       <div className="space-y-3">
         {notices.map((notice) => (
           <div
             key={notice.id}
             className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors"
           >
-            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${getTypeColor(notice.type)} tracking-tight`}>
+            <span
+              className={`px-2.5 py-1 rounded-full text-xs font-semibold ${getTypeColor(notice.type)} tracking-tight`}
+            >
               {notice.type}
             </span>
             <div className="flex-1">

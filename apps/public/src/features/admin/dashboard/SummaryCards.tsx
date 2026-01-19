@@ -53,7 +53,9 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ stats }) => {
           key={index}
           className="bg-white rounded-xl p-5 shadow-sm border border-slate-200 hover:shadow-md transition-shadow"
         >
-          <div className={`w-11 h-11 ${card.iconBg} rounded-lg flex items-center justify-center text-xl mb-3`}>
+          <div
+            className={`w-11 h-11 ${card.iconBg} rounded-lg flex items-center justify-center text-xl mb-3`}
+          >
             {card.icon}
           </div>
           <h3 className="text-sm font-semibold text-slate-600 mb-2 tracking-tight">{card.title}</h3>

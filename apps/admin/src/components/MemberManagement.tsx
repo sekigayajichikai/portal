@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { MOCK_MEMBERS } from '@/constants';
-import { Member } from '@cc-saas/shared';
-import { Search, Filter, MoreHorizontal, Check, X as XIcon } from 'lucide-react';
+import { Search, MoreHorizontal, Check, X as XIcon } from 'lucide-react';
 
 export const MemberManagement: React.FC = () => {
   const [filterGroup, setFilterGroup] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredMembers = MOCK_MEMBERS.filter(member => {
+  const filteredMembers = MOCK_MEMBERS.filter((member) => {
     const matchesGroup = filterGroup === 'All' || member.group === filterGroup;
     const matchesSearch = member.name.includes(searchTerm) || member.address.includes(searchTerm);
     return matchesGroup && matchesSearch;
@@ -17,24 +16,27 @@ export const MemberManagement: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="relative w-full md:w-96">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
-          <input 
-            type="text" 
-            placeholder="名前や住所で検索..." 
+          <Search
+            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
+            size={20}
+          />
+          <input
+            type="text"
+            placeholder="名前や住所で検索..."
             className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
+
         <div className="flex gap-2">
           {['All', '1班', '2班', '3班'].map((group) => (
             <button
               key={group}
               onClick={() => setFilterGroup(group)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filterGroup === group 
-                  ? 'bg-primary-500 text-white' 
+                filterGroup === group
+                  ? 'bg-primary-500 text-white'
                   : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
               }`}
             >
@@ -82,7 +84,7 @@ export const MemberManagement: React.FC = () => {
                   )}
                 </td>
                 <td className="p-4 text-center">
-                   {member.hasPaidFee ? (
+                  {member.hasPaidFee ? (
                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
                       納入済
                     </span>
@@ -93,12 +95,20 @@ export const MemberManagement: React.FC = () => {
                   )}
                 </td>
                 <td className="p-4">
-                  <span className={`text-xs font-medium px-2 py-1 rounded ${
-                    member.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                    member.role === 'leader' ? 'bg-blue-100 text-blue-700' :
-                    'text-slate-500'
-                  }`}>
-                    {member.role === 'admin' ? '管理者' : member.role === 'leader' ? '班長' : '会員'}
+                  <span
+                    className={`text-xs font-medium px-2 py-1 rounded ${
+                      member.role === 'admin'
+                        ? 'bg-purple-100 text-purple-700'
+                        : member.role === 'leader'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'text-slate-500'
+                    }`}
+                  >
+                    {member.role === 'admin'
+                      ? '管理者'
+                      : member.role === 'leader'
+                        ? '班長'
+                        : '会員'}
                   </span>
                 </td>
                 <td className="p-4 text-right">
@@ -111,9 +121,7 @@ export const MemberManagement: React.FC = () => {
           </tbody>
         </table>
         {filteredMembers.length === 0 && (
-          <div className="p-8 text-center text-slate-400">
-            該当する会員が見つかりません
-          </div>
+          <div className="p-8 text-center text-slate-400">該当する会員が見つかりません</div>
         )}
       </div>
     </div>

@@ -1,0 +1,29 @@
+# 依存関係
+node_modules
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# ビルド成果物
+dist
+dist-ssr
+build
+.next
+out
+
+# キャッシュ
+.cache
+.turbo
+.vite
+
+# ログ
+*.log
+
+# 環境変数
+.env
+.env.local
+.env.*.local
+
+# その他
+coverage
+.DS_Store

@@ -1,8 +1,14 @@
-
 import React, { useState, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { TabType, User, Circular, Payment } from '@/types/types';
-import { GARBAGE_DATA, BUS_SCHEDULES, MOCK_EVENTS, MOCK_USER, INITIAL_CIRCULARS, INITIAL_PAYMENTS } from '@/utils/constants';
+import {
+  GARBAGE_DATA,
+  BUS_SCHEDULES,
+  MOCK_EVENTS,
+  MOCK_USER,
+  INITIAL_CIRCULARS,
+  INITIAL_PAYMENTS,
+} from '@/utils/constants';
 
 import Dashboard from '@/components/features/dashboard/Dashboard';
 import HomeView from '@/components/features/home/HomeView';
@@ -43,19 +49,21 @@ const App: React.FC = () => {
 
   // Dashboard Handlers
   const toggleCircularRead = (id: string) => {
-    setCirculars(prev => prev.map(c => {
-      if (c.id === id) {
-        // Increase mock read rate slightly when user reads
-        const newRate = Math.min(c.groupReadRate + 5, 100);
-        return { ...c, isRead: true, groupReadRate: newRate };
-      }
-      return c;
-    }));
+    setCirculars((prev) =>
+      prev.map((c) => {
+        if (c.id === id) {
+          // Increase mock read rate slightly when user reads
+          const newRate = Math.min(c.groupReadRate + 5, 100);
+          return { ...c, isRead: true, groupReadRate: newRate };
+        }
+        return c;
+      })
+    );
   };
 
   const handlePayment = (id: string) => {
     if (confirm('支払いを実行しますか？ (デモ)')) {
-      setPayments(prev => prev.map(p => p.id === id ? { ...p, status: 'paid' } : p));
+      setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status: 'paid' } : p)));
     }
   };
 
@@ -67,15 +75,15 @@ const App: React.FC = () => {
   };
 
   return (
-    <MainLayout 
-      activeTab={activeTab} 
-      setActiveTab={setActiveTab} 
-      isSimpleMode={isSimpleMode} 
+    <MainLayout
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      isSimpleMode={isSimpleMode}
       toggleSimpleMode={toggleSimpleMode}
       user={user}
     >
       {activeTab === 'dashboard' && (
-        <Dashboard 
+        <Dashboard
           user={user}
           onLogin={handleLogin}
           onLogout={handleLogout}
@@ -88,39 +96,31 @@ const App: React.FC = () => {
       )}
 
       {activeTab === 'home' && (
-        <HomeView 
-          isSimpleMode={isSimpleMode} 
-          busSchedules={BUS_SCHEDULES} 
-          events={MOCK_EVENTS} 
-          currentTime={currentTime} 
+        <HomeView
+          isSimpleMode={isSimpleMode}
+          busSchedules={BUS_SCHEDULES}
+          events={MOCK_EVENTS}
+          currentTime={currentTime}
         />
       )}
 
       {activeTab === 'garbage' && (
-        <GarbageCalendarView 
-          isSimpleMode={isSimpleMode} 
-          garbageData={GARBAGE_DATA} 
-        />
+        <GarbageCalendarView isSimpleMode={isSimpleMode} garbageData={GARBAGE_DATA} />
       )}
 
       {activeTab === 'bus' && (
-        <BusScheduleView 
-          isSimpleMode={isSimpleMode} 
-          busSchedules={BUS_SCHEDULES} 
-          currentTime={currentTime} 
+        <BusScheduleView
+          isSimpleMode={isSimpleMode}
+          busSchedules={BUS_SCHEDULES}
+          currentTime={currentTime}
         />
       )}
 
       {activeTab === 'calendar' && (
-        <EventCalendarView 
-          isSimpleMode={isSimpleMode} 
-          events={MOCK_EVENTS} 
-        />
+        <EventCalendarView isSimpleMode={isSimpleMode} events={MOCK_EVENTS} />
       )}
 
-      {activeTab === 'radio' && (
-        <CommunityRadioView isSimpleMode={isSimpleMode} />
-      )}
+      {activeTab === 'radio' && <CommunityRadioView isSimpleMode={isSimpleMode} />}
     </MainLayout>
   );
 };

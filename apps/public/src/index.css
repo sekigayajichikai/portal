@@ -22,10 +22,9 @@
 @layer base {
   body {
     font-family: 'M PLUS Rounded 1c', sans-serif;
-    background-color: #FDFCF0; /* ベース背景色 */
+    background-color: #fdfcf0; /* ベース背景色 */
     color: #1e293b; /* text-slate-800相当 */
     margin: 0;
     padding: 0;
   }
 }
-

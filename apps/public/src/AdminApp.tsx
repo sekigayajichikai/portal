@@ -32,4 +32,3 @@ const AdminApp: React.FC = () => {
 };
 
 export default AdminApp;
-

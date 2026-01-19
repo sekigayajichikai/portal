@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { TabType, User } from '@/types/types';
 import Header from './Header';
@@ -13,13 +12,22 @@ interface MainLayoutProps {
   user: User | null;
 }
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab, setActiveTab, isSimpleMode, toggleSimpleMode, user }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({
+  children,
+  activeTab,
+  setActiveTab,
+  isSimpleMode,
+  toggleSimpleMode,
+  user,
+}) => {
   return (
-    <div className={`max-w-md mx-auto min-h-screen flex flex-col shadow-2xl relative overflow-hidden transition-colors duration-500 ${isSimpleMode ? 'bg-slate-50' : 'bg-[#FDFCF0]'}`}>
-      <Header 
-        isSimpleMode={isSimpleMode} 
-        toggleSimpleMode={toggleSimpleMode} 
-        user={user} 
+    <div
+      className={`max-w-md mx-auto min-h-screen flex flex-col shadow-2xl relative overflow-hidden transition-colors duration-500 ${isSimpleMode ? 'bg-slate-50' : 'bg-[#FDFCF0]'}`}
+    >
+      <Header
+        isSimpleMode={isSimpleMode}
+        toggleSimpleMode={toggleSimpleMode}
+        user={user}
         setActiveTab={setActiveTab}
       />
 
@@ -30,11 +38,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab, setActiveT
 
       {/* Navigation Bar */}
       {activeTab !== 'dashboard' && (
-        <BottomNav 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          isSimpleMode={isSimpleMode} 
-        />
+        <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} isSimpleMode={isSimpleMode} />
       )}
 
       {/* Decorative Background Elements - Hidden in Simple Mode */}

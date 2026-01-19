@@ -15,4 +15,3 @@ const MembersView: React.FC = () => {
 };
 
 export default MembersView;
-

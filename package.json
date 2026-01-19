@@ -16,7 +16,11 @@
     "build:public": "cd apps/public && vite build",
     "preview": "concurrently \"npm run preview:admin\" \"npm run preview:public\"",
     "preview:admin": "cd apps/admin && vite preview",
-    "preview:public": "cd apps/public && vite preview"
+    "preview:public": "cd apps/public && vite preview",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,md,css}\""
   },
   "dependencies": {
     "@google/genai": "^1.37.0",
@@ -26,9 +30,17 @@
     "recharts": "^3.6.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.18.0",
     "@types/node": "^22.14.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.2",
+    "@typescript-eslint/parser": "^8.18.2",
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^9.2.1",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "prettier": "^3.4.2",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

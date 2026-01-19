@@ -4,7 +4,11 @@
  * Interフォント、タイトな余白、洗練されたデザイン
  */
 import React from 'react';
-import { getAdminStats, getGroupPaymentStats, getRecentNotices } from '@/services/admin/adminDataService';
+import {
+  getAdminStats,
+  getGroupPaymentStats,
+  getRecentNotices,
+} from '@/services/admin/adminDataService';
 import SummaryCards from './SummaryCards';
 import PaymentChart from './PaymentChart';
 import RecentNotices from './RecentNotices';

@@ -15,4 +15,3 @@ const FeesView: React.FC = () => {
 };
 
 export default FeesView;
-

@@ -45,4 +45,3 @@ export const getRecentNotices = (): AdminNotice[] => {
     { id: 'n2', type: 'Notice', title: 'ゴミステーションの清掃について', date: '2024-07-18' },
   ];
 };
-

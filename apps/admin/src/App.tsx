@@ -16,7 +16,7 @@ function App() {
 
   const handleEventsExtracted = (events: PublicEvent[]) => {
     // Add new unique events
-    setExtractedEvents(prev => [...prev, ...events]);
+    setExtractedEvents((prev) => [...prev, ...events]);
   };
 
   const renderView = () => {
@@ -42,9 +42,7 @@ function App() {
 
   return (
     <Layout currentView={currentView} onChangeView={setCurrentView}>
-      <div className="animate-in fade-in duration-300">
-        {renderView()}
-      </div>
+      <div className="animate-in fade-in duration-300">{renderView()}</div>
     </Layout>
   );
 }

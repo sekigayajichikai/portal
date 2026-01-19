@@ -1,7 +1,5 @@
 {
   "name": "NP App",
   "description": "A vibrant, playful community portal for young residents to engage with their neighborhood association through gamified features, real-time bus tracking, and AI-powered local insights.",
-  "requestFramePermissions": [
-    "geolocation"
-  ]
+  "requestFramePermissions": ["geolocation"]
 }
