@@ -4,9 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "cd apps/admin && vite",
+    "dev:public": "cd apps/public && vite",
+    "build": "cd apps/admin && vite build",
+    "build:public": "cd apps/public && vite build",
+    "preview": "cd apps/admin && vite preview",
+    "preview:public": "cd apps/public && vite preview"
   },
   "dependencies": {
     "@google/genai": "^1.37.0",
