@@ -1,5 +1,5 @@
 import React from 'react';
-import { PublicEvent } from '@shared/types';
+import { PublicEvent } from '@cc-saas/shared';
 import { Calendar, MapPin, Clock } from 'lucide-react';
 
 interface PublicContentProps {

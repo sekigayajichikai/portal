@@ -3,24 +3,32 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "cd apps/admin && vite",
+    "dev": "concurrently \"npm run dev:admin\" \"npm run dev:public\"",
+    "dev:admin": "cd apps/admin && vite",
     "dev:public": "cd apps/public && vite",
-    "build": "cd apps/admin && vite build",
+    "build": "npm run build:admin && npm run build:public",
+    "build:admin": "cd apps/admin && vite build",
     "build:public": "cd apps/public && vite build",
-    "preview": "cd apps/admin && vite preview",
+    "preview": "concurrently \"npm run preview:admin\" \"npm run preview:public\"",
+    "preview:admin": "cd apps/admin && vite preview",
     "preview:public": "cd apps/public && vite preview"
   },
   "dependencies": {
     "@google/genai": "^1.37.0",
-    "react": "^19.2.3",
     "lucide-react": "^0.562.0",
+    "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "recharts": "^3.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

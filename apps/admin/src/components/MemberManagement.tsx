@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { MOCK_MEMBERS } from '@/constants';
-import { Member } from '@shared/types';
+import { Member } from '@cc-saas/shared';
 import { Search, Filter, MoreHorizontal, Check, X as XIcon } from 'lucide-react';
 
 export const MemberManagement: React.FC = () => {

@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
       resolve: {
         alias: {
           '@': path.resolve(__dirname, './src'),
-          '@shared': path.resolve(__dirname, '../../packages/shared'),
+          '@cc-saas/shared': path.resolve(__dirname, '../../packages/shared'),
         }
       }
     };

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { getNeighborhoodTips } from '../../../services/geminiService';
+import { getNeighborhoodTips } from '@cc-saas/shared';
 
 interface AIChatProps {
   isSimpleMode: boolean;

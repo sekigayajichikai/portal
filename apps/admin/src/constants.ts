@@ -1,4 +1,4 @@
-import { Member, Circular, BusSchedule, GarbageRule } from "@shared/types";
+import { Member, Circular, BusSchedule, GarbageRule } from "@cc-saas/shared";
 
 export const MOCK_MEMBERS: Member[] = [
   { id: '1', name: '田中 健一', address: '1-2-3', group: '1班', phone: '090-1234-5678', hasPaidFee: true, hasReadLatestCircular: true, role: 'leader' },

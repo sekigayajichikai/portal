@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppView } from '@shared/types';
+import { AppView } from '@cc-saas/shared';
 import { 
   LayoutDashboard, 
   Users, 

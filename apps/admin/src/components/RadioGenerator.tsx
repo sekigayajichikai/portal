@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { generateRadioScript, generateRadioAudio } from '@/services/geminiService';
+import { generateRadioScript, generateRadioAudio, RadioProgram } from '@cc-saas/shared';
 import { Mic, Play, FileText, Loader2, Music, Download } from 'lucide-react';
-import { RadioProgram } from '@shared/types';
 
 export const RadioGenerator: React.FC = () => {
   const [inputText, setInputText] = useState('');

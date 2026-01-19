@@ -23,7 +23,10 @@
       "@/*": [
         "./src/*"
       ],
-      "@shared/*": [
+      "@cc-saas/shared": [
+        "../../packages/shared"
+      ],
+      "@cc-saas/shared/*": [
         "../../packages/shared/*"
       ]
     },

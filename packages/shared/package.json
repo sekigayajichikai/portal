@@ -1,0 +1,19 @@
+{
+  "name": "@cc-saas/shared",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./types": "./types/index.ts",
+    "./services/*": "./services/*.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.37.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.3"
+  }
+}

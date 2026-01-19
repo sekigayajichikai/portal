@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Circular, PublicEvent } from '@shared/types';
+import { Circular, PublicEvent, extractEventsFromText } from '@cc-saas/shared';
 import { MOCK_CIRCULARS } from '@/constants';
-import { extractEventsFromText } from '@/services/geminiService';
 import { Sparkles, Send, Eye, Loader2, Calendar } from 'lucide-react';
 
 interface CircularBoardProps {

@@ -7,7 +7,7 @@ import { FeeManagement } from '@/components/FeeManagement';
 import { LifestyleManager } from '@/components/LifestyleManager';
 import { RadioGenerator } from '@/components/RadioGenerator';
 import { PublicContent } from '@/components/PublicContent';
-import { AppView, PublicEvent } from '@shared/types';
+import { AppView, PublicEvent } from '@cc-saas/shared';
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
