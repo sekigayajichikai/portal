@@ -37,7 +37,40 @@ npm install
 cp .env.example .env
 ```
 
-Gemini API Keyは [Google AI Studio](https://ai.google.dev/) で取得できます。
+#### 必須の環境変数
+
+| 環境変数名            | 説明              | 取得方法                                                   |
+| --------------------- | ----------------- | ---------------------------------------------------------- |
+| `VITE_GEMINI_API_KEY` | Gemini AI APIキー | [Google AI Studio](https://ai.google.dev/) でAPIキーを作成 |
+
+#### オプションの環境変数
+
+以下の環境変数は、対応する機能を利用する場合に設定してください。
+
+| 環境変数名                    | 説明                        | 取得方法                                                                                        |
+| ----------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`           | Supabase プロジェクトURL    | [Supabase Dashboard](https://supabase.com/dashboard) > Project Settings > API                   |
+| `VITE_SUPABASE_ANON_KEY`      | Supabase 匿名キー           | [Supabase Dashboard](https://supabase.com/dashboard) > Project Settings > API                   |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | Stripe 公開可能キー         | [Stripe Dashboard](https://dashboard.stripe.com/apikeys) > API keys                             |
+| `STRIPE_SECRET_KEY`           | Stripe シークレットキー     | [Stripe Dashboard](https://dashboard.stripe.com/apikeys) > API keys（サーバーサイドのみ）       |
+| `SUPABASE_SERVICE_ROLE_KEY`   | Supabase サービスロールキー | [Supabase Dashboard](https://supabase.com/dashboard) > Project Settings > API（管理者操作のみ） |
+
+#### 環境変数の検証
+
+設定した環境変数が正しいか確認できます：
+
+```bash
+npm run check-env
+```
+
+このコマンドは、必須の環境変数が設定されているか、値が正しい形式かをチェックします。
+
+#### セキュリティ上の注意
+
+- **VITE\_** プレフィックスが付いた環境変数は、クライアント（ブラウザ）で使用されます
+- プレフィックスなしの環境変数は、サーバーサイドまたはビルド時のみ使用されます
+- `STRIPE_SECRET_KEY` と `SUPABASE_SERVICE_ROLE_KEY` は絶対にクライアントコードで使用しないでください
+- 本番環境では、Stripeのテストキー（`pk_test_`, `sk_test_`）をライブキー（`pk_live_`, `sk_live_`）に置き換えてください
 
 ### 3. アプリケーションの起動
 
@@ -53,6 +86,13 @@ npm run dev:public
 ```
 
 ## 🛠️ 開発ツール
+
+### 環境変数チェック
+
+```bash
+# 環境変数が正しく設定されているか確認
+npm run check-env
+```
 
 ### コード品質チェック
 

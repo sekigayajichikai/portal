@@ -151,6 +151,7 @@ export default [
       '**/build/**',
       '**/.vite/**',
       'eslint.config.js',
+      'scripts/**',
     ],
   },
 ];
