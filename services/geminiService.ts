@@ -1,13 +1,48 @@
+/**
+ * Gemini AI サービス
+ * 
+ * コミュニティ向けのイベント抽出、ラジオスクリプト生成、音声生成などの機能を提供します。
+ * 
+ * @module services/geminiService
+ */
+
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { PublicEvent } from "../types";
 
-// Initialize Gemini Client
-// NOTE: process.env.API_KEY is injected by the environment.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+/**
+ * Gemini AI クライアントインスタンスを安全に取得するヘルパー関数
+ * APIキーが設定されていない場合は警告を表示し、nullを返します
+ * 
+ * @returns GoogleGenAIインスタンス、またはAPIキーがない場合はnull
+ */
+function getAIClient(): GoogleGenAI | null {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    console.warn("APIキーが設定されていません。ダミー動作モードで起動します");
+    return null;
+  }
+  
+  // 遅延初期化：初回使用時にインスタンスを作成
+  return new GoogleGenAI({ apiKey });
+}
 
 // --- Event Extraction ---
 
+/**
+ * テキストからイベント情報を抽出する
+ * 
+ * @param text - 回覧板やニュースレターなどのテキスト
+ * @returns 抽出されたイベントの配列
+ */
 export const extractEventsFromText = async (text: string): Promise<PublicEvent[]> => {
+  const ai = getAIClient();
+  
+  // APIキーがない場合は空配列を返す（エラーを投げない）
+  if (!ai) {
+    return [];
+  }
+  
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -46,13 +81,27 @@ export const extractEventsFromText = async (text: string): Promise<PublicEvent[]
     return [];
   } catch (error) {
     console.error("Error extracting events:", error);
-    throw error;
+    // エラーが発生しても空配列を返す（アプリ全体をクラッシュさせない）
+    return [];
   }
 };
 
 // --- Radio Script Generation ---
 
+/**
+ * ラジオスクリプトを生成する
+ * 
+ * @param sourceText - 元となるニュースレターや回覧板のテキスト
+ * @returns 生成されたラジオスクリプト
+ */
 export const generateRadioScript = async (sourceText: string): Promise<string> => {
+  const ai = getAIClient();
+  
+  // APIキーがない場合は空文字列を返す（エラーを投げない）
+  if (!ai) {
+    return "";
+  }
+  
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview", // Good for creative writing
@@ -68,7 +117,8 @@ export const generateRadioScript = async (sourceText: string): Promise<string> =
     return response.text || "";
   } catch (error) {
     console.error("Error generating radio script:", error);
-    throw error;
+    // エラーが発生しても空文字列を返す（アプリ全体をクラッシュさせない）
+    return "";
   }
 };
 
@@ -159,7 +209,20 @@ function bufferToWave(abuffer: AudioBuffer, len: number) {
   }
 }
 
+/**
+ * ラジオスクリプトから音声（TTS）を生成する
+ * 
+ * @param script - 読み上げるラジオスクリプト
+ * @returns 生成された音声ファイルのURL
+ */
 export const generateRadioAudio = async (script: string): Promise<string> => {
+  const ai = getAIClient();
+  
+  // APIキーがない場合はエラーを投げずに空文字列を返す
+  if (!ai) {
+    return "";
+  }
+  
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -201,6 +264,7 @@ export const generateRadioAudio = async (script: string): Promise<string> => {
 
   } catch (error) {
     console.error("Error generating audio:", error);
-    throw error;
+    // エラーが発生しても空文字列を返す（アプリ全体をクラッシュさせない）
+    return "";
   }
 };
