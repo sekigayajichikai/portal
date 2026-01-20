@@ -7,10 +7,11 @@ import {
   Article,
 } from '@cc-saas/shared';
 // 統合AIサービスを使用（Anthropic/OpenRouterを自動選択）
-import { extractArticlesFromPDF, convertPDFToBase64 } from '@cc-saas/shared/services/aiService';
+import { extractArticlesFromPDF, convertPDFToBase64, extractPDFMetadata } from '@cc-saas/shared/services/aiService';
 import { MOCK_CIRCULARS, MOCK_CATEGORIES, MOCK_ARTICLES } from '@/constants';
-import { Sparkles, Send, Eye, Loader2, Calendar, FileText, Upload } from 'lucide-react';
+import { Sparkles, Send, Eye, Loader2, Calendar, FileText, Upload, Trash2 } from 'lucide-react';
 import { ArticleList } from './ArticleList';
+import { PDFMetadataDialog } from './PDFMetadataDialog';
 
 interface CircularBoardProps {
   onEventsExtracted: (events: PublicEvent[]) => void;
@@ -29,10 +30,30 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
   
   // PDF広報誌の状態
   const [newsletters, setNewsletters] = useState<Newsletter[]>([]);
-  const [extractedArticles, setExtractedArticles] = useState<Article[]>(MOCK_ARTICLES);
-  const [isProcessingPDF, setIsProcessingPDF] = useState(false);
-  const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
   const [newsletterTitle, setNewsletterTitle] = useState('');
+  
+  // 複数PDF対応の新しい状態管理
+  const [currentNewsletter, setCurrentNewsletter] = useState<Newsletter | null>(null);
+  const [uploadedPDFs, setUploadedPDFs] = useState<{
+    file: File;
+    articleCount: number;
+    uploadedAt: string;
+    title: string;       // PDFのタイトル（例: 関ヶ谷だより）
+    issueNumber: string; // 号数（例: 第123号）
+    pdfId: string;       // 一意識別子
+  }[]>([]);
+  const [accumulatedArticles, setAccumulatedArticles] = useState<Article[]>([]);
+  const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
+  const [isProcessingPDF, setIsProcessingPDF] = useState(false);
+  
+  // メタデータ入力ダイアログの状態
+  const [showMetadataDialog, setShowMetadataDialog] = useState(false);
+  const [suggestedMetadata, setSuggestedMetadata] = useState({
+    suggestedTitle: '',
+    suggestedIssueNumber: '',
+  });
+  const [pendingPDFBase64, setPendingPDFBase64] = useState<string | null>(null);
+  const [isMetadataLoading, setIsMetadataLoading] = useState(false);
 
   const handleCreate = async () => {
     if (!newTitle || !newContent) return;
@@ -83,103 +104,153 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
     const file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
       setSelectedPDF(file);
-      // ファイル名から月号を推測
-      const filename = file.name.replace('.pdf', '');
-      setNewsletterTitle(filename || `${new Date().getFullYear()}年${new Date().getMonth() + 1}月号`);
     } else {
       alert('PDFファイルを選択してください');
     }
   };
 
   /**
-   * PDF広報誌の作成と記事の抽出
-   * Claude APIを使用してPDFから記事を抽出します
+   * Newsletter作成（タイトルのみ）
    */
-  const handleCreateNewsletter = async () => {
+  const handleCreateNewsletter = () => {
     if (!newsletterTitle) {
       alert('タイトルを入力してください');
       return;
     }
 
+    const newNewsletter: Newsletter = {
+      id: `n-${Date.now()}`,
+      organization_id: 'org1',
+      title: newsletterTitle,
+      issue_date: new Date().toISOString().split('T')[0],
+      source_pdf_url: null,
+      status: 'draft',
+      created_by: 'admin1',
+      created_at: new Date().toISOString(),
+      published_at: null,
+    };
+
+    setCurrentNewsletter(newNewsletter);
+    setAccumulatedArticles([]); // 記事をリセット
+    setUploadedPDFs([]); // PDFリストをリセット
+    setNewsletters([newNewsletter, ...newsletters]);
+    alert(`Newsletter「${newsletterTitle}」を作成しました。PDFを追加してください。`);
+  };
+
+  /**
+   * ステップ1: PDFを選択してメタデータを抽出
+   */
+  const handlePDFSelectAndExtractMetadata = async () => {
+    if (!currentNewsletter) {
+      alert('先にNewsletterを作成してください');
+      return;
+    }
+
+    if (!selectedPDF) {
+      alert('PDFファイルを選択してください');
+      return;
+    }
+
+    setIsProcessingPDF(true);
+    setIsMetadataLoading(true);
+
+    try {
+      // PDFをBase64に変換
+      const pdfBase64 = await convertPDFToBase64(selectedPDF);
+      setPendingPDFBase64(pdfBase64);
+
+      // AIでメタデータ提案
+      const metadata = await extractPDFMetadata(pdfBase64);
+      console.log('🔍 CircularBoard: AIから取得したメタデータ:', metadata);
+      
+      setSuggestedMetadata(metadata);
+      console.log('🔍 CircularBoard: setSuggestedMetadata実行後');
+
+      // ダイアログを表示
+      console.log('🔍 CircularBoard: ダイアログを表示します。現在のsuggestedMetadata:', metadata);
+      setShowMetadataDialog(true);
+    } catch (error) {
+      console.error('メタデータ抽出エラー:', error);
+      alert('PDFの読み込みに失敗しました');
+    } finally {
+      setIsProcessingPDF(false);
+      setIsMetadataLoading(false);
+    }
+  };
+
+  /**
+   * ステップ2: メタデータ確定後、記事を抽出
+   */
+  const handleConfirmMetadataAndExtractArticles = async (
+    title: string,
+    issueNumber: string
+  ) => {
+    if (!currentNewsletter || !selectedPDF || !pendingPDFBase64) {
+      return;
+    }
+
+    setShowMetadataDialog(false);
     setIsProcessingPDF(true);
 
     try {
-      let extractedArticleData: Omit<
-        Article,
-        'id' | 'newsletter_id' | 'organization_id' | 'created_at' | 'updated_at'
-      >[] = [];
-      let processingTime = 0;
+      // Claude APIで記事抽出
+      const result = await extractArticlesFromPDF(pendingPDFBase64, MOCK_CATEGORIES);
+      const processingTime = result.processingTime;
 
-      // PDFファイルがある場合は、Claude APIで抽出
-      if (selectedPDF) {
-        try {
-          // PDFをBase64に変換
-          const pdfBase64 = await convertPDFToBase64(selectedPDF);
+      const pdfId = `pdf-${Date.now()}`;
 
-          // Claude APIで記事抽出
-          const result = await extractArticlesFromPDF(pdfBase64, MOCK_CATEGORIES);
-          extractedArticleData = result.articles;
-          processingTime = result.processingTime;
-
-          console.log(`Claude API処理時間: ${processingTime}ms`);
-        } catch (error) {
-          console.error('Claude API エラー:', error);
-          alert(
-            'Claude APIでの抽出に失敗しました。APIキーを確認してください。\nモックデータを表示します。'
-          );
-          // フォールバックとしてモックデータを使用
-          extractedArticleData = MOCK_ARTICLES.map((a) => {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { id, newsletter_id, organization_id, created_at, updated_at, ...rest } = a;
-            return rest;
-          });
-        }
-      } else {
-        // PDFがない場合はモックデータを使用
-        extractedArticleData = MOCK_ARTICLES.map((a) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { id, newsletter_id, organization_id, created_at, updated_at, ...rest } = a;
-          return rest;
-        });
-      }
-
-      // 広報誌を作成
-      const newNewsletter: Newsletter = {
-        id: `n-${Date.now()}`,
-        organization_id: 'org1',
-        title: newsletterTitle,
-        issue_date: new Date().toISOString().split('T')[0],
-        source_pdf_url: selectedPDF ? URL.createObjectURL(selectedPDF) : null,
-        status: 'draft',
-        created_by: 'admin1',
-        created_at: new Date().toISOString(),
-        published_at: null,
-      };
-
-      setNewsletters([newNewsletter, ...newsletters]);
-
-      // 記事データにID等を追加して表示
-      const articlesWithIds: Article[] = extractedArticleData.map((article, index) => ({
+      // 記事にIDとsourceを付与
+      const newArticles: Article[] = result.articles.map((article, index) => ({
         id: `a-${Date.now()}-${index}`,
-        newsletter_id: newNewsletter.id,
+        newsletter_id: currentNewsletter.id,
         organization_id: 'org1',
         ...article,
+        source: `${title}${issueNumber ? ` ${issueNumber}` : ''}`, // ソース情報を記録
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }));
 
-      setExtractedArticles(articlesWithIds);
+      // 既存の記事に追加
+      setAccumulatedArticles(prev => [...prev, ...newArticles]);
 
-      const message = selectedPDF
-        ? `${articlesWithIds.length}件の記事を抽出しました（処理時間: ${(processingTime / 1000).toFixed(1)}秒）`
-        : `${articlesWithIds.length}件の記事を表示しました（モックデータ）`;
-      alert(message);
+      // PDFリストに追加（拡張されたメタデータ付き）
+      setUploadedPDFs(prev => [
+        ...prev,
+        {
+          file: selectedPDF,
+          articleCount: newArticles.length,
+          uploadedAt: new Date().toISOString(),
+          title: title,
+          issueNumber: issueNumber,
+          pdfId: pdfId,
+        },
+      ]);
+
+      // 選択をクリア
+      setSelectedPDF(null);
+      setPendingPDFBase64(null);
+
+      alert(
+        `${title}から${newArticles.length}件の記事を追加しました\n` +
+        `処理時間: ${(processingTime / 1000).toFixed(1)}秒\n` +
+        `合計: ${accumulatedArticles.length + newArticles.length}件の記事`
+      );
     } catch (error) {
-      console.error('広報誌作成エラー:', error);
-      alert('広報誌の作成に失敗しました');
+      console.error('記事抽出エラー:', error);
+      alert('記事抽出に失敗しました');
     } finally {
       setIsProcessingPDF(false);
     }
+  };
+
+  /**
+   * メタデータ入力をキャンセル
+   */
+  const handleCancelMetadata = () => {
+    setShowMetadataDialog(false);
+    setPendingPDFBase64(null);
+    setIsProcessingPDF(false);
+    setIsMetadataLoading(false);
   };
 
   /**
@@ -188,6 +259,44 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
   const handleSaveArticles = (articles: Article[]) => {
     console.log('記事を保存:', articles);
     alert(`${articles.length}件の記事を保存しました（Stage 1: ローカルのみ）`);
+    // 将来的にSupabaseに保存
+  };
+
+  /**
+   * Newsletter編集のリセット
+   */
+  const handleResetNewsletter = () => {
+    if (accumulatedArticles.length > 0) {
+      if (!confirm('編集中のデータがリセットされます。よろしいですか？')) {
+        return;
+      }
+    }
+    setCurrentNewsletter(null);
+    setAccumulatedArticles([]);
+    setUploadedPDFs([]);
+    setSelectedPDF(null);
+    setNewsletterTitle('');
+  };
+
+  /**
+   * 登録済みPDFを削除
+   */
+  const handleDeletePDF = (pdfId: string) => {
+    const pdf = uploadedPDFs.find(p => p.pdfId === pdfId);
+    if (!pdf) return;
+
+    if (!confirm(`「${pdf.title}」を削除しますか？\nこのPDFから抽出された記事も削除されます。`)) {
+      return;
+    }
+
+    // このPDFから抽出された記事を削除
+    const pdfSource = `${pdf.title}${pdf.issueNumber ? ` ${pdf.issueNumber}` : ''}`;
+    setAccumulatedArticles(prev => prev.filter(article => article.source !== pdfSource));
+
+    // PDFリストから削除
+    setUploadedPDFs(prev => prev.filter(p => p.pdfId !== pdfId));
+
+    alert(`「${pdf.title}」とその記事を削除しました`);
   };
 
   return (
@@ -343,107 +452,220 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
       {/* PDF広報誌セクション */}
       {activeTab === 'pdf' && (
         <div className="space-y-6">
-          {/* Newsletter作成フォーム */}
-          <div className="bg-white p-6 rounded-2xl shadow border border-primary-100">
-            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <FileText size={20} className="text-primary-600" />
-              新しい広報誌を作成
-            </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-2">
-                  タイトル
-                </label>
-                <input
-                  type="text"
-                  value={newsletterTitle}
-                  onChange={(e) => setNewsletterTitle(e.target.value)}
-                  className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  placeholder="例: 2025年1月号"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-600 mb-2">
-                  PDFファイル
-                </label>
-                <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors">
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={handlePDFSelect}
-                    className="hidden"
-                    id="pdf-upload"
-                  />
-                  <label
-                    htmlFor="pdf-upload"
-                    className="cursor-pointer inline-flex flex-col items-center gap-2"
-                  >
-                    <Upload size={32} className="text-slate-400" />
-                    <span className="text-sm font-medium text-slate-600">
-                      {selectedPDF ? selectedPDF.name : 'クリックしてPDFを選択'}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {selectedPDF
-                        ? `${(selectedPDF.size / 1024 / 1024).toFixed(2)} MB`
-                        : '最大10MBまで'}
-                    </span>
+          {/* Newsletter未作成時: 作成フォーム */}
+          {!currentNewsletter && (
+            <div className="bg-white p-6 rounded-2xl shadow border border-primary-100">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <FileText size={20} className="text-primary-600" />
+                新しい広報誌を作成
+              </h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 mb-2">
+                    タイトル（例: 2025年1月号）
                   </label>
+                  <input
+                    type="text"
+                    value={newsletterTitle}
+                    onChange={(e) => setNewsletterTitle(e.target.value)}
+                    className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    placeholder="2025年1月号"
+                  />
+                </div>
+                
+                <button
+                  onClick={handleCreateNewsletter}
+                  disabled={!newsletterTitle}
+                  className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Newsletterを作成
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Newsletter作成後: PDF追加セクション */}
+          {currentNewsletter && (
+            <div className="space-y-6">
+              {/* Newsletter情報バナー */}
+              <div className="bg-primary-50 p-4 rounded-xl border border-primary-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-primary-900">
+                      編集中: {currentNewsletter.title}
+                    </h3>
+                    <p className="text-sm text-primary-700 mt-1">
+                      合計 {accumulatedArticles.length} 件の記事
+                      {uploadedPDFs.length > 0 && ` / ${uploadedPDFs.length} 個のPDF`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleResetNewsletter}
+                    className="text-sm text-primary-600 hover:text-primary-800 underline"
+                  >
+                    リセット
+                  </button>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setSelectedPDF(null);
-                    setNewsletterTitle('');
-                  }}
-                  className="px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-lg"
-                  disabled={isProcessingPDF}
-                >
-                  クリア
-                </button>
-                <button
-                  onClick={handleCreateNewsletter}
-                  disabled={!newsletterTitle || isProcessingPDF}
-                  className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isProcessingPDF ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      処理中...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={18} />
-                      記事を抽出
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
+              {/* 登録済みPDF一覧 */}
+              {uploadedPDFs.length > 0 && (
+                <div className="bg-white p-4 rounded-xl border border-slate-200">
+                  <h4 className="font-bold text-slate-800 mb-3">登録済みPDF ({uploadedPDFs.length}件)</h4>
+                  <div className="space-y-2">
+                    {uploadedPDFs.map((pdf) => (
+                      <div
+                        key={pdf.pdfId}
+                        className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <FileText size={18} className="text-primary-600" />
+                          <div>
+                            <p className="font-medium text-slate-700">
+                              {pdf.title}
+                              {pdf.issueNumber && (
+                                <span className="text-slate-500 ml-2 text-sm">{pdf.issueNumber}</span>
+                              )}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {pdf.articleCount}件の記事 • {pdf.file.name}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-slate-400">
+                            {new Date(pdf.uploadedAt).toLocaleTimeString('ja-JP')}
+                          </span>
+                          <button
+                            onClick={() => handleDeletePDF(pdf.pdfId)}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                            title="削除"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {/* 記事プレビュー */}
-          {extractedArticles.length > 0 && (
-            <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-slate-800">
-                  抽出された記事 ({extractedArticles.length}件)
-                </h3>
-                <span className="text-sm text-slate-500">
-                  Stage 1: モックデータ表示中
-                </span>
+              {/* PDFアップロードセクション */}
+              <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
+                <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <Upload size={20} className="text-primary-600" />
+                  PDFを追加
+                </h4>
+                
+                <div className="space-y-4">
+                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors">
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={handlePDFSelect}
+                      className="hidden"
+                      id="pdf-add"
+                    />
+                    <label
+                      htmlFor="pdf-add"
+                      className="cursor-pointer inline-flex flex-col items-center gap-2"
+                    >
+                      {selectedPDF ? (
+                        <>
+                          <FileText size={32} className="text-primary-600" />
+                          <span className="text-sm font-medium text-slate-700">
+                            {selectedPDF.name}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {(selectedPDF.size / 1024 / 1024).toFixed(2)} MB
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={32} className="text-slate-400" />
+                          <span className="text-sm font-medium text-slate-600">
+                            クリックしてPDFを選択
+                          </span>
+                          <span className="text-xs text-slate-400">最大10MBまで</span>
+                        </>
+                      )}
+                    </label>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setSelectedPDF(null)}
+                      className="flex-1 px-4 py-2 text-slate-500 hover:bg-slate-50 rounded-lg disabled:opacity-50"
+                      disabled={!selectedPDF}
+                    >
+                      クリア
+                    </button>
+                    <button
+                      onClick={handlePDFSelectAndExtractMetadata}
+                      disabled={!selectedPDF || isProcessingPDF}
+                      className="flex-1 px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isProcessingPDF ? (
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          処理中...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={18} />
+                          記事を抽出して追加
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
-              
-              <ArticleList
-                articles={extractedArticles}
-                categories={MOCK_CATEGORIES}
-                onSave={handleSaveArticles}
-              />
+
+              {/* 記事一覧表示 */}
+              {accumulatedArticles.length > 0 && (
+                <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-slate-800">
+                      抽出された記事 ({accumulatedArticles.length}件)
+                    </h3>
+                  </div>
+                  
+                  <ArticleList
+                    articles={accumulatedArticles}
+                    categories={MOCK_CATEGORIES}
+                    onSave={handleSaveArticles}
+                  />
+                </div>
+              )}
             </div>
           )}
+        </div>
+      )}
+      
+      {/* PDFメタデータ入力ダイアログ */}
+      {console.log('🔍 CircularBoard: ダイアログに渡すprops:', {
+        isOpen: showMetadataDialog,
+        fileName: selectedPDF?.name || '',
+        suggestedTitle: suggestedMetadata.suggestedTitle,
+        suggestedIssueNumber: suggestedMetadata.suggestedIssueNumber,
+      })}
+      <PDFMetadataDialog
+        isOpen={showMetadataDialog}
+        fileName={selectedPDF?.name || ''}
+        suggestedTitle={suggestedMetadata.suggestedTitle}
+        suggestedIssueNumber={suggestedMetadata.suggestedIssueNumber}
+        onConfirm={handleConfirmMetadataAndExtractArticles}
+        onCancel={handleCancelMetadata}
+      />
+
+      {/* メタデータ解析中のローディング表示 */}
+      {isMetadataLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-40">
+          <div className="bg-white rounded-xl px-6 py-4 shadow-xl flex items-center gap-3">
+            <Loader2 size={20} className="animate-spin text-primary-600" />
+            <span className="text-slate-700 font-medium">PDFを解析中...</span>
+          </div>
         </div>
       )}
     </div>

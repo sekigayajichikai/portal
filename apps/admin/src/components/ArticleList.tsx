@@ -7,7 +7,9 @@
 
 import React, { useState } from 'react';
 import { Article, Category, Priority } from '@cc-saas/shared';
-import { ChevronDown, ChevronUp, Calendar, Tag, Eye, EyeOff, Pin } from 'lucide-react';
+import { ChevronDown, ChevronUp, Calendar, Tag, Eye, EyeOff, Pin, FileText } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ArticleListProps {
   articles: Article[];
@@ -89,6 +91,8 @@ const getVisibilityStyle = (visibility: string): { icon: typeof Eye; color: stri
   }
 };
 
+type SortOption = 'priority' | 'category' | 'source' | 'date' | 'default';
+
 export const ArticleList: React.FC<ArticleListProps> = ({ articles, categories, onSave }) => {
   // 優先度がhighまたはmediumの記事は初期展開
   const [expandedArticles, setExpandedArticles] = useState<Set<string>>(
@@ -97,6 +101,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({ articles, categories, 
   
   const [viewLevel, setViewLevel] = useState<ViewLevel>('summary');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<SortOption>('default');
 
   /**
    * 記事の展開/折りたたみをトグル
@@ -114,11 +119,34 @@ export const ArticleList: React.FC<ArticleListProps> = ({ articles, categories, 
   };
 
   /**
-   * カテゴリでフィルタリングされた記事を取得
+   * カテゴリでフィルタリングし、ソートされた記事を取得
    */
-  const filteredArticles = selectedCategory
-    ? articles.filter((a) => a.category === selectedCategory)
-    : articles;
+  const sortArticles = (articles: Article[]): Article[] => {
+    const filtered = selectedCategory
+      ? articles.filter(a => a.category === selectedCategory)
+      : articles;
+
+    switch (sortBy) {
+      case 'priority':
+        return [...filtered].sort((a, b) => {
+          const priorityOrder = { high: 0, medium: 1, low: 2 };
+          return priorityOrder[a.priority] - priorityOrder[b.priority];
+        });
+      case 'category':
+        return [...filtered].sort((a, b) => a.category.localeCompare(b.category));
+      case 'source':
+        return [...filtered].sort((a, b) => a.source.localeCompare(b.source));
+      case 'date':
+        return [...filtered].sort((a, b) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      case 'default':
+      default:
+        return filtered;
+    }
+  };
+
+  const filteredArticles = sortArticles(articles);
 
   /**
    * 記事の内容を表示レベルに応じて取得
@@ -147,7 +175,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({ articles, categories, 
     <div className="space-y-4">
       {/* コントロールバー */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <div className="flex flex-wrap gap-4 items-center justify-between">
+        <div className="flex flex-wrap gap-4 items-center">
           {/* カテゴリフィルター */}
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-slate-600">カテゴリ:</span>
@@ -179,6 +207,22 @@ export const ArticleList: React.FC<ArticleListProps> = ({ articles, categories, 
                 );
               })}
             </div>
+          </div>
+
+          {/* ソート選択 */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-slate-600">並び順:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="default">デフォルト</option>
+              <option value="priority">優先度順</option>
+              <option value="category">カテゴリ順</option>
+              <option value="source">ソース順</option>
+              <option value="date">日付順（新しい順）</option>
+            </select>
           </div>
 
           {/* 表示レベル切り替え */}
@@ -277,6 +321,12 @@ export const ArticleList: React.FC<ArticleListProps> = ({ articles, categories, 
                           <VisibilityIcon size={12} />
                           {visibilityStyle.label}
                         </span>
+                        
+                        {/* ソース表示 */}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-100 text-primary-700 rounded-md text-xs font-medium">
+                          <FileText size={12} />
+                          {article.source}
+                        </span>
                       </div>
 
                       {/* タイトル */}
@@ -300,9 +350,11 @@ export const ArticleList: React.FC<ArticleListProps> = ({ articles, categories, 
                   <div className="px-4 pb-4 border-t border-slate-200/50 pt-4 space-y-3">
                     {/* 本文 */}
                     <div className="bg-white p-4 rounded-lg">
-                      <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">
-                        {getArticleContent(article)}
-                      </p>
+                      <div className="prose prose-sm max-w-none text-slate-700">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {getArticleContent(article)}
+                        </ReactMarkdown>
+                      </div>
                     </div>
 
                     {/* タグ */}

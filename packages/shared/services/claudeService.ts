@@ -143,7 +143,27 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
 - headline: 5文字以内（例：どんど焼き、会館休館）
 - brief: 15文字程度（例：1/10どんど焼き開催）
 - summary: 40文字程度（いつ・どこで・何を が全部入る）
-- content: 記事の本文全体を正確に
+- content: 記事の本文全体をMarkdown形式で記述
+  ※ Markdown記法の指示：
+  - 見出しは ## または ### を使用
+  - 箇条書きは - または 1. を使用
+  - 段落は空行で区切る
+  - 日時や場所などの重要情報は **太字** で強調
+  - 改行を適切に保持
+  
+  【出力例】
+  ## イベント概要
+  日時: **1月10日（土）10:00-12:00**
+  場所: **関ヶ谷公民館**
+  
+  ## 内容
+  新春の伝統行事「どんど焼き」を開催します。
+  
+  - お正月飾りやお札をお持ちください
+  - ぜんざいの無料提供あり
+  
+  ## 参加方法
+  事前申込不要。当日直接会場へお越しください。
 
 **tags**: 関連キーワード3-5個（配列）
 
@@ -260,4 +280,117 @@ export async function convertPDFToBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * PDFからメタデータ（タイトル、号数）を抽出
+ * 
+ * Claude APIを使用してPDFの先頭部分を解析し、
+ * 広報誌のタイトルと号数を抽出します。
+ * 
+ * @param pdfBase64 - Base64エンコードされたPDFデータ
+ * @returns タイトルと号数の提案
+ */
+export async function extractPDFMetadata(
+  pdfBase64: string
+): Promise<{
+  suggestedTitle: string;
+  suggestedIssueNumber: string;
+}> {
+  const client = getClaudeClient();
+  if (!client) {
+    // フォールバック: ファイル名から推測
+    return {
+      suggestedTitle: '広報誌',
+      suggestedIssueNumber: '',
+    };
+  }
+
+  const prompt = `
+このPDFの先頭部分から以下の情報を抽出してください。
+
+【抽出項目】
+1. タイトル: 広報誌の名称（例: 関ヶ谷だより、会報ふれあい）
+2. 号数: 第○号、○○年○月号など
+
+【出力形式】
+JSON形式で出力してください：
+{
+  "title": "タイトル",
+  "issueNumber": "号数"
+}
+
+【注意事項】
+- タイトルが見つからない場合は "広報誌" と出力
+- 号数が見つからない場合は空文字列 "" と出力
+- 必ずJSON形式で出力すること
+`;
+
+  try {
+    const startTime = Date.now();
+    
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 500, // メタデータのみなので少なく
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: pdfBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: prompt,
+            },
+          ],
+        },
+      ],
+    });
+
+    const processingTime = Date.now() - startTime;
+    console.log(`メタデータ抽出処理時間: ${processingTime}ms`);
+
+    const text = response.content
+      .filter((block) => block.type === 'text')
+      .map((block) => (block as any).text)
+      .join('\n');
+
+    console.log('🔍 AIのレスポンステキスト:', text);
+
+    // JSONを抽出（```json ... ``` の形式にも対応）
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn('⚠️ JSONが見つかりませんでした。レスポンス全文:', text);
+      return {
+        suggestedTitle: '広報誌',
+        suggestedIssueNumber: '',
+      };
+    }
+
+    console.log('🔍 抽出されたJSON文字列:', jsonMatch[0]);
+
+    const metadata = JSON.parse(jsonMatch[0]);
+    console.log('🔍 パースされたメタデータ:', metadata);
+
+    const result = {
+      suggestedTitle: metadata.title || '広報誌',
+      suggestedIssueNumber: metadata.issueNumber || '',
+    };
+    
+    console.log('✅ 最終的に返す値:', result);
+    
+    return result;
+  } catch (error) {
+    console.error('メタデータ抽出エラー:', error);
+    return {
+      suggestedTitle: '広報誌',
+      suggestedIssueNumber: '',
+    };
+  }
 }

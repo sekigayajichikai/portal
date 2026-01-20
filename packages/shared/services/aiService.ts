@@ -168,3 +168,40 @@ export function getProviderInfo(): {
     selected: selectProvider(),
   };
 }
+
+/**
+ * PDFからメタデータ（タイトル、号数）を抽出
+ * 
+ * Claude APIを使用してPDFの先頭部分を解析し、
+ * 広報誌のタイトルと号数を抽出します。
+ * 
+ * @param pdfBase64 - Base64エンコードされたPDFデータ
+ * @returns タイトルと号数の提案
+ */
+export async function extractPDFMetadata(
+  pdfBase64: string
+): Promise<{
+  suggestedTitle: string;
+  suggestedIssueNumber: string;
+}> {
+  const provider = selectProvider();
+
+  switch (provider) {
+    case 'anthropic':
+      console.log('✅ Anthropic Claude APIでメタデータを抽出します');
+      return claudeService.extractPDFMetadata(pdfBase64);
+    case 'openrouter':
+      // OpenRouterは現在PDFサポートが不完全なのでフォールバック
+      console.warn('⚠️ OpenRouterはPDFメタデータ抽出に対応していません。デフォルト値を使用します。');
+      return {
+        suggestedTitle: '広報誌',
+        suggestedIssueNumber: '',
+      };
+    default:
+      console.warn('⚠️ AIプロバイダーが設定されていません。デフォルト値を使用します。');
+      return {
+        suggestedTitle: '広報誌',
+        suggestedIssueNumber: '',
+      };
+  }
+}
