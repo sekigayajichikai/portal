@@ -465,8 +465,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
 
         alert(
           `${message}\n` +
-          `処理時間: ${(processingTime / 1000).toFixed(1)}秒\n` +
-          `合計: ${accumulatedArticles.length + newArticles.length}件の記事`
+          `処理時間: ${(processingTime / 1000).toFixed(1)}秒`
         );
       }
     } catch (error) {
