@@ -12,6 +12,7 @@ import {
 
 import Dashboard from '@/components/features/dashboard/Dashboard';
 import HomeView from '@/components/features/home/HomeView';
+import CircularsView from '@/components/features/circulars/CircularsView';
 import GarbageCalendarView from '@/components/features/garbage/GarbageCalendarView';
 import BusScheduleView from '@/components/features/bus/BusScheduleView';
 import EventCalendarView from '@/components/features/calendar/EventCalendarView';
@@ -103,6 +104,12 @@ const App: React.FC = () => {
           currentTime={currentTime}
         />
       )}
+
+      {/* #region agent log */}
+      {(()=>{fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:100',message:'Rendering circulars tab check',data:{activeTab,shouldRenderCirculars:activeTab==='circulars'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});return null;})()}
+      {/* #endregion */}
+
+      {activeTab === 'circulars' && <CircularsView isSimpleMode={isSimpleMode} />}
 
       {activeTab === 'garbage' && (
         <GarbageCalendarView isSimpleMode={isSimpleMode} garbageData={GARBAGE_DATA} />

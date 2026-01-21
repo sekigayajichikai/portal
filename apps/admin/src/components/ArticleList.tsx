@@ -10,6 +10,7 @@ import { Article, Category, Priority, updateArticle, updateArticleOrders } from 
 import { ChevronDown, ChevronUp, Calendar, Tag, Eye, EyeOff, Pin, FileText, Edit2, GripVertical, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { ArticleEditDialog } from './ArticleEditDialog';
 import {
   DndContext,
@@ -252,8 +253,8 @@ const SortableArticleItem: React.FC<SortableArticleItemProps> = ({
         <div className="px-4 pb-4 border-t border-slate-200/50 pt-4 space-y-3">
           {/* 本文 */}
           <div className="bg-white p-4 rounded-lg">
-            <div className="prose prose-sm max-w-none text-slate-700">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <div className="prose-compact max-w-none text-slate-700">
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
                 {getArticleContent(article)}
               </ReactMarkdown>
             </div>
@@ -677,17 +678,17 @@ export const ArticleList: React.FC<ArticleListProps> = ({
                   </div>
                 </div>
 
-                {/* 展開時の詳細 */}
-                {isExpanded && (
-                  <div className="px-4 pb-4 border-t border-slate-200/50 pt-4 space-y-3">
-                    {/* 本文 */}
-                    <div className="bg-white p-4 rounded-lg">
-                      <div className="prose prose-sm max-w-none text-slate-700">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {getArticleContent(article)}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
+      {/* 展開時の詳細 */}
+      {isExpanded && (
+        <div className="px-4 pb-4 border-t border-slate-200/50 pt-4 space-y-3">
+          {/* 本文 */}
+          <div className="bg-white p-4 rounded-lg">
+            <div className="prose-compact max-w-none text-slate-700">
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                {getArticleContent(article)}
+              </ReactMarkdown>
+            </div>
+          </div>
 
                     {/* PDF添付ファイル */}
                     {article.attachments && article.attachments.length > 0 && (

@@ -1,0 +1,516 @@
+/**
+ * 会員向けデジタル回覧板閲覧コンポーネント
+ * 
+ * adminで作成されたデジタル回覧板（Newsletter/Article）を
+ * 会員が閲覧できる機能を提供します。
+ * 
+ * 主な機能:
+ * - Newsletter一覧の取得と選択
+ * - 選択したNewsletterの記事一覧表示
+ * - 記事詳細モーダル表示
+ * - コンパクトなUIデザイン（タグ小さめ、重要情報を目立たせる）
+ */
+
+import React, { useState, useEffect } from 'react';
+import { Newsletter, Article, getNewsletters, getArticlesByNewsletterId } from '@cc-saas/shared';
+import { FileText, Calendar, Tag, AlertCircle, Paperclip, X, ChevronDown, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
+
+interface CircularsViewProps {
+  isSimpleMode: boolean;
+}
+
+/**
+ * カテゴリーアイコンマップ
+ */
+const CATEGORY_ICONS: Record<string, string> = {
+  event: '🎉',
+  notice: '📢',
+  meeting: '📋',
+  culture: '📚',
+  report: '📊',
+  fee: '💰',
+};
+
+/**
+ * カテゴリー色マップ
+ */
+const CATEGORY_COLORS: Record<string, string> = {
+  event: 'bg-blue-100 text-blue-700',
+  notice: 'bg-yellow-100 text-yellow-700',
+  meeting: 'bg-gray-100 text-gray-700',
+  culture: 'bg-purple-100 text-purple-700',
+  report: 'bg-green-100 text-green-700',
+  fee: 'bg-orange-100 text-orange-700',
+};
+
+/**
+ * 優先度バッジのスタイル
+ */
+const PRIORITY_STYLES: Record<string, string> = {
+  high: 'bg-red-500 text-white',
+  medium: 'bg-yellow-500 text-white',
+  low: 'bg-gray-300 text-gray-700',
+};
+
+/**
+ * 優先度ラベル
+ */
+const PRIORITY_LABELS: Record<string, string> = {
+  high: '重要',
+  medium: '通常',
+  low: '参考',
+};
+
+const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:78',message:'CircularsView component mounted',data:{isSimpleMode},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  
+  // State管理
+  const [newsletters, setNewsletters] = useState<(Newsletter & { article_count: number })[]>([]);
+  const [selectedNewsletterId, setSelectedNewsletterId] = useState<string | null>(null);
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingArticles, setIsLoadingArticles] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Newsletter一覧を取得
+   */
+  useEffect(() => {
+    const fetchNewsletters = async () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:98',message:'fetchNewsletters started',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
+      setIsLoading(true);
+      setError(null);
+      try {
+        const data = await getNewsletters();
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:105',message:'Newsletters fetched successfully',data:{count:data.length,newsletters:data},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        
+        setNewsletters(data);
+        
+        // 最新のNewsletterを自動選択
+        if (data.length > 0 && !selectedNewsletterId) {
+          setSelectedNewsletterId(data[0].id);
+        }
+      } catch (err: any) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:115',message:'Newsletter fetch error',data:{error:err.message,stack:err.stack},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        
+        console.error('Newsletter取得エラー:', err);
+        setError('デジタル回覧板の読み込みに失敗しました');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchNewsletters();
+  }, []);
+
+  /**
+   * 選択されたNewsletterの記事を取得
+   */
+  useEffect(() => {
+    const fetchArticles = async () => {
+      if (!selectedNewsletterId) {
+        setArticles([]);
+        return;
+      }
+
+      setIsLoadingArticles(true);
+      setError(null);
+      try {
+        const data = await getArticlesByNewsletterId(selectedNewsletterId);
+        // 公開設定が'public'または'members-only'の記事のみ表示
+        const visibleArticles = data.filter(
+          (article) => article.visibility === 'public' || article.visibility === 'members-only'
+        );
+        setArticles(visibleArticles);
+      } catch (err: any) {
+        console.error('記事取得エラー:', err);
+        setError('記事の読み込みに失敗しました');
+      } finally {
+        setIsLoadingArticles(false);
+      }
+    };
+
+    fetchArticles();
+  }, [selectedNewsletterId]);
+
+  /**
+   * 日付フォーマット
+   */
+  const formatDate = (dateString: string | null): string => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  /**
+   * 期限が近いかチェック（7日以内）
+   */
+  const isDeadlineNear = (deadline: string | null): boolean => {
+    if (!deadline) return false;
+    const deadlineDate = new Date(deadline);
+    const today = new Date();
+    const diffDays = Math.ceil((deadlineDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays <= 7 && diffDays >= 0;
+  };
+
+  /**
+   * 記事詳細モーダルを開く
+   */
+  const openArticleDetail = (article: Article) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:165',message:'openArticleDetail called',data:{articleId:article.id,articleTitle:article.title,hasContent:!!article.content},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    
+    setSelectedArticle(article);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:170',message:'setSelectedArticle called',data:{articleId:article.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+  };
+
+  /**
+   * 記事詳細モーダルを閉じる
+   */
+  const closeArticleDetail = () => {
+    setSelectedArticle(null);
+  };
+
+  /**
+   * 選択されたNewsletterの情報を取得
+   */
+  const selectedNewsletter = newsletters.find((n) => n.id === selectedNewsletterId);
+
+  return (
+    <div className="space-y-4 pb-6">
+      {/* ヘッダー */}
+      <div className={`${isSimpleMode ? 'bg-white border-l-4 border-blue-600 rounded-r-lg shadow-sm' : 'bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl shadow-lg'} p-6`}>
+        <div className="flex items-center gap-3 mb-2">
+          <FileText size={28} className={isSimpleMode ? 'text-blue-600' : 'text-white'} />
+          <h2 className={`text-2xl font-bold ${isSimpleMode ? 'text-slate-900' : 'text-white'}`}>
+            デジタル回覧板
+          </h2>
+        </div>
+        <p className={`text-sm ${isSimpleMode ? 'text-slate-600' : 'text-white/80'}`}>
+          自治会からのお知らせや記事をご覧いただけます
+        </p>
+      </div>
+
+      {/* エラー表示 */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-start gap-3">
+          <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">エラー</p>
+            <p className="text-sm">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Newsletter選択ドロップダウン */}
+      {isLoading ? (
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex items-center justify-center">
+          <Loader2 size={24} className="animate-spin text-blue-600" />
+          <span className="ml-3 text-slate-600">読み込み中...</span>
+        </div>
+      ) : newsletters.length > 0 ? (
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            回覧板を選択
+          </label>
+          <div className="relative">
+            <select
+              value={selectedNewsletterId || ''}
+              onChange={(e) => setSelectedNewsletterId(e.target.value)}
+              className={`w-full p-3 pr-10 border border-slate-300 rounded-lg appearance-none cursor-pointer transition-colors ${
+                isSimpleMode
+                  ? 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                  : 'focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500'
+              }`}
+            >
+              {newsletters.map((newsletter) => (
+                <option key={newsletter.id} value={newsletter.id}>
+                  {newsletter.title} ({newsletter.article_count}件の記事)
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={20}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            />
+          </div>
+          {selectedNewsletter && (
+            <p className="mt-2 text-xs text-slate-500 flex items-center gap-2">
+              <Calendar size={14} />
+              {formatDate(selectedNewsletter.issue_date)}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="bg-slate-50 p-8 rounded-xl border border-slate-200 text-center">
+          <FileText size={48} className="mx-auto text-slate-300 mb-3" />
+          <p className="text-slate-600">デジタル回覧板がまだ作成されていません</p>
+        </div>
+      )}
+
+      {/* 記事一覧 */}
+      {isLoadingArticles ? (
+        <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 flex items-center justify-center">
+          <Loader2 size={24} className="animate-spin text-blue-600" />
+          <span className="ml-3 text-slate-600">記事を読み込み中...</span>
+        </div>
+      ) : articles.length > 0 ? (
+        <div className="space-y-3">
+          {articles.map((article) => (
+            <button
+              key={article.id}
+              onClick={() => {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:310',message:'Article card clicked',data:{articleId:article.id,articleTitle:article.title},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
+                // #endregion
+                openArticleDetail(article);
+              }}
+              className={`w-full text-left p-4 rounded-xl border transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                isSimpleMode
+                  ? 'bg-white border-slate-300 hover:border-blue-400 hover:shadow-md'
+                  : 'bg-white border-slate-200 hover:border-indigo-400 hover:shadow-lg'
+              }`}
+            >
+              {/* ヘッダー行: カテゴリー + 優先度 */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{CATEGORY_ICONS[article.category] || '📄'}</span>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded ${
+                      CATEGORY_COLORS[article.category] || 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {article.category}
+                  </span>
+                </div>
+                {article.priority && (
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full font-bold ${
+                      PRIORITY_STYLES[article.priority]
+                    }`}
+                  >
+                    {PRIORITY_LABELS[article.priority]}
+                  </span>
+                )}
+              </div>
+
+              {/* タイトル */}
+              <h3 className={`font-bold mb-1 ${isSimpleMode ? 'text-slate-900' : 'text-slate-800'}`}>
+                {article.title}
+              </h3>
+
+              {/* 要約 */}
+              <p className="text-sm text-slate-600 mb-2 line-clamp-2">{article.brief}</p>
+
+              {/* フッター: 期限 + タグ + 添付 */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* 期限 */}
+                  {article.deadline && (
+                    <span
+                      className={`text-xs flex items-center gap-1 ${
+                        isDeadlineNear(article.deadline)
+                          ? 'text-red-600 font-bold'
+                          : 'text-slate-500'
+                      }`}
+                    >
+                      <Calendar size={12} />
+                      期限: {formatDate(article.deadline)}
+                    </span>
+                  )}
+
+                  {/* タグ（小さく表示） */}
+                  {article.tags.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {article.tags.slice(0, 2).map((tag, index) => (
+                        <span
+                          key={index}
+                          className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                      {article.tags.length > 2 && (
+                        <span className="text-[10px] text-slate-400">
+                          +{article.tags.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 添付ファイルアイコン */}
+                {article.attachments.length > 0 && (
+                  <Paperclip size={14} className="text-slate-400" />
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : selectedNewsletterId ? (
+        <div className="bg-slate-50 p-8 rounded-xl border border-slate-200 text-center">
+          <FileText size={48} className="mx-auto text-slate-300 mb-3" />
+          <p className="text-slate-600">この回覧板にはまだ記事がありません</p>
+        </div>
+      ) : null}
+
+      {/* 記事詳細モーダル */}
+      {/* #region agent log */}
+      {(()=>{fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:395',message:'Modal render check',data:{hasSelectedArticle:!!selectedArticle,selectedArticleId:selectedArticle?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});return null;})()}
+      {/* #endregion */}
+      {selectedArticle && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in"
+          onClick={closeArticleDetail}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 slide-in-from-bottom-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* モーダルヘッダー */}
+            <div className={`sticky top-0 ${isSimpleMode ? 'bg-blue-50' : 'bg-gradient-to-br from-blue-600 to-indigo-600'} p-6 rounded-t-2xl`}>
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-3xl">{CATEGORY_ICONS[selectedArticle.category] || '📄'}</span>
+                    <span
+                      className={`text-xs px-2 py-1 rounded ${
+                        CATEGORY_COLORS[selectedArticle.category] || 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {selectedArticle.category}
+                    </span>
+                    {selectedArticle.priority && (
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full font-bold ${
+                          PRIORITY_STYLES[selectedArticle.priority]
+                        }`}
+                      >
+                        {PRIORITY_LABELS[selectedArticle.priority]}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className={`text-2xl font-bold ${isSimpleMode ? 'text-slate-900' : 'text-white'}`}>
+                    {selectedArticle.title}
+                  </h2>
+                </div>
+                <button
+                  onClick={closeArticleDetail}
+                  className={`p-2 rounded-full transition-colors ${
+                    isSimpleMode
+                      ? 'hover:bg-slate-200 text-slate-700'
+                      : 'hover:bg-white/20 text-white'
+                  }`}
+                >
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+
+            {/* モーダル本文 */}
+            <div className="p-6">
+              {/* 要約セクション */}
+              <div className="mb-6 p-4 bg-slate-50 rounded-xl">
+                <p className="font-medium text-slate-700 mb-2">{selectedArticle.summary}</p>
+                {selectedArticle.deadline && (
+                  <p
+                    className={`text-sm flex items-center gap-2 ${
+                      isDeadlineNear(selectedArticle.deadline)
+                        ? 'text-red-600 font-bold'
+                        : 'text-slate-600'
+                    }`}
+                  >
+                    <Calendar size={16} />
+                    期限: {formatDate(selectedArticle.deadline)}
+                  </p>
+                )}
+              </div>
+
+              {/* 本文（マークダウン対応） */}
+              <div className="prose-compact max-w-none mb-6 text-slate-700">
+                {/* #region agent log */}
+                {(()=>{fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:470',message:'Rendering markdown content',data:{contentLength:selectedArticle.content?.length,contentPreview:selectedArticle.content?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});return null;})()}
+                {/* #endregion */}
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                  {selectedArticle.content}
+                </ReactMarkdown>
+              </div>
+
+              {/* タグ */}
+              {selectedArticle.tags.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                    <Tag size={16} />
+                    タグ
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedArticle.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="text-xs px-3 py-1 bg-slate-100 text-slate-600 rounded-full"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 添付ファイル */}
+              {selectedArticle.attachments.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                    <Paperclip size={16} />
+                    添付ファイル
+                  </p>
+                  <div className="space-y-2">
+                    {selectedArticle.attachments.map((attachment, index) => (
+                      <a
+                        key={index}
+                        href={attachment.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors"
+                      >
+                        <FileText size={20} className="text-blue-600" />
+                        <span className="text-sm text-slate-700 flex-1">
+                          {attachment.label || attachment.filename || 'ファイル'}
+                        </span>
+                        <span className="text-xs text-slate-500 uppercase">{attachment.type}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ソース情報 */}
+              <div className="mt-6 pt-4 border-t border-slate-200">
+                <p className="text-xs text-slate-500">出典: {selectedArticle.source}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default CircularsView;

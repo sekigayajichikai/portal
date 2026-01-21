@@ -19,4 +19,4 @@ export enum AppView {
 /**
  * タブタイプ（住民用アプリのナビゲーション）
  */
-export type TabType = 'home' | 'garbage' | 'bus' | 'calendar' | 'radio' | 'dashboard';
+export type TabType = 'home' | 'garbage' | 'bus' | 'calendar' | 'radio' | 'dashboard' | 'circulars';

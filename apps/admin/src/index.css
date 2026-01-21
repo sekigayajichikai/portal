@@ -1,11 +1,4 @@
 /**
- * Google Fonts - M PLUS Rounded 1c のインポート
- * 親しみやすさと遊び心を表現するフォント
- * 注意: @import は CSS ファイルの最初に配置する必要があります
- */
-@import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&display=swap');
-
-/**
  * Tailwind CSS ディレクティブ
  * base: リセットCSS、デフォルトスタイル
  * components: コンポーネントクラス
@@ -14,20 +7,6 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/**
- * ベーススタイル
- * アプリ全体のデフォルト設定
- */
-@layer base {
-  body {
-    font-family: 'M PLUS Rounded 1c', sans-serif;
-    background-color: #fdfcf0; /* ベース背景色 */
-    color: #1e293b; /* text-slate-800相当 */
-    margin: 0;
-    padding: 0;
-  }
-}
 
 /**
  * カスタムコンポーネントスタイル
