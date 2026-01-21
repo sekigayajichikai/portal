@@ -12,6 +12,7 @@ import {
   findDuplicateArticles,
   DuplicatePair,
   filterDuplicateArticles,
+  deleteArticle,
 } from '@cc-saas/shared';
 // 統合AIサービスを使用（Anthropic/OpenRouterを自動選択）
 import { extractArticlesFromPDF, extractBriefArticleFromPDF, convertPDFToBase64, extractPDFMetadata } from '@cc-saas/shared/services/aiService';
@@ -124,6 +125,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
           organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
           title: article.title,
           category: article.category,
+          article_type: article.article_type,
           priority: article.priority,
           deadline: article.deadline,
           headline: article.headline,
@@ -390,12 +392,15 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
           uploadResult.filename
         );
 
-        // 記事にIDとsourceを付与
+        // 記事にIDとsourceを付与、カテゴリを「地域のお知らせ」に設定
         newArticles = result.articles.map((article, index) => ({
           id: `a-${Date.now()}-${index}`,
           newsletter_id: currentNewsletter.id,
           organization_id: 'org1',
           ...article,
+          category: 'local-info', // 地域のお知らせに固定
+          article_type: 'local-info', // 地域情報として設定
+          priority: 'low', // 地域のお知らせは常に「参考情報」
           source: `${title}${issueNumber ? ` ${issueNumber}` : ''}`,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -411,6 +416,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
           newsletter_id: currentNewsletter.id,
           organization_id: 'org1',
           ...article,
+          article_type: 'official', // 自治会公式として設定
           source: `${title}${issueNumber ? ` ${issueNumber}` : ''}`,
           // 詳細抽出でも元PDFを添付（全記事に共通）
           attachments: [
@@ -649,6 +655,49 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
           : article
       )
     );
+  };
+
+  /**
+   * 記事を削除する処理
+   * 
+   * Supabaseに保存済みの記事はデータベースからも削除します。
+   * 新規作成中の記事（IDが'a-'で始まる）はローカル状態からのみ削除します。
+   */
+  const handleArticleDelete = async (articleId: string) => {
+    console.log('📍 handleArticleDelete開始:', articleId);
+    
+    try {
+      // 新規作成中の記事かどうかを判定
+      const isNewArticle = articleId.startsWith('a-');
+      console.log('📍 記事タイプ:', isNewArticle ? '新規作成中' : 'Supabase保存済み');
+      
+      if (!isNewArticle) {
+        // Supabaseに保存済みの記事の場合、データベースからも削除
+        console.log('🗑️ Supabaseから記事を削除中...', articleId);
+        await deleteArticle(articleId);
+        console.log('✅ Supabaseから記事を削除しました');
+      } else {
+        console.log('📝 新規作成中の記事なので、ローカル状態からのみ削除します');
+      }
+      
+      // ローカル状態から削除
+      console.log('🗑️ ローカル状態から削除中...');
+      setAccumulatedArticles(prev => {
+        const filtered = prev.filter(article => article.id !== articleId);
+        console.log('✅ ローカル状態から削除完了:', {
+          削除前: prev.length,
+          削除後: filtered.length
+        });
+        return filtered;
+      });
+      
+      alert('記事を削除しました');
+      console.log('✅ handleArticleDelete完了');
+    } catch (error: any) {
+      console.error('❌ 記事削除エラー:', error);
+      alert(`記事の削除に失敗しました\n\nエラー: ${error.message}`);
+      throw error; // エラーを再スロー
+    }
   };
 
   return (
@@ -1193,6 +1242,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                     articles={accumulatedArticles}
                     categories={MOCK_CATEGORIES}
                     onArticleUpdate={handleArticleUpdate}
+                    onArticleDelete={handleArticleDelete}
                   />
                 </div>
               )}
@@ -1209,12 +1259,6 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
       )}
       
       {/* PDFメタデータ入力ダイアログ */}
-      {console.log('🔍 CircularBoard: ダイアログに渡すprops:', {
-        isOpen: showMetadataDialog,
-        fileName: selectedPDF?.name || '',
-        suggestedTitle: suggestedMetadata.suggestedTitle,
-        suggestedIssueNumber: suggestedMetadata.suggestedIssueNumber,
-      })}
       <PDFMetadataDialog
         isOpen={showMetadataDialog}
         fileName={selectedPDF?.name || ''}

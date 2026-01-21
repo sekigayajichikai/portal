@@ -4,6 +4,7 @@
 
 export type Priority = 'high' | 'medium' | 'low';
 export type Visibility = 'public' | 'members-only' | 'board-only';
+export type ArticleType = 'official' | 'local-info';
 
 /**
  * 添付ファイル
@@ -26,6 +27,7 @@ export interface Article {
   // 基本情報
   title: string;
   category: string;
+  article_type: ArticleType; // 記事の種類（自治会公式 or 地域情報）
   priority: Priority;
   deadline: string | null; // YYYY-MM-DD
   

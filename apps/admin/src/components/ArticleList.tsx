@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { Article, Category, Priority, updateArticle, updateArticleOrders } from '@cc-saas/shared';
-import { ChevronDown, ChevronUp, Calendar, Tag, Eye, EyeOff, Pin, FileText, Edit2, GripVertical, Download } from 'lucide-react';
+import { ChevronDown, ChevronUp, Calendar, Tag, Eye, EyeOff, Pin, FileText, Edit2, GripVertical, Download, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -36,6 +36,7 @@ interface ArticleListProps {
   onSave?: (articles: Article[]) => void;
   onArticleUpdate?: (articleId: string, updates: Partial<Article>) => void;
   onArticlesReorder?: (articles: Article[]) => void;
+  onArticleDelete?: (articleId: string) => Promise<void>;
   enableDragAndDrop?: boolean;
 }
 
@@ -43,8 +44,14 @@ type ViewLevel = 'headline' | 'brief' | 'summary' | 'content';
 
 /**
  * 優先度に対応する色クラスを取得
+ * カテゴリが「地域のお知らせ」の場合は薄い緑色を返す
  */
-const getPriorityColor = (priority: Priority): string => {
+const getPriorityColor = (priority: Priority, category?: string): string => {
+  // 地域のお知らせの場合は優先順位に関係なく薄い緑色
+  if (category === 'local-info') {
+    return 'bg-green-50 border-green-200';
+  }
+  
   switch (priority) {
     case 'high':
       return 'bg-red-50 border-red-200';
@@ -93,6 +100,7 @@ const getCategoryColor = (color: string): string => {
     gray: 'bg-slate-100 text-slate-600',
     purple: 'bg-purple-100 text-purple-700',
     green: 'bg-emerald-100 text-emerald-700',
+    'light-green': 'bg-green-100 text-green-700',
   };
   return colorMap[color] || 'bg-slate-100 text-slate-600';
 };
@@ -113,7 +121,7 @@ const getVisibilityStyle = (visibility: string): { icon: typeof Eye; color: stri
   }
 };
 
-type SortOption = 'priority' | 'category' | 'source' | 'date' | 'default';
+type SortOption = 'priority' | 'category' | 'source' | 'date';
 
 /**
  * ドラッグ可能な記事アイテムコンポーネント
@@ -126,6 +134,7 @@ interface SortableArticleItemProps {
   viewLevel: ViewLevel;
   onToggleExpand: () => void;
   onEditClick: (article: Article, event: React.MouseEvent) => void;
+  onDeleteClick: (article: Article, event: React.MouseEvent) => void;
   getArticleContent: (article: Article) => string;
 }
 
@@ -137,6 +146,7 @@ const SortableArticleItem: React.FC<SortableArticleItemProps> = ({
   viewLevel,
   onToggleExpand,
   onEditClick,
+  onDeleteClick,
   getArticleContent,
 }) => {
   const {
@@ -161,7 +171,8 @@ const SortableArticleItem: React.FC<SortableArticleItemProps> = ({
       ref={setNodeRef}
       style={style}
       className={`rounded-xl shadow-sm border-2 transition-all ${getPriorityColor(
-        article.priority
+        article.priority,
+        article.category
       )}`}
     >
       {/* ヘッダー */}
@@ -195,8 +206,8 @@ const SortableArticleItem: React.FC<SortableArticleItemProps> = ({
                 {getPriorityLabel(article.priority)}
               </span>
 
-              {/* カテゴリバッジ */}
-              {categoryInfo && (
+              {/* カテゴリバッジ（地域のお知らせの場合は表示しない） */}
+              {categoryInfo && article.category !== 'local-info' && (
                 <span
                   className={`px-2 py-0.5 rounded-md text-xs font-bold ${getCategoryColor(
                     categoryInfo.color
@@ -275,22 +286,35 @@ const SortableArticleItem: React.FC<SortableArticleItemProps> = ({
             </div>
           )}
 
-          {/* メタ情報と編集ボタン */}
+          {/* メタ情報とボタン */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 text-xs text-slate-500">
               <span>出典: {article.source}</span>
               <span>作成: {new Date(article.created_at).toLocaleDateString('ja-JP')}</span>
             </div>
             
-            {/* 編集ボタン（右下） */}
-            <button
-              type="button"
-              onClick={(e) => onEditClick(article, e)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium"
-            >
-              <Edit2 size={14} />
-              記事を編集
-            </button>
+            {/* ボタングループ（右下） */}
+            <div className="flex items-center gap-2">
+              {/* 編集ボタン */}
+              <button
+                type="button"
+                onClick={(e) => onEditClick(article, e)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium"
+              >
+                <Edit2 size={14} />
+                記事を編集
+              </button>
+              
+              {/* 削除ボタン */}
+              <button
+                type="button"
+                onClick={(e) => onDeleteClick(article, e)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-slate-400 text-white rounded-lg hover:bg-slate-500 transition-colors text-xs font-medium"
+                title="削除"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -304,6 +328,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({
   onSave,
   onArticleUpdate,
   onArticlesReorder,
+  onArticleDelete,
   enableDragAndDrop = false,
 }) => {
   // 優先度がhighまたはmediumの記事は初期展開
@@ -313,7 +338,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({
   
   const [viewLevel, setViewLevel] = useState<ViewLevel>('summary');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<SortOption>('default');
+  const [sortBy, setSortBy] = useState<SortOption>('priority');
   
   // 編集ダイアログの状態
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
@@ -356,18 +381,50 @@ export const ArticleList: React.FC<ArticleListProps> = ({
     switch (sortBy) {
       case 'priority':
         return [...filtered].sort((a, b) => {
+          // まず article_type で分ける（official が先、local-info が後）
+          const articleTypeOrder = { official: 0, 'local-info': 1 };
+          const typeOrderA = articleTypeOrder[a.article_type];
+          const typeOrderB = articleTypeOrder[b.article_type];
+          
+          if (typeOrderA !== typeOrderB) {
+            return typeOrderA - typeOrderB;
+          }
+          
+          // 同じ article_type 内では priority でソート
           const priorityOrder = { high: 0, medium: 1, low: 2 };
           return priorityOrder[a.priority] - priorityOrder[b.priority];
         });
       case 'category':
-        return [...filtered].sort((a, b) => a.category.localeCompare(b.category));
+        // まず article_type で分ける、次にカテゴリ順
+        return [...filtered].sort((a, b) => {
+          // article_type で分ける
+          const articleTypeOrder = { official: 0, 'local-info': 1 };
+          const typeOrderA = articleTypeOrder[a.article_type];
+          const typeOrderB = articleTypeOrder[b.article_type];
+          
+          if (typeOrderA !== typeOrderB) {
+            return typeOrderA - typeOrderB;
+          }
+          
+          // 同じ article_type 内ではカテゴリでソート
+          const categoryOrder: Record<string, number> = {
+            'event': 0,
+            'notice': 1,
+            'meeting': 2,
+            'culture': 3,
+            'report': 4,
+            'local-info': 5,
+          };
+          const orderA = categoryOrder[a.category] ?? 99;
+          const orderB = categoryOrder[b.category] ?? 99;
+          return orderA - orderB;
+        });
       case 'source':
         return [...filtered].sort((a, b) => a.source.localeCompare(b.source));
       case 'date':
         return [...filtered].sort((a, b) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
-      case 'default':
       default:
         return filtered;
     }
@@ -405,6 +462,31 @@ export const ArticleList: React.FC<ArticleListProps> = ({
     event.stopPropagation(); // 記事の展開/折りたたみを防ぐ
     setEditingArticle(article);
     setShowEditDialog(true);
+  };
+
+  /**
+   * 削除ボタンクリック時の処理
+   */
+  const handleDeleteClick = async (article: Article, event: React.MouseEvent) => {
+    event.stopPropagation(); // 記事の展開/折りたたみを防ぐ
+    
+    if (!confirm(`「${article.title}」を削除しますか？\n\nこの操作は取り消せません。`)) {
+      return;
+    }
+    
+    if (onArticleDelete) {
+      try {
+        console.log('🗑️ 削除処理を開始:', article.id);
+        await onArticleDelete(article.id);
+        console.log('✅ 削除処理が完了しました');
+      } catch (error) {
+        console.error('❌ 削除処理でエラーが発生しました:', error);
+        alert('削除に失敗しました。コンソールでエラーを確認してください。');
+      }
+    } else {
+      console.warn('⚠️ onArticleDeleteが設定されていません');
+      alert('削除機能が利用できません');
+    }
   };
 
   /**
@@ -523,7 +605,6 @@ export const ArticleList: React.FC<ArticleListProps> = ({
               onChange={(e) => setSortBy(e.target.value as SortOption)}
               className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
-              <option value="default">デフォルト</option>
               <option value="priority">優先度順</option>
               <option value="category">カテゴリ順</option>
               <option value="source">ソース順</option>
@@ -583,6 +664,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({
                   viewLevel={viewLevel}
                   onToggleExpand={() => toggleExpand(article.id)}
                   onEditClick={handleEditClick}
+                  onDeleteClick={handleDeleteClick}
                   getArticleContent={getArticleContent}
                 />
               ))}
@@ -600,7 +682,8 @@ export const ArticleList: React.FC<ArticleListProps> = ({
               <div
                 key={article.id}
                 className={`rounded-xl shadow-sm border-2 transition-all ${getPriorityColor(
-                  article.priority
+                  article.priority,
+                  article.category
                 )}`}
               >
                 {/* ヘッダー */}
@@ -628,8 +711,8 @@ export const ArticleList: React.FC<ArticleListProps> = ({
                           {getPriorityLabel(article.priority)}
                         </span>
 
-                        {/* カテゴリバッジ */}
-                        {categoryInfo && (
+                        {/* カテゴリバッジ（地域のお知らせの場合は表示しない） */}
+                        {categoryInfo && article.category !== 'local-info' && (
                           <span
                             className={`px-2 py-0.5 rounded-md text-xs font-bold ${getCategoryColor(
                               categoryInfo.color
@@ -738,22 +821,35 @@ export const ArticleList: React.FC<ArticleListProps> = ({
                       </div>
                     )}
 
-                    {/* メタ情報と編集ボタン */}
+                    {/* メタ情報とボタン */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4 text-xs text-slate-500">
                         <span>出典: {article.source}</span>
                         <span>作成: {new Date(article.created_at).toLocaleDateString('ja-JP')}</span>
                       </div>
                       
-                      {/* 編集ボタン（右下） */}
-                      <button
-                        type="button"
-                        onClick={(e) => handleEditClick(article, e)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium"
-                      >
-                        <Edit2 size={14} />
-                        記事を編集
-                      </button>
+                      {/* ボタングループ（右下） */}
+                      <div className="flex items-center gap-2">
+                        {/* 編集ボタン */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleEditClick(article, e)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium"
+                        >
+                          <Edit2 size={14} />
+                          記事を編集
+                        </button>
+                        
+                        {/* 削除ボタン */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteClick(article, e)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-slate-400 text-white rounded-lg hover:bg-slate-500 transition-colors text-xs font-medium"
+                          title="削除"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

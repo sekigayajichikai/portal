@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter } from '@cc-saas/shared';
+import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
 import { FileText, Calendar, ChevronRight, ArrowLeft, Loader2, AlertCircle, Edit, Trash2 } from 'lucide-react';
 import { ArticleList } from './ArticleList';
@@ -97,6 +97,38 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           : article
       )
     );
+  };
+
+  /**
+   * 記事を削除する処理
+   */
+  const handleArticleDelete = async (articleId: string) => {
+    console.log('📍 NewsletterList: handleArticleDelete開始:', articleId);
+    
+    try {
+      // Supabaseから削除
+      console.log('🗑️ Supabaseから記事を削除中...', articleId);
+      await deleteArticle(articleId);
+      console.log('✅ Supabaseから記事を削除しました');
+      
+      // ローカル状態から削除
+      console.log('🗑️ ローカル状態から削除中...');
+      setArticles(prev => {
+        const filtered = prev.filter(article => article.id !== articleId);
+        console.log('✅ ローカル状態から削除完了:', {
+          削除前: prev.length,
+          削除後: filtered.length
+        });
+        return filtered;
+      });
+      
+      alert('記事を削除しました');
+      console.log('✅ handleArticleDelete完了');
+    } catch (error: any) {
+      console.error('❌ 記事削除エラー:', error);
+      alert(`記事の削除に失敗しました\n\nエラー: ${error.message}`);
+      throw error; // エラーを再スロー
+    }
   };
 
   /**
@@ -229,6 +261,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             articles={articles} 
             categories={MOCK_CATEGORIES} 
             onArticleUpdate={handleArticleUpdate}
+            onArticleDelete={handleArticleDelete}
           />
         ) : (
           <div className="bg-slate-50 rounded-lg p-8 text-center">

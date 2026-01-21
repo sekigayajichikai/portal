@@ -135,7 +135,35 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
         const visibleArticles = data.filter(
           (article) => article.visibility === 'public' || article.visibility === 'members-only'
         );
-        setArticles(visibleArticles);
+        
+        // 優先度順にソート（高→中→低）
+        // 優先度が同じ場合は、ピン留め → 表示順序 → 作成日時の順
+        const sortedArticles = visibleArticles.sort((a, b) => {
+          // 優先度のソート順を定義
+          const priorityOrder = { high: 0, medium: 1, low: 2 };
+          const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+          
+          if (priorityDiff !== 0) {
+            return priorityDiff;
+          }
+          
+          // 優先度が同じ場合はピン留めを優先
+          if (a.is_pinned !== b.is_pinned) {
+            return a.is_pinned ? -1 : 1;
+          }
+          
+          // display_orderが設定されている場合はそれに従う
+          if (a.display_order !== null && b.display_order !== null) {
+            return a.display_order - b.display_order;
+          }
+          if (a.display_order !== null) return -1;
+          if (b.display_order !== null) return 1;
+          
+          // 最後に作成日時の新しい順
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        
+        setArticles(sortedArticles);
       } catch (err: any) {
         console.error('記事取得エラー:', err);
         setError('記事の読み込みに失敗しました');
@@ -273,8 +301,13 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
           <span className="ml-3 text-slate-600">記事を読み込み中...</span>
         </div>
       ) : articles.length > 0 ? (
-        <div className="space-y-3">
-          {articles.map((article) => (
+        <div className="space-y-6">
+          {/* 自治会公式の記事 */}
+          {articles.filter(article => article.article_type === 'official').length > 0 && (
+            <div className="space-y-3">
+              {articles
+                .filter(article => article.article_type === 'official')
+                .map((article) => (
             <button
               key={article.id}
               onClick={() => {
@@ -301,7 +334,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                     {article.category}
                   </span>
                 </div>
-                {article.priority && (
+                {article.priority === 'high' && (
                   <span
                     className={`text-xs px-2 py-1 rounded-full font-bold ${
                       PRIORITY_STYLES[article.priority]
@@ -364,6 +397,120 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
               </div>
             </button>
           ))}
+            </div>
+          )}
+
+          {/* 地域のお知らせセクション */}
+          {articles.filter(article => article.article_type === 'local-info').length > 0 && (
+            <div>
+              {/* セクションヘッダー */}
+              <div className="mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-slate-300"></div>
+                  <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+                    地域のお知らせ
+                  </h3>
+                  <div className="h-px flex-1 bg-slate-300"></div>
+                </div>
+              </div>
+              
+              {/* 地域情報の記事一覧 */}
+              <div className="space-y-3">
+                {articles
+                  .filter(article => article.article_type === 'local-info')
+                  .map((article) => (
+            <button
+              key={article.id}
+              onClick={() => {
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:310',message:'Article card clicked',data:{articleId:article.id,articleTitle:article.title},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
+                // #endregion
+                openArticleDetail(article);
+              }}
+              className={`w-full text-left p-4 rounded-xl border transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                isSimpleMode
+                  ? 'bg-white border-slate-300 hover:border-blue-400 hover:shadow-md'
+                  : 'bg-white border-slate-200 hover:border-indigo-400 hover:shadow-lg'
+              }`}
+            >
+              {/* ヘッダー行: カテゴリー + 優先度 */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{CATEGORY_ICONS[article.category] || '📄'}</span>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded ${
+                      CATEGORY_COLORS[article.category] || 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {article.category}
+                  </span>
+                </div>
+                {article.priority === 'high' && (
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full font-bold ${
+                      PRIORITY_STYLES[article.priority]
+                    }`}
+                  >
+                    {PRIORITY_LABELS[article.priority]}
+                  </span>
+                )}
+              </div>
+
+              {/* タイトル */}
+              <h3 className={`font-bold mb-1 ${isSimpleMode ? 'text-slate-900' : 'text-slate-800'}`}>
+                {article.title}
+              </h3>
+
+              {/* 要約 */}
+              <p className="text-sm text-slate-600 mb-2 line-clamp-2">{article.brief}</p>
+
+              {/* フッター: 期限 + タグ + 添付 */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* 期限 */}
+                  {article.deadline && (
+                    <span
+                      className={`text-xs flex items-center gap-1 ${
+                        isDeadlineNear(article.deadline)
+                          ? 'text-red-600 font-bold'
+                          : 'text-slate-500'
+                      }`}
+                    >
+                      <Calendar size={12} />
+                      期限: {formatDate(article.deadline)}
+                    </span>
+                  )}
+
+                  {/* タグ（小さく表示） */}
+                  {article.tags.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {article.tags.slice(0, 2).map((tag, index) => (
+                        <span
+                          key={index}
+                          className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                      {article.tags.length > 2 && (
+                        <span className="text-[10px] text-slate-400">
+                          +{article.tags.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 添付ファイルアイコン */}
+                {article.attachments.length > 0 && (
+                  <Paperclip size={14} className="text-slate-400" />
+                )}
+              </div>
+            </button>
+          ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : selectedNewsletterId ? (
         <div className="bg-slate-50 p-8 rounded-xl border border-slate-200 text-center">
@@ -398,7 +545,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                     >
                       {selectedArticle.category}
                     </span>
-                    {selectedArticle.priority && (
+                    {selectedArticle.priority === 'high' && (
                       <span
                         className={`text-xs px-2 py-1 rounded-full font-bold ${
                           PRIORITY_STYLES[selectedArticle.priority]

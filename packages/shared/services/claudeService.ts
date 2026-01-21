@@ -129,6 +129,10 @@ function generateExtractionPrompt(categories: Category[]): string {
 **category**: 以下から選択
 ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
 
+**article_type**: 記事の種類（自治会公式の広報誌なので、常に "official" を設定）
+- official: 自治会からの公式なお知らせ
+- local-info: 地域からのお知らせ（※このPDFは自治会公式なので使用しない）
+
 **priority**: 
 - high: 締切あり、要対応、全会員が必ず確認すべき情報
   例：施設休館、ゴミ収集変更、重要イベント、アンケート締切
@@ -195,6 +199,7 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
     {
       "title": "...",
       "category": "event",
+      "article_type": "official",
       "priority": "high",
       "deadline": "2026-01-10",
       "headline": "どんど焼き",
@@ -448,6 +453,7 @@ function parseBriefArticleFromResponse(
   return {
     title: parsed.title || 'お知らせ',
     category: parsed.category || 'announcement',
+    article_type: 'local-info', // 簡易モードは地域のお知らせ
     priority: parsed.priority || 'medium',
     deadline: null,
     headline: parsed.title?.substring(0, 5) || 'お知らせ',
@@ -476,6 +482,7 @@ function mockExtractBriefArticle(filename: string): ExtractionResult {
   > = {
     title: filename.replace('.pdf', ''),
     category: 'announcement',
+    article_type: 'local-info', // 簡易モードは地域のお知らせ
     priority: 'medium',
     deadline: null,
     headline: 'お知らせ',

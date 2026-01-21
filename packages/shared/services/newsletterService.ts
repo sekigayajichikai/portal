@@ -363,3 +363,37 @@ export async function updateArticleOrders(
 
   return updatedCount;
 }
+
+/**
+ * 記事を削除
+ * 
+ * 指定された記事をデータベースから削除します。
+ * 
+ * @param articleId - 削除する記事のUUID
+ * @throws Supabase未接続またはデータベースエラー
+ * 
+ * @example
+ * ```typescript
+ * await deleteArticle('article-123');
+ * ```
+ */
+export async function deleteArticle(articleId: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  console.log('🗑️ 記事を削除中... ID:', articleId);
+
+  const { error } = await supabase
+    .from('articles')
+    .delete()
+    .eq('id', articleId);
+
+  if (error) {
+    console.error('❌ 記事削除エラー:', error);
+    throw error;
+  }
+
+  console.log('✅ 記事削除完了');
+}
