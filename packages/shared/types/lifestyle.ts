@@ -62,6 +62,25 @@ export interface BusScheduleExtractionResult {
 }
 
 /**
+ * お気に入りバス停の設定
+ */
+export interface FavoriteBusStop {
+  stopName: string;           // バス停名
+  selectedDestination?: string; // 選択中の方面（任意）
+}
+
+/**
+ * バス停ごとのグループ化データ
+ */
+export interface BusStopGroup {
+  stopName: string;
+  destinations: {
+    destination: string;
+    schedules: BusSchedule[];
+  }[];
+}
+
+/**
  * ゴミ収集ルール（管理者が設定）
  */
 export interface GarbageRule {

@@ -16,7 +16,8 @@ import GarbageCalendarView from '@/components/features/garbage/GarbageCalendarVi
 import BusScheduleView from '@/components/features/bus/BusScheduleView';
 import EventCalendarView from '@/components/features/calendar/EventCalendarView';
 import CommunityRadioView from '@/components/features/radio/CommunityRadioView';
-import { useBusScheduleData } from '@/hooks/useBusSchedule';
+import { fetchBusSchedules } from '@cc-saas/shared/services';
+import type { BusSchedule } from '@cc-saas/shared/types';
 
 const App: React.FC = () => {
   // localStorageから設定を読み込み（永続化）
@@ -29,8 +30,26 @@ const App: React.FC = () => {
   const [isSimpleMode, setIsSimpleMode] = useState(loadSimpleModeFromStorage);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // バス時刻表をデータベースから取得
-  const { schedules: busSchedules, isLoading: isBusSchedulesLoading } = useBusScheduleData();
+  // バス時刻表をデータベースから取得（元のデータベース形式）
+  const [busSchedules, setBusSchedules] = useState<BusSchedule[]>([]);
+  const [isBusSchedulesLoading, setIsBusSchedulesLoading] = useState(true);
+
+  useEffect(() => {
+    const loadBusSchedules = async () => {
+      try {
+        console.log('🚌 バス時刻表を取得中...');
+        const schedules = await fetchBusSchedules();
+        console.log('🚌 取得したバス時刻表:', schedules);
+        setBusSchedules(schedules);
+      } catch (error) {
+        console.error('❌ バス時刻表の取得に失敗しました:', error);
+      } finally {
+        setIsBusSchedulesLoading(false);
+      }
+    };
+
+    loadBusSchedules();
+  }, []);
 
   // Auth & Dashboard State
   const [user, setUser] = useState<User | null>(null);

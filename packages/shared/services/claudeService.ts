@@ -638,30 +638,39 @@ export async function extractBusScheduleFromPDF(
 
   const startTime = Date.now();
 
-  const prompt = `このPDFはコミュニティバスの時刻表です。以下の情報を抽出してJSON形式で返してください。
+  const prompt = `このPDFはバスの時刻表です。以下の情報を抽出してJSON形式で返してください。
+
+【PDFの構造】
+- **バス停名**: 右上に小さく表示されています
+- **行き先**: 中央に大きく表示されています
+- **路線名**: PDFに記載がない場合が多いです（空文字でOK）
+- **実施日**: 左下に日付が表示されています（有効期間開始日として使用）
+- **時刻表**: 平日/休日（土日祝）で分かれている場合があります
 
 【抽出する情報】
-1. 路線名（例: "駅方面", "市民病院方面"）
-2. バス停名（例: "自治会館前", "中央公園"）
-3. 行き先（例: "中央駅前"）
+1. バス停名（右上の小さい文字）
+2. 行き先（中央の大きい文字）
+3. 路線名（記載があれば。なければ行き先を使用）
 4. 平日の時刻リスト（配列）
 5. 休日（土日祝）の時刻リスト（配列）
-6. 備考や注意事項（あれば）
+6. 実施日（左下の日付） - YYYY-MM-DD形式
+7. 備考や注意事項（あれば）
 
 【出力形式】
-以下のJSON形式で返してください。複数の路線がある場合は配列で返してください。
+以下のJSON形式で返してください。
 
 \`\`\`json
 {
   "schedules": [
     {
-      "routeName": "駅方面",
-      "stopName": "自治会館前",
-      "destination": "中央駅前",
+      "routeName": "金沢文庫駅方面",
+      "stopName": "野村住宅センター",
+      "destination": "金沢文庫駅西口",
       "scheduleData": {
         "weekday": ["07:15", "08:45", "10:30", "13:00", "16:45", "18:30"],
         "holiday": ["08:00", "10:00", "13:00", "16:00", "18:00"]
       },
+      "validFrom": "2025-10-01",
       "notes": "年末年始は運休",
       "displayOrder": 0,
       "isActive": true
@@ -671,10 +680,14 @@ export async function extractBusScheduleFromPDF(
 \`\`\`
 
 【重要な注意事項】
+- バス停名は右上の小さい文字から取得してください
+- 行き先は中央の大きい文字から取得してください
+- 路線名は記載がなければ、行き先に「方面」を付けて生成してください（例: "金沢文庫駅方面"）
 - 時刻は必ず "HH:mm" 形式（24時間表記、ゼロパディング）で返してください
 - 平日と休日（土日祝）の時刻を区別してください
 - 平日/休日の区別がない場合は、両方に同じ時刻を設定してください
 - 時刻は昇順（早い時刻から遅い時刻）にソートしてください
+- 実施日（validFrom）は YYYY-MM-DD 形式で返してください
 - JSON以外の説明文は不要です。JSONのみを返してください`;
 
   try {
@@ -749,22 +762,35 @@ function parseBusSchedulesFromResponse(
     }
 
     // データの検証とデフォルト値の設定
-    return parsed.schedules.map((schedule: any) => ({
-      routeName: schedule.routeName || '不明な路線',
-      stopName: schedule.stopName || '不明なバス停',
-      destination: schedule.destination || undefined,
-      scheduleData: {
-        weekday: Array.isArray(schedule.scheduleData?.weekday)
-          ? schedule.scheduleData.weekday
-          : [],
-        holiday: Array.isArray(schedule.scheduleData?.holiday)
-          ? schedule.scheduleData.holiday
-          : [],
-      },
-      notes: schedule.notes || undefined,
-      displayOrder: schedule.displayOrder ?? 0,
-      isActive: schedule.isActive ?? true,
-    }));
+    return parsed.schedules.map((schedule: any, index: number) => {
+      // 路線名が空の場合、行き先から生成
+      let routeName = schedule.routeName;
+      if (!routeName && schedule.destination) {
+        routeName = `${schedule.destination}方面`;
+      }
+      if (!routeName) {
+        routeName = '不明な路線';
+      }
+
+      return {
+        routeName,
+        stopName: schedule.stopName || '不明なバス停',
+        destination: schedule.destination || undefined,
+        scheduleData: {
+          weekday: Array.isArray(schedule.scheduleData?.weekday)
+            ? schedule.scheduleData.weekday
+            : [],
+          holiday: Array.isArray(schedule.scheduleData?.holiday)
+            ? schedule.scheduleData.holiday
+            : [],
+        },
+        validFrom: schedule.validFrom || undefined,
+        validUntil: schedule.validUntil || undefined,
+        notes: schedule.notes || undefined,
+        displayOrder: schedule.displayOrder ?? index,
+        isActive: schedule.isActive ?? true,
+      };
+    });
   } catch (error) {
     console.error('バス時刻表パースエラー:', error);
     console.error('レスポンステキスト:', responseText);

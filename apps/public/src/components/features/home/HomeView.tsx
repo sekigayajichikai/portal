@@ -1,6 +1,6 @@
 import React from 'react';
-import { BusSchedule, Event } from '@/types/types';
-import { useBusSchedule } from '@/hooks/useBusSchedule';
+import { Event } from '@/types/types';
+import type { BusSchedule } from '@cc-saas/shared/types';
 import AIChat from '../ai-chat/AIChat';
 
 interface HomeViewProps {
@@ -11,7 +11,31 @@ interface HomeViewProps {
 }
 
 const HomeView: React.FC<HomeViewProps> = ({ isSimpleMode, busSchedules, events, currentTime }) => {
-  const { getNextBus, calculateMinutesUntil } = useBusSchedule(currentTime);
+  // バス時刻の計算
+  const getNextBusTime = (schedule: BusSchedule): string => {
+    const day = currentTime.getDay();
+    const isHoliday = day === 0 || day === 6;
+    const times = isHoliday ? schedule.scheduleData.holiday : schedule.scheduleData.weekday;
+    
+    if (times.length === 0) return '--:--';
+    
+    const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+    const nextTime = times.find((time) => {
+      const [hour, minute] = time.split(':').map(Number);
+      return hour * 60 + minute > currentMinutes;
+    });
+    
+    return nextTime || times[0];
+  };
+
+  const calculateMinutesUntil = (time: string): number => {
+    const [hour, minute] = time.split(':').map(Number);
+    const timeMinutes = hour * 60 + minute;
+    const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+    let diff = timeMinutes - currentMinutes;
+    if (diff < 0) diff += 24 * 60;
+    return diff;
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -58,7 +82,9 @@ const HomeView: React.FC<HomeViewProps> = ({ isSimpleMode, busSchedules, events,
               次のバスまで
             </p>
             <p className="text-3xl font-black">
-              {calculateMinutesUntil(getNextBus(busSchedules[0]))}分
+              {busSchedules.length > 0
+                ? `${calculateMinutesUntil(getNextBusTime(busSchedules[0]))}分`
+                : '-'}
             </p>
           </div>
         </div>

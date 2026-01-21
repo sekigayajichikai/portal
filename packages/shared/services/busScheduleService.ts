@@ -285,6 +285,48 @@ export async function permanentlyDeleteBusSchedule(id: string): Promise<void> {
 }
 
 /**
+ * バス時刻表の表示順序を一括更新
+ *
+ * 複数のバス時刻表の表示順序を一度に更新します。
+ * ドラッグ&ドロップなどで順序を変更した際に使用します。
+ *
+ * @param updates - 更新する配列 [{ scheduleId: string, displayOrder: number }, ...]
+ * @throws 更新に失敗した場合
+ *
+ * @example
+ * await bulkUpdateBusScheduleOrder([
+ *   { scheduleId: 'schedule-1', displayOrder: 0 },
+ *   { scheduleId: 'schedule-2', displayOrder: 1 },
+ *   { scheduleId: 'schedule-3', displayOrder: 2 }
+ * ]);
+ */
+export async function bulkUpdateBusScheduleOrder(
+  updates: Array<{ scheduleId: string; displayOrder: number }>
+): Promise<void> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    throw new Error('Supabaseが設定されていません');
+  }
+
+  // 各スケジュールの表示順序を更新
+  for (const { scheduleId, displayOrder } of updates) {
+    const { error } = await supabase
+      .from('bus_schedules')
+      .update({
+        display_order: displayOrder,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', scheduleId);
+
+    if (error) {
+      console.error('バス時刻表の順序更新に失敗しました:', error);
+      throw new Error(`バス時刻表の順序更新に失敗しました: ${error.message}`);
+    }
+  }
+}
+
+/**
  * データベースのレコードをBusSchedule型に変換
  *
  * @param record - データベースから取得したレコード
