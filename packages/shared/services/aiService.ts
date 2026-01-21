@@ -170,6 +170,62 @@ export function getProviderInfo(): {
 }
 
 /**
+ * PDFから簡易記事（タイトル + 1行要約のみ）を抽出
+ *
+ * 自治会外の資料（学校便り、駐在所お知らせなど）向けの軽量抽出モード。
+ * 詳細な4段階要約は行わず、タイトルと1行の要約のみを抽出します。
+ *
+ * @param pdfBase64 - Base64エンコードされたPDFデータ
+ * @param categories - 組織のカテゴリ設定
+ * @param pdfUrl - アップロード済みPDFの公開URL
+ * @param pdfFilename - PDFのファイル名
+ * @returns 簡易記事データと処理時間
+ */
+export async function extractBriefArticleFromPDF(
+  pdfBase64: string,
+  categories: Category[],
+  pdfUrl: string,
+  pdfFilename: string
+): Promise<ExtractionResult> {
+  const provider = selectProvider();
+
+  try {
+    switch (provider) {
+      case 'anthropic':
+        console.log('✅ Anthropic Claude APIで簡易抽出を実行します');
+        return await claudeService.extractBriefArticleFromPDF(
+          pdfBase64,
+          categories,
+          pdfUrl,
+          pdfFilename
+        );
+
+      case 'openrouter':
+        // OpenRouterは現在PDFサポートが不完全なのでモックにフォールバック
+        console.warn('⚠️ OpenRouterはPDF簡易抽出に対応していません。モックデータを使用します。');
+        return await claudeService.extractBriefArticleFromPDF(
+          pdfBase64,
+          categories,
+          pdfUrl,
+          pdfFilename
+        );
+
+      default:
+        console.log('📋 モックデータを使用します（簡易抽出）');
+        return await claudeService.extractBriefArticleFromPDF(
+          pdfBase64,
+          categories,
+          pdfUrl,
+          pdfFilename
+        );
+    }
+  } catch (error: any) {
+    console.error(`${provider}での簡易抽出に失敗しました:`, error);
+    throw error;
+  }
+}
+
+/**
  * PDFからメタデータ（タイトル、号数）を抽出
  * 
  * Claude APIを使用してPDFの先頭部分を解析し、

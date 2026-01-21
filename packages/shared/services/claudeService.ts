@@ -283,6 +283,220 @@ export async function convertPDFToBase64(file: File): Promise<string> {
 }
 
 /**
+ * PDFから簡易記事（タイトル + 1行要約のみ）を抽出
+ *
+ * 自治会外の資料（学校便り、駐在所お知らせなど）向けの軽量抽出モード。
+ * 詳細な4段階要約は行わず、タイトルと1行の要約のみを抽出します。
+ * PDFファイル自体は添付ファイルとして保存されることを前提としています。
+ *
+ * @param pdfBase64 - Base64エンコードされたPDFデータ
+ * @param categories - 組織のカテゴリ設定
+ * @param pdfUrl - アップロード済みPDFの公開URL
+ * @param pdfFilename - PDFのファイル名
+ * @returns 簡易記事データと処理時間
+ */
+export async function extractBriefArticleFromPDF(
+  pdfBase64: string,
+  categories: Category[],
+  pdfUrl: string,
+  pdfFilename: string
+): Promise<ExtractionResult> {
+  const client = getClaudeClient();
+
+  if (!client) {
+    // APIキーがない場合はモックデータを返す
+    return mockExtractBriefArticle(pdfFilename);
+  }
+
+  const startTime = Date.now();
+
+  // 簡易抽出用プロンプト
+  const prompt = generateBriefExtractionPrompt(categories, pdfFilename);
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000, // 簡易版なので少なめ
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: pdfBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: prompt,
+            },
+          ],
+        },
+      ],
+    });
+
+    // レスポンスからテキストを抽出
+    const textContent = response.content.find((c) => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('テキストレスポンスが見つかりません');
+    }
+
+    // JSONを抽出して解析
+    const articleData = parseBriefArticleFromResponse(textContent.text);
+
+    // PDF添付情報を追加
+    const article = {
+      ...articleData,
+      attachments: [
+        {
+          type: 'pdf',
+          url: pdfUrl,
+          filename: pdfFilename,
+        },
+      ],
+    };
+
+    return {
+      articles: [article],
+      processingTime: Date.now() - startTime,
+    };
+  } catch (error) {
+    console.error('Claude API エラー（簡易抽出）:', error);
+    throw error;
+  }
+}
+
+/**
+ * 簡易抽出用プロンプト生成
+ *
+ * タイトルと1行要約のみを抽出するための軽量プロンプト。
+ *
+ * @param categories - 組織のカテゴリ設定
+ * @param filename - PDFのファイル名（参考情報）
+ * @returns プロンプト文字列
+ */
+function generateBriefExtractionPrompt(categories: Category[], filename: string): string {
+  return `
+あなたは自治会の広報資料を整理する専門家です。
+このPDF資料について、最小限の情報（タイトルと1行要約のみ）を抽出してください。
+
+【PDFファイル名】
+${filename}
+
+【抽出項目】
+1. **title**: このPDF資料のタイトル（20文字以内）
+   - 例: 「○○小学校だより 1月号」「駐在所だより」「地区センター行事予定」
+
+2. **category**: 以下から選択
+${categories.map((c) => `   - ${c.id}: ${c.label}`).join('\n')}
+
+3. **brief**: 1行の要約（15文字程度）
+   - 例: 「1月の行事予定表」「防犯情報と相談窓口」
+
+4. **priority**: 重要度
+   - high: 重要なお知らせ
+   - medium: 一般的な情報（推奨）
+   - low: 参考資料
+
+5. **visibility**: 公開範囲
+   - public: 一般公開（推奨）
+   - members-only: 会員限定
+
+6. **tags**: 関連キーワード2-3個
+
+【注意事項】
+- 詳細な要約は不要です（PDFを見れば分かるため）
+- タイトルと1行要約だけで「何の資料か」が分かるようにしてください
+- 出力はJSON形式のみ（説明文は不要）
+
+【出力形式】
+{
+  "title": "○○小学校だより 1月号",
+  "category": "announcement",
+  "priority": "medium",
+  "brief": "1月の行事予定表",
+  "tags": ["学校", "行事"],
+  "visibility": "public"
+}
+`;
+}
+
+/**
+ * 簡易記事レスポンスの解析
+ *
+ * @param responseText - Claude APIからのレスポンステキスト
+ * @returns 簡易記事データ
+ */
+function parseBriefArticleFromResponse(
+  responseText: string
+): Omit<Article, 'id' | 'newsletter_id' | 'organization_id' | 'created_at' | 'updated_at'> {
+  // JSONブロックを探す
+  const jsonMatch =
+    responseText.match(/```json\s*([\s\S]*?)\s*```/) || responseText.match(/\{[\s\S]*\}/);
+
+  if (!jsonMatch) {
+    throw new Error('JSONレスポンスが見つかりません');
+  }
+
+  const jsonText = jsonMatch[1] || jsonMatch[0];
+  const parsed = JSON.parse(jsonText);
+
+  // 必須フィールドを補完
+  return {
+    title: parsed.title || 'お知らせ',
+    category: parsed.category || 'announcement',
+    priority: parsed.priority || 'medium',
+    deadline: null,
+    headline: parsed.title?.substring(0, 5) || 'お知らせ',
+    brief: parsed.brief || 'PDFをご覧ください',
+    summary: parsed.brief || 'PDFをご覧ください',
+    content: `詳細は添付のPDFファイルをご覧ください。\n\n${parsed.brief || ''}`,
+    tags: parsed.tags || [],
+    visibility: parsed.visibility || 'public',
+    source: parsed.title || '',
+    attachments: [], // 後で追加される
+    display_order: 0,
+    is_pinned: false,
+  };
+}
+
+/**
+ * 簡易記事のモック抽出
+ *
+ * @param filename - PDFのファイル名
+ * @returns モック簡易記事データ
+ */
+function mockExtractBriefArticle(filename: string): ExtractionResult {
+  const article: Omit<
+    Article,
+    'id' | 'newsletter_id' | 'organization_id' | 'created_at' | 'updated_at'
+  > = {
+    title: filename.replace('.pdf', ''),
+    category: 'announcement',
+    priority: 'medium',
+    deadline: null,
+    headline: 'お知らせ',
+    brief: 'PDFをご覧ください',
+    summary: 'PDFをご覧ください',
+    content: '詳細は添付のPDFファイルをご覧ください。',
+    tags: ['お知らせ'],
+    visibility: 'public',
+    source: filename,
+    attachments: [],
+    display_order: 0,
+    is_pinned: false,
+  };
+
+  return {
+    articles: [article],
+    processingTime: 1000,
+  };
+}
+
+/**
  * PDFからメタデータ（タイトル、号数）を抽出
  * 
  * Claude APIを使用してPDFの先頭部分を解析し、

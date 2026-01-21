@@ -10,3 +10,6 @@ export * from './format.js';
 
 // バリデーション関連
 export * from './validation.js';
+
+// 類似度計算関連
+export * from './similarity.js';

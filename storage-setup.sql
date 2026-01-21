@@ -1,0 +1,105 @@
+-- =====================================================
+-- Supabase Storage セットアップガイド
+-- =====================================================
+-- このファイルは環境別のセットアップスクリプトを選択するためのガイドです。
+-- 環境に応じて適切なスクリプトを実行してください。
+--
+-- 📁 環境別スクリプト:
+-- 
+-- 🔧 開発環境用:
+--    storage-setup-dev.sql
+--    - 匿名ユーザー（anon）もPDFアップロード可能
+--    - テスト用Supabaseプロジェクトで使用
+--    - 認証機能なしで動作確認できる
+--
+-- 🔒 本番環境用:
+--    storage-setup-prod.sql
+--    - 認証済みユーザー（authenticated）のみPDFアップロード可能
+--    - セキュアな設定
+--    - 認証機能の実装が必要
+--
+-- ⚠️ 重要: 環境に応じて正しいスクリプトを選択してください！
+-- =====================================================
+
+-- =====================================================
+-- 開発環境用スクリプト（storage-setup-dev.sql）
+-- =====================================================
+-- 匿名ユーザーもアップロード可能なポリシー
+--
+-- INSERT INTO storage.buckets (id, name, public)
+-- VALUES ('newsletters', 'newsletters', true)
+-- ON CONFLICT (id) DO NOTHING;
+--
+-- DROP POLICY IF EXISTS "Public Access" ON storage.objects;
+-- DROP POLICY IF EXISTS "Allow anonymous upload in dev" ON storage.objects;
+-- DROP POLICY IF EXISTS "Allow anonymous update in dev" ON storage.objects;
+-- DROP POLICY IF EXISTS "Allow anonymous delete in dev" ON storage.objects;
+--
+-- CREATE POLICY "Public Access"
+-- ON storage.objects FOR SELECT
+-- USING (bucket_id = 'newsletters');
+--
+-- CREATE POLICY "Allow anonymous upload in dev"
+-- ON storage.objects FOR INSERT
+-- TO anon, authenticated
+-- WITH CHECK (bucket_id = 'newsletters');
+--
+-- CREATE POLICY "Allow anonymous update in dev"
+-- ON storage.objects FOR UPDATE
+-- TO anon, authenticated
+-- USING (bucket_id = 'newsletters');
+--
+-- CREATE POLICY "Allow anonymous delete in dev"
+-- ON storage.objects FOR DELETE
+-- TO anon, authenticated
+-- USING (bucket_id = 'newsletters');
+
+-- =====================================================
+-- 本番環境用スクリプト（storage-setup-prod.sql）
+-- =====================================================
+-- 認証済みユーザーのみアップロード可能なポリシー
+--
+-- INSERT INTO storage.buckets (id, name, public)
+-- VALUES ('newsletters', 'newsletters', true)
+-- ON CONFLICT (id) DO NOTHING;
+--
+-- DROP POLICY IF EXISTS "Public Access" ON storage.objects;
+-- DROP POLICY IF EXISTS "Authenticated users can upload" ON storage.objects;
+-- DROP POLICY IF EXISTS "Authenticated users can update own files" ON storage.objects;
+-- DROP POLICY IF EXISTS "Authenticated users can delete own files" ON storage.objects;
+--
+-- CREATE POLICY "Public Access"
+-- ON storage.objects FOR SELECT
+-- USING (bucket_id = 'newsletters');
+--
+-- CREATE POLICY "Authenticated users can upload"
+-- ON storage.objects FOR INSERT
+-- TO authenticated
+-- WITH CHECK (bucket_id = 'newsletters');
+--
+-- CREATE POLICY "Authenticated users can update own files"
+-- ON storage.objects FOR UPDATE
+-- TO authenticated
+-- USING (bucket_id = 'newsletters');
+--
+-- CREATE POLICY "Authenticated users can delete own files"
+-- ON storage.objects FOR DELETE
+-- TO authenticated
+-- USING (bucket_id = 'newsletters');
+
+-- =====================================================
+-- 実行手順
+-- =====================================================
+--
+-- 【開発環境の場合】
+-- 1. storage-setup-dev.sql を開く
+-- 2. Supabaseダッシュボード → SQL Editor で実行
+-- 3. アプリケーションでPDFアップロードをテスト
+--
+-- 【本番環境の場合】
+-- 1. storage-setup-prod.sql を開く
+-- 2. Supabaseダッシュボード → SQL Editor で実行
+-- 3. 認証機能を実装してからテスト
+--
+-- 詳細は HYBRID-MODE-GUIDE.md を参照してください
+-- =====================================================

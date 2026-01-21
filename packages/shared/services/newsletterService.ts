@@ -255,3 +255,111 @@ export async function deleteNewsletter(newsletterId: string): Promise<void> {
 
   console.log('✅ Newsletter削除完了');
 }
+
+/**
+ * 記事を更新
+ * 
+ * 既存の記事の内容を部分的に更新します。
+ * updated_atタイムスタンプは自動的に現在時刻に更新されます。
+ * 
+ * @param articleId - 更新する記事のUUID
+ * @param updates - 更新するフィールドと値のオブジェクト
+ * @returns 更新後の記事データ
+ * @throws Supabase未接続またはデータベースエラー
+ * 
+ * @example
+ * ```typescript
+ * await updateArticle('article-123', {
+ *   title: '新しいタイトル',
+ *   priority: 'high',
+ *   content: '更新された内容'
+ * });
+ * ```
+ */
+export async function updateArticle(
+  articleId: string,
+  updates: Partial<Omit<Article, 'id' | 'newsletter_id' | 'organization_id' | 'created_at'>>
+): Promise<Article> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  console.log('📝 記事を更新中... ID:', articleId);
+
+  // updated_atを現在時刻に設定
+  const updatesWithTimestamp = {
+    ...updates,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from('articles')
+    .update(updatesWithTimestamp)
+    .eq('id', articleId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ 記事更新エラー:', error);
+    throw error;
+  }
+
+  console.log('✅ 記事更新完了:', articleId);
+
+  return data;
+}
+
+/**
+ * 複数記事のdisplay_orderを一括更新
+ * 
+ * ドラッグ&ドロップなどで記事の順序を変更した際に使用します。
+ * 記事IDと新しいdisplay_orderの配列を受け取り、一括で更新します。
+ * 
+ * @param updates - 記事IDとdisplay_orderのペアの配列
+ * @returns 更新された記事の数
+ * @throws Supabase未接続またはデータベースエラー
+ * 
+ * @example
+ * ```typescript
+ * await updateArticleOrders([
+ *   { articleId: 'article-1', displayOrder: 0 },
+ *   { articleId: 'article-2', displayOrder: 1 },
+ *   { articleId: 'article-3', displayOrder: 2 }
+ * ]);
+ * ```
+ */
+export async function updateArticleOrders(
+  updates: Array<{ articleId: string; displayOrder: number }>
+): Promise<number> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  console.log(`📋 ${updates.length}件の記事の順序を更新中...`);
+
+  // 各記事を個別に更新（Supabaseは一括更新のupsertをサポート）
+  let updatedCount = 0;
+  
+  for (const { articleId, displayOrder } of updates) {
+    const { error } = await supabase
+      .from('articles')
+      .update({
+        display_order: displayOrder,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', articleId);
+
+    if (error) {
+      console.error(`❌ 記事順序更新エラー (ID: ${articleId}):`, error);
+      throw error;
+    }
+    
+    updatedCount++;
+  }
+
+  console.log(`✅ ${updatedCount}件の記事順序を更新完了`);
+
+  return updatedCount;
+}

@@ -8,14 +8,19 @@ import {
   saveNewsletter,
   addArticlesToNewsletter,
   getArticlesByNewsletterId,
+  findDuplicateArticles,
+  DuplicatePair,
+  filterDuplicateArticles,
 } from '@cc-saas/shared';
 // 統合AIサービスを使用（Anthropic/OpenRouterを自動選択）
-import { extractArticlesFromPDF, convertPDFToBase64, extractPDFMetadata } from '@cc-saas/shared/services/aiService';
+import { extractArticlesFromPDF, extractBriefArticleFromPDF, convertPDFToBase64, extractPDFMetadata } from '@cc-saas/shared/services/aiService';
+import { uploadPDF } from '@cc-saas/shared/services/storageService';
 import { MOCK_CIRCULARS, MOCK_CATEGORIES, MOCK_ARTICLES } from '@/constants';
-import { Sparkles, Send, Eye, Loader2, Calendar, FileText, Upload, Trash2, Save } from 'lucide-react';
+import { Sparkles, Send, Eye, Loader2, Calendar, FileText, Upload, Trash2, Save, Check, ChevronRight, Edit3 } from 'lucide-react';
 import { ArticleList } from './ArticleList';
 import { PDFMetadataDialog } from './PDFMetadataDialog';
 import { NewsletterList } from './NewsletterList';
+import { DuplicateDetectionDialog, DuplicateAction } from './DuplicateDetectionDialog';
 
 interface CircularBoardProps {
   onEventsExtracted: (events: PublicEvent[]) => void;
@@ -66,9 +71,17 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingNewsletterId, setEditingNewsletterId] = useState<string | null>(null);
 
+  // 重複検出の状態
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [detectedDuplicates, setDetectedDuplicates] = useState<DuplicatePair[]>([]);
+  const [pendingNewArticles, setPendingNewArticles] = useState<Article[]>([]);
+
   // 月号形式の状態
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
+
+  // 抽出モードの状態（'detailed' = 詳細な4段階要約、'brief' = 簡易要約+PDF添付）
+  const [extractionMode, setExtractionMode] = useState<'detailed' | 'brief'>('detailed');
 
   // 年と月の選択肢を生成
   const currentYear = new Date().getFullYear();
@@ -380,25 +393,65 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
     setIsProcessingPDF(true);
 
     try {
-      // Claude APIで記事抽出
-      const result = await extractArticlesFromPDF(pendingPDFBase64, MOCK_CATEGORIES);
-      const processingTime = result.processingTime;
-
+      let result;
+      let newArticles: Article[];
+      let uploadResult;
       const pdfId = `pdf-${Date.now()}`;
 
-      // 記事にIDとsourceを付与
-      const newArticles: Article[] = result.articles.map((article, index) => ({
-        id: `a-${Date.now()}-${index}`,
-        newsletter_id: currentNewsletter.id,
-        organization_id: 'org1',
-        ...article,
-        source: `${title}${issueNumber ? ` ${issueNumber}` : ''}`, // ソース情報を記録
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
+      // すべてのモードで元PDFをアップロード
+      console.log('📄 PDFをアップロード中...');
+      uploadResult = await uploadPDF(selectedPDF, extractionMode === 'brief' ? 'attachment' : 'source');
+      console.log('✅ PDFアップロード完了:', uploadResult.url);
 
-      // 既存の記事に追加
-      setAccumulatedArticles(prev => [...prev, ...newArticles]);
+      if (extractionMode === 'brief') {
+        // 簡易モード：タイトル + 1行要約のみ
+        console.log('📝 地域の知らせ：簡単登録モード...');
+        result = await extractBriefArticleFromPDF(
+          pendingPDFBase64,
+          MOCK_CATEGORIES,
+          uploadResult.url,
+          uploadResult.filename
+        );
+
+        // 記事にIDとsourceを付与
+        newArticles = result.articles.map((article, index) => ({
+          id: `a-${Date.now()}-${index}`,
+          newsletter_id: currentNewsletter.id,
+          organization_id: 'org1',
+          ...article,
+          source: `${title}${issueNumber ? ` ${issueNumber}` : ''}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
+      } else {
+        // 詳細モード：4段階要約で記事を抽出
+        console.log('📝 自治会の回覧板：記事を詳しく作成中...');
+        result = await extractArticlesFromPDF(pendingPDFBase64, MOCK_CATEGORIES);
+
+        // 記事にIDとsourceを付与 + 元PDFを添付
+        newArticles = result.articles.map((article, index) => ({
+          id: `a-${Date.now()}-${index}`,
+          newsletter_id: currentNewsletter.id,
+          organization_id: 'org1',
+          ...article,
+          source: `${title}${issueNumber ? ` ${issueNumber}` : ''}`,
+          // 詳細抽出でも元PDFを添付（全記事に共通）
+          attachments: [
+            {
+              type: 'pdf',
+              url: uploadResult.url,
+              filename: uploadResult.filename,
+            },
+          ],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
+      }
+
+      const processingTime = result.processingTime;
+
+      // 重複検出を実行
+      const duplicates = findDuplicateArticles(newArticles, accumulatedArticles, 0.8);
 
       // PDFリストに追加（拡張されたメタデータ付き）
       setUploadedPDFs(prev => [
@@ -413,15 +466,32 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
         },
       ]);
 
-      // 選択をクリア
-      setSelectedPDF(null);
-      setPendingPDFBase64(null);
+      if (duplicates.length > 0) {
+        // 重複が見つかった場合、ダイアログを表示
+        console.log(`⚠️ ${duplicates.length}件の重複を検出しました`);
+        setDetectedDuplicates(duplicates);
+        setPendingNewArticles(newArticles);
+        setShowDuplicateDialog(true);
+      } else {
+        // 重複なし、そのまま追加
+        setAccumulatedArticles(prev => [...prev, ...newArticles]);
 
-      alert(
-        `${title}から${newArticles.length}件の記事を追加しました\n` +
-        `処理時間: ${(processingTime / 1000).toFixed(1)}秒\n` +
-        `合計: ${accumulatedArticles.length + newArticles.length}件の記事`
-      );
+        // 選択をクリア
+        setSelectedPDF(null);
+        setPendingPDFBase64(null);
+
+        // モードに応じたメッセージ
+        const modeLabel = extractionMode === 'detailed' ? '自治会の回覧板' : '地域の知らせ';
+        const message = extractionMode === 'detailed'
+          ? `【${modeLabel}】\n${title}から${newArticles.length}件の記事を追加しました`
+          : `【${modeLabel}】\n「${title}」を追加しました`;
+
+        alert(
+          `${message}\n` +
+          `処理時間: ${(processingTime / 1000).toFixed(1)}秒\n` +
+          `合計: ${accumulatedArticles.length + newArticles.length}件の記事`
+        );
+      }
     } catch (error) {
       console.error('記事抽出エラー:', error);
       alert('記事抽出に失敗しました');
@@ -527,6 +597,84 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
     alert(`「${pdf.title}」とその記事を削除しました`);
   };
 
+  /**
+   * 重複検出ダイアログで確定ボタンが押された時の処理
+   */
+  const handleDuplicateConfirm = (action: DuplicateAction, selectedPairs: DuplicatePair[]) => {
+    setShowDuplicateDialog(false);
+
+    let finalArticles: Article[];
+
+    switch (action) {
+      case 'keep-both':
+        // 両方残す：そのまま全て追加
+        finalArticles = [...accumulatedArticles, ...pendingNewArticles];
+        break;
+
+      case 'keep-new':
+        // 新しいものを優先：既存の重複記事を除外
+        finalArticles = filterDuplicateArticles(
+          [...accumulatedArticles, ...pendingNewArticles],
+          selectedPairs,
+          true
+        );
+        break;
+
+      case 'keep-existing':
+        // 既存を優先：新しい重複記事を除外
+        finalArticles = filterDuplicateArticles(
+          [...accumulatedArticles, ...pendingNewArticles],
+          selectedPairs,
+          false
+        );
+        break;
+    }
+
+    setAccumulatedArticles(finalArticles);
+
+    // 選択をクリア
+    setSelectedPDF(null);
+    setPendingPDFBase64(null);
+    setPendingNewArticles([]);
+    setDetectedDuplicates([]);
+
+    const addedCount = finalArticles.length - accumulatedArticles.length;
+    alert(
+      `処理完了\n\n追加された記事: ${addedCount}件\n合計: ${finalArticles.length}件の記事`
+    );
+  };
+
+  /**
+   * 重複検出ダイアログをキャンセル
+   */
+  const handleDuplicateCancel = () => {
+    setShowDuplicateDialog(false);
+    
+    // 新しい記事を全て追加（重複を無視）
+    setAccumulatedArticles(prev => [...prev, ...pendingNewArticles]);
+    
+    // 選択をクリア
+    setSelectedPDF(null);
+    setPendingPDFBase64(null);
+    setPendingNewArticles([]);
+    setDetectedDuplicates([]);
+
+    alert('重複チェックをスキップし、全ての記事を追加しました');
+  };
+
+  /**
+   * 記事が更新された時の処理
+   */
+  const handleArticleUpdate = (articleId: string, updates: Partial<Article>) => {
+    setAccumulatedArticles(prev => 
+      prev.map(article => 
+        article.id === articleId 
+          ? { ...article, ...updates, updated_at: new Date().toISOString() }
+          : article
+      )
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* ヘッダー */}
@@ -542,6 +690,26 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
           </button>
         )}
       </div>
+
+      {/* ブレッドクラムナビゲーション */}
+      {isEditMode && editingNewsletterId && activeTab === 'pdf' && (
+        <div className="flex items-center gap-2 text-sm text-slate-600 mb-3">
+          <button
+            onClick={() => {
+              setActiveTab('saved');
+              handleResetNewsletter();
+            }}
+            className="hover:text-primary-600 transition-colors"
+          >
+            保存済み一覧
+          </button>
+          <ChevronRight size={16} className="text-slate-400" />
+          <div className="flex items-center gap-2 text-orange-600 font-medium">
+            <Edit3 size={16} />
+            <span>{currentNewsletter?.title || 'デジタル回覧板'}を編集中</span>
+          </div>
+        </div>
+      )}
 
       {/* タブ切り替え */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-1 inline-flex gap-1">
@@ -562,13 +730,15 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
           onClick={() => setActiveTab('pdf')}
           className={`px-6 py-2 rounded-lg font-medium transition-all ${
             activeTab === 'pdf'
-              ? 'bg-primary-600 text-white shadow-sm'
+              ? isEditMode && activeTab === 'pdf'
+                ? 'bg-orange-600 text-white shadow-sm'
+                : 'bg-primary-600 text-white shadow-sm'
               : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
           <div className="flex items-center gap-2">
-            <FileText size={18} />
-            <span>新規作成</span>
+            {isEditMode && activeTab === 'pdf' ? <Edit3 size={18} /> : <FileText size={18} />}
+            <span>{isEditMode && activeTab === 'pdf' ? 'PDF 編集中' : '新規作成'}</span>
           </div>
         </button>
         <button
@@ -892,6 +1062,57 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                 </h4>
                 
                 <div className="space-y-4">
+                  {/* 抽出モード選択 */}
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-slate-700 mb-3">抽出モード</p>
+                    
+                    {/* カード1: 自治会の回覧板 */}
+                    <div
+                      onClick={() => setExtractionMode('detailed')}
+                      className={`
+                        p-4 rounded-lg border-2 cursor-pointer transition-all
+                        ${extractionMode === 'detailed'
+                          ? 'border-primary-500 bg-primary-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                        }
+                      `}
+                    >
+                      <div className="flex items-start gap-3">
+                        {extractionMode === 'detailed' && (
+                          <Check size={20} className="text-primary-600 mt-0.5 flex-shrink-0" />
+                        )}
+                        <div className="flex-1">
+                          <p className="text-base font-semibold text-slate-800">自治会の回覧板</p>
+                          <p className="text-sm text-slate-600 mt-1">記事を詳しく作成</p>
+                          <p className="text-xs text-slate-500 mt-1">処理時間: 約30-60秒</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* カード2: 地域の知らせ */}
+                    <div
+                      onClick={() => setExtractionMode('brief')}
+                      className={`
+                        p-4 rounded-lg border-2 cursor-pointer transition-all
+                        ${extractionMode === 'brief'
+                          ? 'border-primary-500 bg-primary-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                        }
+                      `}
+                    >
+                      <div className="flex items-start gap-3">
+                        {extractionMode === 'brief' && (
+                          <Check size={20} className="text-primary-600 mt-0.5 flex-shrink-0" />
+                        )}
+                        <div className="flex-1">
+                          <p className="text-base font-semibold text-slate-800">地域の知らせ</p>
+                          <p className="text-sm text-slate-600 mt-1">PDFで保管（簡単登録）</p>
+                          <p className="text-xs text-slate-500 mt-1">処理時間: 約5-10秒</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors">
                     <input
                       type="file"
@@ -994,6 +1215,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                   <ArticleList
                     articles={accumulatedArticles}
                     categories={MOCK_CATEGORIES}
+                    onArticleUpdate={handleArticleUpdate}
                   />
                 </div>
               )}
@@ -1034,6 +1256,14 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
           </div>
         </div>
       )}
+
+      {/* 重複検出ダイアログ */}
+      <DuplicateDetectionDialog
+        isOpen={showDuplicateDialog}
+        duplicates={detectedDuplicates}
+        onConfirm={handleDuplicateConfirm}
+        onCancel={handleDuplicateCancel}
+      />
     </div>
   );
 };

@@ -86,6 +86,19 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     setError(null);
   };
 
+  /**
+   * 記事が更新された時の処理
+   */
+  const handleArticleUpdate = (articleId: string, updates: Partial<Article>) => {
+    setArticles(prev => 
+      prev.map(article => 
+        article.id === articleId 
+          ? { ...article, ...updates, updated_at: new Date().toISOString() }
+          : article
+      )
+    );
+  };
+
   // 記事表示モード
   if (selectedNewsletter) {
     return (
@@ -107,7 +120,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
             >
               <Edit size={18} />
-              編集する
+              PDFを追加
             </button>
           )}
         </div>
@@ -159,7 +172,11 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             <span className="ml-3 text-slate-600">記事を読み込み中...</span>
           </div>
         ) : articles.length > 0 ? (
-          <ArticleList articles={articles} categories={MOCK_CATEGORIES} />
+          <ArticleList 
+            articles={articles} 
+            categories={MOCK_CATEGORIES} 
+            onArticleUpdate={handleArticleUpdate}
+          />
         ) : (
           <div className="bg-slate-50 rounded-lg p-8 text-center">
             <FileText size={48} className="mx-auto text-slate-300 mb-3" />
