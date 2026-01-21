@@ -17,7 +17,8 @@
     "./utils/*": "./utils/*.ts"
   },
   "dependencies": {
-    "@google/genai": "^1.37.0"
+    "@google/genai": "^1.37.0",
+    "@supabase/supabase-js": "^2.91.0"
   },
   "peerDependencies": {
     "react": "^19.2.3"

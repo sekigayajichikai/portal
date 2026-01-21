@@ -13,6 +13,7 @@ export * from './services/claudeService.js';
 export * from './services/openRouterService.js';
 export * from './services/aiService.js';
 export * from './services/supabaseClient.js';
+export * from './services/newsletterService.js';
 
 // 定数・モックデータ
 export * from './constants/index.js';

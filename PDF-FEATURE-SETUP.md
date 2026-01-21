@@ -9,7 +9,7 @@
 - ✅ 型定義（Newsletter, Article）の作成
 - ✅ モックデータの追加
 - ✅ ArticleListコンポーネント（記事一覧表示）
-- ✅ CircularBoard拡張（タブUI、PDF広報誌セクション）
+- ✅ CircularBoard拡張（タブUI、デジタル回覧板セクション）
 - ✅ 4段階要約の切り替え表示
 - ✅ 優先度別の色分け表示
 - ✅ カテゴリフィルター
@@ -127,7 +127,7 @@ VITE_OPENROUTER_API_KEY=your_openrouter_key
 
 1. 管理画面を起動: `npm run dev`
 2. 「デジタル回覧板」セクションに移動
-3. **「PDF広報誌」タブ**をクリック
+3. **「デジタル回覧板」タブ**をクリック
 4. 以下の手順で記事を抽出：
    - タイトルを入力（例: 2025年1月号）
    - PDFファイルを選択（最大10MB）
@@ -207,7 +207,7 @@ CREATE TABLE organizations (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 広報誌テーブル
+-- デジタル回覧板テーブル
 CREATE TABLE newsletters (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID REFERENCES organizations(id),
