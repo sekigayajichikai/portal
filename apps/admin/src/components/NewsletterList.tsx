@@ -5,9 +5,9 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { getNewsletters, getArticlesByNewsletterId } from '@cc-saas/shared';
+import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
-import { FileText, Calendar, ChevronRight, ArrowLeft, Loader2, AlertCircle, Edit } from 'lucide-react';
+import { FileText, Calendar, ChevronRight, ArrowLeft, Loader2, AlertCircle, Edit, Trash2 } from 'lucide-react';
 import { ArticleList } from './ArticleList';
 import { MOCK_CATEGORIES } from '@/constants';
 
@@ -99,6 +99,47 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     );
   };
 
+  /**
+   * デジタル回覧板を削除
+   */
+  const handleDeleteNewsletter = async (
+    newsletter: Newsletter & { article_count: number },
+    event?: React.MouseEvent
+  ) => {
+    // イベントのバブリングを停止（カードのクリックイベントが発火しないように）
+    if (event) {
+      event.stopPropagation();
+    }
+
+    // 確認ダイアログ
+    const confirmed = confirm(
+      `「${newsletter.title}」を削除しますか？\n\n` +
+      `記事数: ${newsletter.article_count}件\n\n` +
+      `この操作は取り消せません。`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      console.log('🗑️ デジタル回覧板を削除中...', newsletter.id);
+      await deleteNewsletter(newsletter.id);
+      console.log('✅ 削除完了');
+
+      // 一覧を再読み込み
+      await loadNewsletters();
+
+      // 削除したNewsletterが選択中だった場合、一覧に戻る
+      if (selectedNewsletter && selectedNewsletter.id === newsletter.id) {
+        handleBackToList();
+      }
+
+      alert(`「${newsletter.title}」を削除しました。`);
+    } catch (error: any) {
+      console.error('❌ 削除エラー:', error);
+      alert(`削除に失敗しました\n\nエラー: ${error.message}`);
+    }
+  };
+
   // 記事表示モード
   if (selectedNewsletter) {
     return (
@@ -113,16 +154,28 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             一覧に戻る
           </button>
           
-          {/* 編集ボタン（下書きのみ） */}
-          {onEditNewsletter && selectedNewsletter.status === 'draft' && (
+          <div className="flex items-center gap-3">
+            {/* 編集ボタン（下書きのみ） */}
+            {onEditNewsletter && selectedNewsletter.status === 'draft' && (
+              <button
+                onClick={() => onEditNewsletter(selectedNewsletter as Newsletter & { article_count: number })}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
+              >
+                <Edit size={18} />
+                PDFを追加
+              </button>
+            )}
+            
+            {/* 削除ボタン */}
             <button
-              onClick={() => onEditNewsletter(selectedNewsletter as Newsletter & { article_count: number })}
-              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
+              onClick={() => handleDeleteNewsletter(selectedNewsletter as Newsletter & { article_count: number })}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-medium transition-colors"
+              title="削除"
             >
-              <Edit size={18} />
-              PDFを追加
+              <Trash2 size={18} />
+              削除
             </button>
-          )}
+          </div>
         </div>
 
         {/* Newsletter情報 */}
@@ -261,7 +314,17 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     </span>
                   </div>
                 </div>
-                <ChevronRight className="text-slate-400 flex-shrink-0" size={20} />
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  {/* 削除ボタン */}
+                  <button
+                    onClick={(e) => handleDeleteNewsletter(newsletter, e)}
+                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    title="削除"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                  <ChevronRight className="text-slate-400" size={20} />
+                </div>
               </div>
             </div>
           ))}

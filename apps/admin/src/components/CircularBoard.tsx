@@ -8,6 +8,7 @@ import {
   saveNewsletter,
   addArticlesToNewsletter,
   getArticlesByNewsletterId,
+  getNewsletters,
   findDuplicateArticles,
   DuplicatePair,
   filterDuplicateArticles,
@@ -97,21 +98,10 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
 
   /**
    * デジタル回覧板と記事をSupabaseに保存
+   * 
+   * Newsletter作成時に即座に保存されるため、この関数は編集モードでのみ使用されます。
    */
   const handleSaveNewsletter = async () => {
-    if (accumulatedArticles.length === 0) {
-      alert('保存する記事がありません');
-      return;
-    }
-
-    // タイトルの確認
-    let title = newsletterTitle.trim();
-    if (!title && !isEditMode) {
-      title = prompt('デジタル回覧板のタイトルを入力してください', '無題のデジタル回覧板');
-      if (!title) return; // キャンセルされた場合
-      setNewsletterTitle(title);
-    }
-
     setIsSaving(true);
     try {
       if (isEditMode && editingNewsletterId) {
@@ -173,58 +163,11 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
 
         console.log('✅ 記事追加完了:', addedArticles.length, '件');
       } else {
-        // 新規作成モード：従来通り
-        console.log('📝 新規作成モード：Newsletterを保存中...');
-
-        // Newsletter情報を構築
-        const newsletter = {
-          organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
-          title: title,
-          issue_date: new Date().toISOString().split('T')[0],
-          source_pdf_url: null,
-          status: 'draft' as const,
-          created_by: import.meta.env.VITE_DEFAULT_USER_ID || null,
-          published_at: null,
-        };
-
-        // 記事データを準備（不要なフィールドを除外）
-        const articlesToSave = accumulatedArticles.map((article) => ({
-          organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
-          title: article.title,
-          category: article.category,
-          priority: article.priority,
-          deadline: article.deadline,
-          headline: article.headline,
-          brief: article.brief,
-          summary: article.summary,
-          content: article.content,
-          tags: article.tags,
-          visibility: article.visibility,
-          source: article.source,
-          attachments: article.attachments,
-          display_order: null,
-          is_pinned: article.is_pinned,
-        }));
-
-        console.log('💾 保存開始:', {
-          newsletter: newsletter.title,
-          articleCount: articlesToSave.length,
-        });
-
-        // Supabaseに保存
-        const result = await saveNewsletter(newsletter, articlesToSave);
-
-        alert(
-          `✅ 保存しました！\n\nデジタル回覧板: ${result.newsletter.title}\n記事数: ${result.articles.length}件\n\n「保存済み一覧」タブで確認できます。`
-        );
-
-        // 状態をリセット
-        setAccumulatedArticles([]);
-        setUploadedPDFs([]);
-        setNewsletterTitle('');
-        setCurrentNewsletter(null);
-
-        console.log('✅ 保存完了:', result);
+        // 新規作成モードでは来ないはず（作成時に即保存されるため）
+        console.warn('⚠️ 編集モードではありません。Newsletter作成時に既に保存されているはずです。');
+        alert('このNewsletterは既に保存されています。\n\n「保存済み一覧」タブから編集モードで開いてください。');
+        setIsSaving(false);
+        return;
       }
     } catch (error: any) {
       console.error('❌ 保存エラー:', error);
@@ -290,51 +233,85 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
 
   /**
    * 共通のデジタル回覧板作成処理
+   * 
+   * Newsletter作成時に即座にSupabaseに保存します（記事0件で保存）。
+   * 保存後は編集モードとして扱い、後からPDFを追加できます。
    */
-  const createNewsletter = (title: string) => {
-    const newNewsletter: Newsletter = {
-      id: `n-${Date.now()}`,
-      organization_id: 'org1',
-      title: title,
-      issue_date: new Date().toISOString().split('T')[0],
-      source_pdf_url: null,
-      status: 'draft',
-      created_by: 'admin1',
-      created_at: new Date().toISOString(),
-      published_at: null,
-    };
+  const createNewsletter = async (title: string) => {
+    try {
+      console.log('📝 Newsletter作成開始:', title);
 
-    setCurrentNewsletter(newNewsletter);
-    setAccumulatedArticles([]);
-    setUploadedPDFs([]);
-    setNewsletters([newNewsletter, ...newsletters]);
+      // 既存のタイトルをチェック
+      console.log('🔍 既存のタイトルをチェック中...');
+      const existingNewsletters = await getNewsletters();
+      const duplicateTitle = existingNewsletters.find(
+        (n) => n.title.toLowerCase() === title.toLowerCase()
+      );
 
-    // カスタムの場合は入力欄をクリア
-    if (title !== generateMonthlyTitle()) {
-      setNewsletterTitle('');
+      if (duplicateTitle) {
+        alert(
+          `エラー: 同じ名前のデジタル回覧板が既に存在します。\n\n` +
+          `既存: 「${duplicateTitle.title}」\n` +
+          `作成日: ${new Date(duplicateTitle.created_at).toLocaleDateString('ja-JP')}\n\n` +
+          `別の名前を指定してください。`
+        );
+        return;
+      }
+
+      // Supabaseに空のNewsletterを保存
+      const newsletter = {
+        organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
+        title: title,
+        issue_date: new Date().toISOString().split('T')[0],
+        source_pdf_url: null,
+        status: 'draft' as const,
+        created_by: import.meta.env.VITE_DEFAULT_USER_ID || null,
+        published_at: null,
+      };
+
+      // 記事0件で保存
+      console.log('💾 Supabaseに保存中...（記事0件）');
+      const result = await saveNewsletter(newsletter, []);
+      console.log('✅ Newsletter保存完了:', result.newsletter.id);
+
+      // 保存されたNewsletterを編集モードとして扱う
+      setCurrentNewsletter(result.newsletter);
+      setEditingNewsletterId(result.newsletter.id);
+      setIsEditMode(true);
+      setNewsletterTitle(title);
+      setAccumulatedArticles([]);
+      setUploadedPDFs([]);
+
+      // カスタムの場合は入力欄をクリア
+      if (title !== generateMonthlyTitle()) {
+        setNewsletterTitle('');
+      }
+
+      alert(`デジタル回覧板「${title}」を作成しました。\nSupabaseに保存済みです。PDFを追加してください。`);
+    } catch (error: any) {
+      console.error('❌ Newsletter作成エラー:', error);
+      alert(`デジタル回覧板の作成に失敗しました\n\nエラー: ${error.message}\n\nSupabaseの接続設定を確認してください。`);
     }
-
-    alert(`デジタル回覧板「${title}」を作成しました。PDFを追加してください。`);
   };
 
   /**
    * 月号形式でデジタル回覧板を作成
    */
-  const handleCreateMonthlyNewsletter = () => {
+  const handleCreateMonthlyNewsletter = async () => {
     const title = generateMonthlyTitle();
-    createNewsletter(title);
+    await createNewsletter(title);
   };
 
   /**
    * カスタムタイトルでデジタル回覧板を作成
    */
-  const handleCreateCustomNewsletter = () => {
+  const handleCreateCustomNewsletter = async () => {
     const title = newsletterTitle.trim();
     if (!title) {
       alert('タイトルを入力してください');
       return;
     }
-    createNewsletter(title);
+    await createNewsletter(title);
   };
 
   /**
@@ -987,12 +964,13 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                     }`}>
                       {isEditMode ? (
                         <>
-                          既存の記事: {accumulatedArticles.filter(a => a.id && !a.id.startsWith('a-')).length}件 / 
+                          Supabase保存済み / 既存の記事: {accumulatedArticles.filter(a => a.id && !a.id.startsWith('a-')).length}件 / 
                           新規追加: {accumulatedArticles.filter(a => !a.id || a.id.startsWith('a-')).length}件
                           {uploadedPDFs.length > 0 && ` / 追加PDF: ${uploadedPDFs.length}個`}
                         </>
                       ) : (
                         <>
+                          {/* 新しい実装では常に編集モードになるため、このケースは発生しないはず */}
                           合計 {accumulatedArticles.length} 件の記事
                           {uploadedPDFs.length > 0 && ` / ${uploadedPDFs.length} 個のPDF`}
                         </>
