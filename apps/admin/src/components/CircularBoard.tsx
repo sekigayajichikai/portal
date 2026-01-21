@@ -382,7 +382,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
 
       if (extractionMode === 'brief') {
         // 簡易モード：タイトル + 1行要約のみ
-        console.log('📝 地域の知らせ：簡単登録モード...');
+        console.log('📝 地域のお知らせ：簡単登録モード...');
         result = await extractBriefArticleFromPDF(
           pendingPDFBase64,
           MOCK_CATEGORIES,
@@ -402,7 +402,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
         }));
       } else {
         // 詳細モード：4段階要約で記事を抽出
-        console.log('📝 自治会の回覧板：記事を詳しく作成中...');
+        console.log('📝 自治会のお知らせ：記事を詳しく作成中...');
         result = await extractArticlesFromPDF(pendingPDFBase64, MOCK_CATEGORIES);
 
         // 記事にIDとsourceを付与 + 元PDFを添付
@@ -458,7 +458,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
         setPendingPDFBase64(null);
 
         // モードに応じたメッセージ
-        const modeLabel = extractionMode === 'detailed' ? '自治会の回覧板' : '地域の知らせ';
+        const modeLabel = extractionMode === 'detailed' ? '自治会のお知らせ' : '地域のお知らせ';
         const message = extractionMode === 'detailed'
           ? `【${modeLabel}】\n${title}から${newArticles.length}件の記事を追加しました`
           : `【${modeLabel}】\n「${title}」を追加しました`;
@@ -1043,7 +1043,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                   <div className="space-y-3">
                     <p className="text-sm font-medium text-slate-700 mb-3">抽出モード</p>
                     
-                    {/* カード1: 自治会の回覧板 */}
+                    {/* カード1: 自治会のお知らせ */}
                     <div
                       onClick={() => setExtractionMode('detailed')}
                       className={`
@@ -1059,7 +1059,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                           <Check size={20} className="text-primary-600 mt-0.5 flex-shrink-0" />
                         )}
                         <div className="flex-1">
-                          <p className="text-base font-semibold text-slate-800">自治会の回覧板</p>
+                          <p className="text-base font-semibold text-slate-800">自治会のお知らせ</p>
                           <p className="text-sm text-slate-600 mt-1">記事を詳しく作成</p>
                           <p className="text-xs text-slate-500 mt-1">処理時間: 約30-60秒</p>
                         </div>
@@ -1082,7 +1082,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                           <Check size={20} className="text-primary-600 mt-0.5 flex-shrink-0" />
                         )}
                         <div className="flex-1">
-                          <p className="text-base font-semibold text-slate-800">地域の知らせ</p>
+                          <p className="text-base font-semibold text-slate-800">地域のお知らせ</p>
                           <p className="text-sm text-slate-600 mt-1">PDFで保管（簡単登録）</p>
                           <p className="text-xs text-slate-500 mt-1">処理時間: 約5-10秒</p>
                         </div>
