@@ -8,6 +8,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import type { Article, Category, ExtractionResult } from '../types/index.js';
+import type { BusScheduleExtractionResult, BusSchedule } from '../types/index.js';
 import { MOCK_ARTICLES } from '../constants/mockData.js';
 
 /**
@@ -614,4 +615,195 @@ JSON形式で出力してください：
       suggestedIssueNumber: '',
     };
   }
+}
+
+/**
+ * PDFからバス時刻表を抽出
+ *
+ * Claude Sonnet 4.5を使用してバス時刻表PDFを解析し、
+ * 路線名、バス停名、時刻を構造化して抽出します。
+ *
+ * @param pdfBase64 - Base64エンコードされたPDFデータ
+ * @returns 抽出されたバス時刻表データと処理時間
+ */
+export async function extractBusScheduleFromPDF(
+  pdfBase64: string
+): Promise<BusScheduleExtractionResult> {
+  const client = getClaudeClient();
+
+  if (!client) {
+    // APIキーがない場合はモックデータを返す
+    return mockExtractBusSchedule();
+  }
+
+  const startTime = Date.now();
+
+  const prompt = `このPDFはコミュニティバスの時刻表です。以下の情報を抽出してJSON形式で返してください。
+
+【抽出する情報】
+1. 路線名（例: "駅方面", "市民病院方面"）
+2. バス停名（例: "自治会館前", "中央公園"）
+3. 行き先（例: "中央駅前"）
+4. 平日の時刻リスト（配列）
+5. 休日（土日祝）の時刻リスト（配列）
+6. 備考や注意事項（あれば）
+
+【出力形式】
+以下のJSON形式で返してください。複数の路線がある場合は配列で返してください。
+
+\`\`\`json
+{
+  "schedules": [
+    {
+      "routeName": "駅方面",
+      "stopName": "自治会館前",
+      "destination": "中央駅前",
+      "scheduleData": {
+        "weekday": ["07:15", "08:45", "10:30", "13:00", "16:45", "18:30"],
+        "holiday": ["08:00", "10:00", "13:00", "16:00", "18:00"]
+      },
+      "notes": "年末年始は運休",
+      "displayOrder": 0,
+      "isActive": true
+    }
+  ]
+}
+\`\`\`
+
+【重要な注意事項】
+- 時刻は必ず "HH:mm" 形式（24時間表記、ゼロパディング）で返してください
+- 平日と休日（土日祝）の時刻を区別してください
+- 平日/休日の区別がない場合は、両方に同じ時刻を設定してください
+- 時刻は昇順（早い時刻から遅い時刻）にソートしてください
+- JSON以外の説明文は不要です。JSONのみを返してください`;
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: pdfBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: prompt,
+            },
+          ],
+        },
+      ],
+    });
+
+    // レスポンスからテキストを抽出
+    const textContent = response.content.find((c) => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('テキストレスポンスが見つかりません');
+    }
+
+    console.log('📄 Claude レスポンス:', textContent.text);
+
+    // JSONを抽出して解析
+    const schedules = parseBusSchedulesFromResponse(textContent.text);
+
+    return {
+      schedules,
+      processingTime: Date.now() - startTime,
+    };
+  } catch (error) {
+    console.error('バス時刻表抽出エラー:', error);
+    throw error;
+  }
+}
+
+/**
+ * Claudeのレスポンスからバス時刻表データを解析
+ *
+ * @param responseText - Claudeからのレスポンステキスト
+ * @returns パースされたバス時刻表の配列
+ */
+function parseBusSchedulesFromResponse(
+  responseText: string
+): Omit<BusSchedule, 'id' | 'createdAt' | 'updatedAt'>[] {
+  try {
+    // JSONブロックを探す（```json ... ``` または { ... }）
+    const jsonMatch =
+      responseText.match(/```json\s*(\{[\s\S]*?\})\s*```/) ||
+      responseText.match(/(\{[\s\S]*\})/);
+
+    if (!jsonMatch) {
+      throw new Error('JSONデータが見つかりません');
+    }
+
+    const parsed = JSON.parse(jsonMatch[1]);
+
+    if (!parsed.schedules || !Array.isArray(parsed.schedules)) {
+      throw new Error('schedules配列が見つかりません');
+    }
+
+    // データの検証とデフォルト値の設定
+    return parsed.schedules.map((schedule: any) => ({
+      routeName: schedule.routeName || '不明な路線',
+      stopName: schedule.stopName || '不明なバス停',
+      destination: schedule.destination || undefined,
+      scheduleData: {
+        weekday: Array.isArray(schedule.scheduleData?.weekday)
+          ? schedule.scheduleData.weekday
+          : [],
+        holiday: Array.isArray(schedule.scheduleData?.holiday)
+          ? schedule.scheduleData.holiday
+          : [],
+      },
+      notes: schedule.notes || undefined,
+      displayOrder: schedule.displayOrder ?? 0,
+      isActive: schedule.isActive ?? true,
+    }));
+  } catch (error) {
+    console.error('バス時刻表パースエラー:', error);
+    console.error('レスポンステキスト:', responseText);
+    throw new Error(`バス時刻表データの解析に失敗しました: ${error}`);
+  }
+}
+
+/**
+ * モックバス時刻表データを返す（APIキー未設定時）
+ */
+function mockExtractBusSchedule(): BusScheduleExtractionResult {
+  console.log('📋 モックバス時刻表データを使用します');
+
+  return {
+    schedules: [
+      {
+        routeName: '駅方面',
+        stopName: '自治会館前',
+        destination: '中央駅前',
+        scheduleData: {
+          weekday: ['07:15', '08:45', '10:30', '13:00', '16:45', '18:30'],
+          holiday: ['08:00', '10:00', '13:00', '16:00', '18:00'],
+        },
+        notes: 'モックデータです',
+        displayOrder: 0,
+        isActive: true,
+      },
+      {
+        routeName: '市民病院方面',
+        stopName: '中央公園',
+        destination: '市民病院',
+        scheduleData: {
+          weekday: ['09:00', '11:00', '14:00', '16:00'],
+          holiday: ['09:30', '13:30', '16:30'],
+        },
+        displayOrder: 1,
+        isActive: true,
+      },
+    ],
+    processingTime: 100,
+  };
 }

@@ -6,7 +6,7 @@
  * @module services/aiService
  */
 
-import type { Category, ExtractionResult } from '../types/index.js';
+import type { Category, ExtractionResult, BusScheduleExtractionResult } from '../types/index.js';
 import * as claudeService from './claudeService.js';
 import * as openRouterService from './openRouterService.js';
 
@@ -259,5 +259,40 @@ export async function extractPDFMetadata(
         suggestedTitle: '広報誌',
         suggestedIssueNumber: '',
       };
+  }
+}
+
+/**
+ * PDFからバス時刻表を抽出
+ *
+ * Claude APIを使用してバス時刻表PDFを解析し、
+ * 路線名、バス停名、時刻データ（平日/休日別）を抽出します。
+ *
+ * @param pdfBase64 - Base64エンコードされたPDFデータ
+ * @returns 抽出されたバス時刻表データと処理時間
+ */
+export async function extractBusScheduleFromPDF(
+  pdfBase64: string
+): Promise<BusScheduleExtractionResult> {
+  const provider = selectProvider();
+
+  try {
+    switch (provider) {
+      case 'anthropic':
+        console.log('✅ Anthropic Claude APIでバス時刻表を抽出します');
+        return await claudeService.extractBusScheduleFromPDF(pdfBase64);
+
+      case 'openrouter':
+        // OpenRouterは現在PDFサポートが不完全なのでモックにフォールバック
+        console.warn('⚠️ OpenRouterはPDFバス時刻表抽出に対応していません。モックデータを使用します。');
+        return await claudeService.extractBusScheduleFromPDF(pdfBase64);
+
+      default:
+        console.log('📋 モックデータを使用します（バス時刻表抽出）');
+        return await claudeService.extractBusScheduleFromPDF(pdfBase64);
+    }
+  } catch (error: any) {
+    console.error(`${provider}でのバス時刻表抽出に失敗しました:`, error);
+    throw error;
   }
 }

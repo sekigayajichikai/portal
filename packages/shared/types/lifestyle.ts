@@ -3,9 +3,38 @@
  */
 
 /**
- * バススケジュール情報（管理者視点）
+ * バス時刻表の時刻データ（平日/休日別）
+ */
+export interface BusScheduleData {
+  weekday: string[];  // 平日の時刻 ["08:00", "09:30", ...]
+  holiday: string[];  // 休日（土日祝）の時刻 ["09:00", "11:00", ...]
+}
+
+/**
+ * バススケジュール情報（データベース対応版）
  */
 export interface BusSchedule {
+  id: string;
+  organizationId?: string;
+  routeName: string;
+  stopName: string;
+  destination?: string;
+  scheduleData: BusScheduleData;
+  sourcePdfUrl?: string;
+  validFrom?: string;  // ISO 8601 date string
+  validUntil?: string; // ISO 8601 date string
+  notes?: string;
+  displayOrder: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * バススケジュール情報（旧形式・後方互換性のため保持）
+ * @deprecated 新しいコードではBusScheduleを使用してください
+ */
+export interface BusScheduleLegacy {
   id: string;
   route: string;
   stopName: string;
@@ -19,7 +48,17 @@ export interface BusScheduleForResident {
   id: string;
   route: string;
   destination: string;
-  times: string[]; // "HH:mm" format
+  times: string[]; // "HH:mm" format - 現在の曜日に応じた時刻リスト
+  currentDayType?: 'weekday' | 'holiday'; // 現在表示している時刻の種類
+}
+
+/**
+ * PDF抽出結果（バス時刻表）
+ */
+export interface BusScheduleExtractionResult {
+  schedules: Omit<BusSchedule, 'id' | 'createdAt' | 'updatedAt'>[];
+  processingTime: number;
+  error?: string;
 }
 
 /**

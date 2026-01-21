@@ -3,7 +3,6 @@ import MainLayout from '@/components/layout/MainLayout';
 import { TabType, User, Circular, Payment } from '@/types/types';
 import {
   GARBAGE_DATA,
-  BUS_SCHEDULES,
   MOCK_EVENTS,
   MOCK_USER,
   INITIAL_CIRCULARS,
@@ -17,6 +16,7 @@ import GarbageCalendarView from '@/components/features/garbage/GarbageCalendarVi
 import BusScheduleView from '@/components/features/bus/BusScheduleView';
 import EventCalendarView from '@/components/features/calendar/EventCalendarView';
 import CommunityRadioView from '@/components/features/radio/CommunityRadioView';
+import { useBusScheduleData } from '@/hooks/useBusSchedule';
 
 const App: React.FC = () => {
   // localStorageから設定を読み込み（永続化）
@@ -28,6 +28,9 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [isSimpleMode, setIsSimpleMode] = useState(loadSimpleModeFromStorage);
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // バス時刻表をデータベースから取得
+  const { schedules: busSchedules, isLoading: isBusSchedulesLoading } = useBusScheduleData();
 
   // Auth & Dashboard State
   const [user, setUser] = useState<User | null>(null);
@@ -99,7 +102,7 @@ const App: React.FC = () => {
       {activeTab === 'home' && (
         <HomeView
           isSimpleMode={isSimpleMode}
-          busSchedules={BUS_SCHEDULES}
+          busSchedules={busSchedules}
           events={MOCK_EVENTS}
           currentTime={currentTime}
         />
@@ -118,7 +121,7 @@ const App: React.FC = () => {
       {activeTab === 'bus' && (
         <BusScheduleView
           isSimpleMode={isSimpleMode}
-          busSchedules={BUS_SCHEDULES}
+          busSchedules={busSchedules}
           currentTime={currentTime}
         />
       )}
