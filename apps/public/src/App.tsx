@@ -37,12 +37,24 @@ const App: React.FC = () => {
   useEffect(() => {
     const loadBusSchedules = async () => {
       try {
-        console.log('🚌 バス時刻表を取得中...');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🚌 App.tsx - バス時刻表を取得中...');
         const schedules = await fetchBusSchedules();
-        console.log('🚌 取得したバス時刻表:', schedules);
+        console.log('🚌 App.tsx - 取得完了:');
+        console.log('  📊 取得件数:', schedules.length);
+        console.log('  📝 取得データ:', schedules);
+        
+        // ユニークなバス停名を抽出して確認
+        const uniqueStopNames = [...new Set(schedules.map(s => s.stopName))].sort();
+        console.log('  🏷️ ユニークなバス停名:', uniqueStopNames);
+        console.log('  🏷️ ユニークなバス停の数:', uniqueStopNames.length);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
         setBusSchedules(schedules);
       } catch (error) {
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.error('❌ バス時刻表の取得に失敗しました:', error);
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       } finally {
         setIsBusSchedulesLoading(false);
       }

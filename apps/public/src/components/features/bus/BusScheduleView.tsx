@@ -1,6 +1,6 @@
 /**
  * バス時刻表ビューコンポーネント（リニューアル版）
- * 
+ *
  * お気に入りバス停の管理、方面切り替え、時刻表示を統合したUIを提供します。
  */
 
@@ -31,29 +31,47 @@ const BusScheduleView: React.FC<BusScheduleViewProps> = ({
   const [selectedDestinations, setSelectedDestinations] = useState<Record<string, string>>({});
 
   // デバッグ: データを確認
-  console.log('🚌 BusScheduleView - データ確認:', {
-    busSchedulesCount: busSchedules.length,
-    busSchedules: busSchedules,
-    favorites: favorites,
-  });
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🚌 BusScheduleView - データ確認:');
+  console.log('  📊 取得したバス時刻表の件数:', busSchedules.length);
+  console.log('  📝 バス時刻表の詳細:', busSchedules);
+  console.log('  ⭐ お気に入りバス停:', favorites);
+  console.log('  📍 お気に入りの件数:', favorites.length);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   // バス停をグループ化
   const busStopGroups = useMemo(() => {
     const groups = groupByBusStop(busSchedules);
-    console.log('🚌 グループ化されたバス停:', groups);
+    console.log('🚌 グループ化されたバス停:');
+    console.log('  📦 グループ数:', groups.length);
+    console.log('  📦 グループの詳細:', groups);
+    console.log('  🏷️ バス停名のリスト:', groups.map(g => g.stopName));
     return groups;
   }, [busSchedules]);
 
   // お気に入りバス停のみフィルタリング
   const favoriteBusStops = useMemo(() => {
-    return busStopGroups.filter((group) => favorites.includes(group.stopName));
+    const filtered = busStopGroups.filter((group) => favorites.includes(group.stopName));
+    console.log('🚌 お気に入りバス停のフィルタリング:');
+    console.log('  ⭐ お気に入りに登録済み:', filtered.map(g => g.stopName));
+    console.log('  ⭐ お気に入りの件数:', filtered.length);
+    return filtered;
   }, [busStopGroups, favorites]);
 
   // 利用可能なバス停（お気に入り以外）
   const availableStops = useMemo(() => {
     const allStops = getUniqueBusStops(busSchedules);
-    console.log('🚌 利用可能なバス停:', allStops);
-    return allStops.filter((stop) => !favorites.includes(stop));
+    console.log('🚌 利用可能なバス停の計算:');
+    console.log('  📍 全バス停のリスト:', allStops);
+    console.log('  📍 全バス停の件数:', allStops.length);
+    console.log('  ⭐ お気に入り:', favorites);
+
+    const available = allStops.filter((stop) => !favorites.includes(stop));
+    console.log('  ✅ ドロップダウンに表示するバス停:', available);
+    console.log('  ✅ ドロップダウンに表示する件数:', available.length);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    return available;
   }, [busSchedules, favorites]);
 
   // 方面選択のハンドラ
@@ -96,11 +114,26 @@ const BusScheduleView: React.FC<BusScheduleViewProps> = ({
         isSimpleMode={isSimpleMode}
       />
 
+      {/* データ不足の警告（本番環境） */}
+      {!import.meta.env.DEV && busSchedules.length === 0 && (
+        <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 mb-4">
+          <p className="text-amber-800 font-bold mb-2">⚠️ バス時刻表が登録されていません</p>
+          <p className="text-sm text-amber-700">
+            管理者にお問い合わせください。バス時刻表のデータが登録されていない可能性があります。
+          </p>
+        </div>
+      )}
+
       {/* お気に入りバス停の時刻表 */}
       {favoriteBusStops.length === 0 ? (
         <div className="text-center py-12 bg-slate-50 rounded-2xl">
           <p className="text-slate-600 font-medium mb-2">お気に入りバス停がありません</p>
           <p className="text-sm text-slate-500">上のボタンからバス停を追加してください</p>
+          {availableStops.length === 0 && busSchedules.length > 0 && (
+            <p className="text-xs text-amber-600 mt-3">
+              ℹ️ 全てのバス停が既にお気に入りに登録されています
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-4">

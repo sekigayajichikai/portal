@@ -26,7 +26,7 @@ export const DirectionSwitch: React.FC<DirectionSwitchProps> = ({
   }
 
   return (
-    <div className="flex gap-2 flex-wrap mb-3">
+    <div className="flex gap-3 mb-3">
       {destinations.map((destination) => {
         const isSelected = destination === selected;
         
@@ -34,17 +34,17 @@ export const DirectionSwitch: React.FC<DirectionSwitchProps> = ({
           <button
             key={destination}
             onClick={() => onChange(destination)}
-            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+            className={`flex-1 px-4 py-3 rounded-lg font-bold text-sm transition-all text-center ${
               isSelected
                 ? isSimpleMode
-                  ? 'bg-slate-800 text-white shadow-md'
-                  : 'bg-purple-600 text-white shadow-md'
+                  ? 'bg-slate-800 text-white shadow-lg scale-105'
+                  : 'bg-blue-600 text-white shadow-lg scale-105'
                 : isSimpleMode
-                  ? 'bg-white text-slate-600 border-2 border-slate-200 hover:border-slate-300'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                  ? 'bg-white text-slate-600 border-2 border-slate-300 hover:border-slate-400 hover:shadow-md'
+                  : 'bg-white text-slate-600 border-2 border-slate-300 hover:border-blue-400 hover:shadow-md'
             }`}
           >
-            {destination}
+            {destination} 方面
           </button>
         );
       })}

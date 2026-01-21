@@ -22,15 +22,29 @@ export function useFavoriteBusStops() {
   // localStorageから読み込み
   useEffect(() => {
     try {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('⭐ useFavoriteBusStops - localStorage読み込み開始');
       const saved = localStorage.getItem(STORAGE_KEY);
+      console.log('  📦 保存されているデータ (raw):', saved);
+      
       if (saved) {
         const parsed = JSON.parse(saved);
+        console.log('  📦 パース後のデータ:', parsed);
+        console.log('  📦 データ型:', typeof parsed, Array.isArray(parsed) ? '(配列)' : '(配列ではない)');
+        
         if (Array.isArray(parsed)) {
           setFavorites(parsed);
+          console.log('  ✅ お気に入りバス停をセット:', parsed);
+          console.log('  ✅ 件数:', parsed.length);
         }
+      } else {
+        console.log('  ℹ️ 保存データなし（初回起動または未登録）');
       }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } catch (error) {
-      console.error('お気に入りバス停の読み込みに失敗しました:', error);
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('❌ お気に入りバス停の読み込みに失敗しました:', error);
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } finally {
       setIsLoading(false);
     }
