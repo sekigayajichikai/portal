@@ -37,6 +37,8 @@ export default defineConfig(({ mode }) => {
       'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
       // Stripe
       'process.env.STRIPE_PUBLISHABLE_KEY': JSON.stringify(env.VITE_STRIPE_PUBLISHABLE_KEY),
+      // App Password
+      'process.env.VITE_APP_PASSWORD': JSON.stringify(env.VITE_APP_PASSWORD),
     },
     resolve: {
       alias: {
