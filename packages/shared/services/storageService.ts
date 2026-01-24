@@ -178,6 +178,83 @@ function sanitizeFilename(filename: string): string {
 }
 
 /**
+ * 音声ファイルをSupabase Storageにアップロード
+ *
+ * ファイルは radio バケットに保存され、年月でフォルダ分けされます。
+ * 例: radio/2025/01/radio-newsletter-id-1234567890.wav
+ *
+ * @param audioBlob - アップロードする音声Blob
+ * @param filename - ファイル名
+ * @returns アップロード結果（URL、パス、ファイル名）
+ * @throws アップロードに失敗した場合
+ */
+export async function uploadAudio(audioBlob: Blob, filename: string): Promise<UploadResult> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    throw new Error('Supabaseが設定されていません');
+  }
+
+  // ファイル名の生成（年月/ファイル名）
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const path = `${year}/${month}/${filename}`;
+
+  try {
+    // 音声ファイルをアップロード
+    const { data, error } = await supabase.storage.from('radio').upload(path, audioBlob, {
+      contentType: 'audio/wav',
+      cacheControl: '3600',
+      upsert: true, // 同名ファイルがあれば上書き（再生成対応）
+    });
+
+    if (error) {
+      console.error('Supabase Storage 音声アップロードエラー:', error);
+      throw new Error(`音声ファイルのアップロードに失敗しました: ${error.message}`);
+    }
+
+    // 公開URLを取得
+    const { data: urlData } = supabase.storage.from('radio').getPublicUrl(path);
+
+    return {
+      url: urlData.publicUrl,
+      path: data.path,
+      filename: filename,
+    };
+  } catch (error: any) {
+    console.error('音声アップロード処理エラー:', error);
+    throw new Error(`音声ファイルのアップロードに失敗しました: ${error.message}`);
+  }
+}
+
+/**
+ * 音声ファイルを削除
+ *
+ * @param path - 削除するファイルのパス（バケット内の相対パス）
+ * @throws 削除に失敗した場合
+ */
+export async function deleteAudio(path: string): Promise<void> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    throw new Error('Supabaseが設定されていません');
+  }
+
+  try {
+    const { error } = await supabase.storage.from('radio').remove([path]);
+
+    if (error) {
+      console.error('Supabase Storage 音声削除エラー:', error);
+      throw new Error(`音声ファイルの削除に失敗しました: ${error.message}`);
+    }
+  } catch (error: any) {
+    console.error('音声削除処理エラー:', error);
+    throw new Error(`音声ファイルの削除に失敗しました: ${error.message}`);
+  }
+}
+
+/**
  * ストレージの使用状況を取得（デバッグ用）
  *
  * @returns バケット内のファイル一覧

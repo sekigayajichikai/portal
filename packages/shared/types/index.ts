@@ -6,6 +6,9 @@
 // 共通型
 export * from './common.js';
 
+// 認証関連
+export * from './auth.js';
+
 // 会員関連
 export * from './member.js';
 

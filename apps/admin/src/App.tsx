@@ -7,9 +7,14 @@ import { FeeManagement } from '@/components/FeeManagement';
 import { LifestyleManager } from '@/components/LifestyleManager';
 import { RadioGenerator } from '@/components/RadioGenerator';
 import { PublicContent } from '@/components/PublicContent';
-import { AppView, PublicEvent } from '@cc-saas/shared';
+import { AppView, PublicEvent, AuthProvider, useAuth, PasswordLogin } from '@cc-saas/shared';
 
-function App() {
+/**
+ * 管理画面のメインコンテンツ
+ * 認証状態をチェックして、未ログイン時はPasswordLoginを表示します
+ */
+function AppContent() {
+  const { isAuthenticated, isLoading } = useAuth();
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   // Shared state for extracted events (simulating backend persistence)
   const [extractedEvents, setExtractedEvents] = useState<PublicEvent[]>([]);
@@ -40,10 +45,37 @@ function App() {
     }
   };
 
+  // 認証状態の初期化中
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-xl text-gray-600">読み込み中...</div>
+      </div>
+    );
+  }
+
+  // 未ログインの場合はパスワード入力画面を表示
+  if (!isAuthenticated) {
+    return <PasswordLogin />;
+  }
+
+  // ログイン済みの場合は通常の管理画面を表示
   return (
     <Layout currentView={currentView} onChangeView={setCurrentView}>
       <div className="animate-in fade-in duration-300">{renderView()}</div>
     </Layout>
+  );
+}
+
+/**
+ * 管理画面のルートコンポーネント
+ * AuthProviderでアプリ全体をラップして認証機能を提供します
+ */
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

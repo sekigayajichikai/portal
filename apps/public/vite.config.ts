@@ -4,9 +4,11 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   // プロジェクトルートの.envを読み込む
-  const env = loadEnv(mode, path.resolve(__dirname, '../../'), '');
+  const rootDir = path.resolve(__dirname, '../../');
+  const env = loadEnv(mode, rootDir, '');
   return {
     root: '.',
+    envDir: rootDir, // プロジェクトルートの.envを読み込む
     server: {
       port: 5174,
       host: '0.0.0.0',

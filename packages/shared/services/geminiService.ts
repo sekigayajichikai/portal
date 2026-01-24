@@ -14,18 +14,24 @@ import { PublicEvent } from '../types/index.js';
  * APIキーは環境変数から取得します。
  */
 function getAIClient(): GoogleGenAI | null {
-  // Viteの環境変数または通常の環境変数から取得
+  // 環境変数のチェック順序
   const apiKey =
-    (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) ||
-    (import.meta as any).env?.VITE_GEMINI_API_KEY ||
+    (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || // vite.config.tsのdefineから
+    (import.meta as any).env?.VITE_GEMINI_API_KEY || // Viteの標準的な方法
     (import.meta as any).env?.GEMINI_API_KEY;
 
+  console.log('🔍 [geminiService] APIキー読み込み状況:');
+  console.log('  process.env.GEMINI_API_KEY:', !!(typeof process !== 'undefined' && process.env?.GEMINI_API_KEY));
+  console.log('  import.meta.env.VITE_GEMINI_API_KEY:', !!(import.meta as any).env?.VITE_GEMINI_API_KEY);
+  console.log('  最終判定:', !!apiKey);
+
   if (!apiKey) {
-    console.warn('Gemini APIキーが設定されていません。AI機能は動作しません。');
+    console.error('❌ [geminiService] Gemini APIキーが設定されていません。');
     return null;
   }
 
-  return new GoogleGenAI(apiKey);
+  console.log('✅ [geminiService] Gemini APIキーが見つかりました');
+  return new GoogleGenAI({ apiKey });
 }
 
 /**
@@ -36,27 +42,23 @@ export const getNeighborhoodTips = async (query: string, isSimpleMode: boolean =
   if (!ai) return isSimpleMode ? 'システムエラーが発生しました。' : 'エラーだよ！';
 
   try {
-    const model = ai.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      systemInstruction: isSimpleMode
-        ? 'あなたは親切で丁寧な自治会のコンシェルジュです。高齢の方にも分かりやすく、丁寧な言葉遣いで、正確な案内を心がけてください。絵文字は控えめに、読みやすさを重視してください。'
-        : 'あなたは活気あふれる自治会のAIアシスタントです。20代〜30代の若者が『この地域に住んでてよかった！』と思えるような情報を、明るく楽しく提供します。絵文字を使い、フレンドリーに接してください。',
-    });
+    const systemInstruction = isSimpleMode
+      ? 'あなたは親切で丁寧な自治会のコンシェルジュです。高齢の方にも分かりやすく、丁寧な言葉遣いで、正確な案内を心がけてください。絵文字は控えめに、読みやすさを重視してください。'
+      : 'あなたは活気あふれる自治会のAIアシスタントです。20代〜30代の若者が『この地域に住んでてよかった！』と思えるような情報を、明るく楽しく提供します。絵文字を使い、フレンドリーに接してください。';
 
     const prompt = isSimpleMode
       ? `自治会のWebアプリでの質問です。丁寧で分かりやすい日本語で回答してください。質問: ${query}`
       : `あなたは若者に大人気の地域コンシェルジュです。フレンドリーに回答してください。質問: ${query}`;
 
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: systemInstruction + '\n\n' + prompt }] }],
       generationConfig: {
         temperature: 0.7,
       },
     });
 
-    // システム指示をシステムプロンプトとして扱う（SDKのバージョンにより使い方が異なる場合があるが、ここではシンプルに実装）
-    // 本来は getGenerativeModel の引数で指定するのが望ましい
-    return result.response.text();
+    return result.text;
   } catch (error) {
     console.error('Gemini API Error:', error);
     return isSimpleMode
@@ -73,16 +75,16 @@ export const extractEventsFromText = async (text: string): Promise<PublicEvent[]
   if (!ai) return [];
 
   try {
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const response = await model.generateContent({
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
       contents: [
         {
           role: 'user',
           parts: [
             {
-              text: `Extract all community events, meetings, or gatherings from the following circular text. 
+              text: `Extract all community events, meetings, or gatherings from the following circular text.
       Return them as a structured JSON list. If specific times or locations are missing, infer 'TBD' or the general community area.
-      
+
       Circular Text:
       ${text}`,
             },
@@ -111,7 +113,7 @@ export const extractEventsFromText = async (text: string): Promise<PublicEvent[]
       },
     });
 
-    const responseText = response.response.text();
+    const responseText = response.text;
     if (responseText) {
       const rawEvents = JSON.parse(responseText);
       return rawEvents.map((e: any, index: number) => ({
@@ -135,8 +137,8 @@ export const generateRadioScript = async (sourceText: string): Promise<string> =
   if (!ai) return '';
 
   try {
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const response = await model.generateContent({
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
       contents: [
         {
           role: 'user',
@@ -155,7 +157,7 @@ export const generateRadioScript = async (sourceText: string): Promise<string> =
         },
       ],
     });
-    return response.response.text() || '';
+    return response.text || '';
   } catch (error) {
     console.error('Error generating radio script:', error);
     return '';
@@ -166,29 +168,91 @@ export const generateRadioScript = async (sourceText: string): Promise<string> =
  * ラジオスクリプトから音声（TTS）を生成する
  */
 export const generateRadioAudio = async (script: string): Promise<string> => {
-  const ai = getAIClient();
-  if (!ai) return '';
+  // TTSモデル用にREST APIを直接使用
+  const apiKey =
+    (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) ||
+    (import.meta as any).env?.VITE_GEMINI_API_KEY ||
+    (import.meta as any).env?.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    console.error('❌ Gemini APIキーが設定されていません（TTS）');
+    return '';
+  }
 
   try {
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const response = await model.generateContent({
-      contents: [{ parts: [{ text: script }] }],
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:160',message:'generateRadioAudio ENTRY',data:{scriptLength:script.length,scriptPreview:script.substring(0,200),scriptHasSpecialChars:/[^\x00-\x7F]/.test(script),scriptHasSpeakerMarks:script.includes('A:') || script.includes('B:'),scriptHasDividers:script.includes('---')},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
+
+    // REST API経由でTTSリクエスト（マルチスピーカー対応）
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+    const requestBody = {
+      contents: [{
+        parts: [{ text: script }]
+      }],
       generationConfig: {
-        // @ts-ignore - 現時点でのSDK型定義にない可能性があるが、TTSモデルで使用可能
         responseModalities: ['AUDIO'],
         speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Kore' },
-          },
-        },
+          multiSpeakerVoiceConfig: {
+            speakerVoiceConfigs: [
+              {
+                speaker: 'A',
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: 'Kore' }
+                }
+              },
+              {
+                speaker: 'B',
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: 'Puck' }
+                }
+              }
+            ]
+          }
+        }
+      }
+    };
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:191',message:'TTS REQUEST PAYLOAD',data:{apiUrl:apiUrl.substring(0,100)+'...',requestBodyKeys:Object.keys(requestBody),hasSystemInstruction:!!requestBody.systemInstruction,contentsLength:requestBody.contents.length,generationConfigKeys:Object.keys(requestBody.generationConfig)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C,D'})}).catch(()=>{});
+    // #endregion
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify(requestBody),
     });
 
-    const candidates = (response.response as any).candidates;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:206',message:'TTS API RESPONSE STATUS',data:{responseOk:response.ok,responseStatus:response.status,responseStatusText:response.statusText,responseHeaders:Object.fromEntries(response.headers.entries())},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D,E'})}).catch(()=>{});
+    // #endregion
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:214',message:'TTS API ERROR RESPONSE',data:{errorStatus:response.status,errorText:errorText,errorTextLength:errorText.length,errorParsed:(() => { try { return JSON.parse(errorText); } catch { return null; }})()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'ALL'})}).catch(()=>{});
+      // #endregion
+      throw new Error(`TTS API Error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:225',message:'TTS API SUCCESS RESPONSE',data:{hasData:!!data,dataKeys:data ? Object.keys(data) : [],hasCandidates:!!data?.candidates,candidatesCount:data?.candidates?.length || 0},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'ALL'})}).catch(()=>{});
+    // #endregion
+
+    console.log('🎤 TTS REST API Response:', data);
+
+    const candidates = data?.candidates;
     const base64Audio = candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 
     if (!base64Audio) {
-      throw new Error('No audio data returned');
+      console.error('❌ TTS APIからの音声データが空です');
+      console.error('📋 API Response:', JSON.stringify(data, null, 2));
+      throw new Error('音声データの取得に失敗しました。APIのレスポンスを確認してください。');
     }
 
     const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
@@ -203,8 +267,13 @@ export const generateRadioAudio = async (script: string): Promise<string> => {
 
     outputAudioContext.close();
     return audioUrl;
-  } catch (error) {
-    console.error('Error generating audio:', error);
+  } catch (error: any) {
+    console.error('❌ 音声生成エラー:', error);
+    console.error('📋 エラー詳細:', {
+      message: error?.message,
+      status: error?.status,
+      code: error?.code,
+    });
     return '';
   }
 };

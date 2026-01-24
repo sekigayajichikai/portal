@@ -4,9 +4,18 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   // プロジェクトルートの.envを読み込む
-  const env = loadEnv(mode, path.resolve(__dirname, '../../'), '');
+  const rootDir = path.resolve(__dirname, '../../');
+  const env = loadEnv(mode, rootDir, '');
+
+  // デバッグ: 環境変数が読み込まれているか確認
+  console.log('🔍 Vite環境変数チェック:');
+  console.log('  VITE_GEMINI_API_KEY:', env.VITE_GEMINI_API_KEY ? '✅ 設定済み' : '❌ 未設定');
+  console.log('  VITE_SUPABASE_URL:', env.VITE_SUPABASE_URL ? '✅ 設定済み' : '❌ 未設定');
+  console.log('  VITE_APP_PASSWORD:', env.VITE_APP_PASSWORD ? '✅ 設定済み' : '❌ 未設定');
+
   return {
     root: '.',
+    envDir: rootDir, // プロジェクトルートの.envを読み込む
     server: {
       port: 3000,
       host: '0.0.0.0',

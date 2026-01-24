@@ -18,8 +18,15 @@ import EventCalendarView from '@/components/features/calendar/EventCalendarView'
 import CommunityRadioView from '@/components/features/radio/CommunityRadioView';
 import { fetchBusSchedules } from '@cc-saas/shared/services';
 import type { BusSchedule } from '@cc-saas/shared/types';
+import { AuthProvider, useAuth, PasswordLogin } from '@cc-saas/shared';
 
-const App: React.FC = () => {
+/**
+ * アプリケーションのメインコンテンツ
+ * 認証状態をチェックして、未ログイン時はPasswordLoginを表示します
+ */
+const AppContent: React.FC = () => {
+  const { isAuthenticated, isLoading } = useAuth();
+
   // localStorageから設定を読み込み（永続化）
   const loadSimpleModeFromStorage = (): boolean => {
     const saved = localStorage.getItem('isSimpleMode');
@@ -109,6 +116,21 @@ const App: React.FC = () => {
     localStorage.setItem('isSimpleMode', String(newMode));
   };
 
+  // 認証状態の初期化中
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-xl text-gray-600">読み込み中...</div>
+      </div>
+    );
+  }
+
+  // 未ログインの場合はパスワード入力画面を表示
+  if (!isAuthenticated) {
+    return <PasswordLogin />;
+  }
+
+  // ログイン済みの場合は通常のアプリを表示
   return (
     <MainLayout
       activeTab={activeTab}
@@ -163,6 +185,18 @@ const App: React.FC = () => {
 
       {activeTab === 'radio' && <CommunityRadioView isSimpleMode={isSimpleMode} />}
     </MainLayout>
+  );
+};
+
+/**
+ * アプリケーションのルートコンポーネント
+ * AuthProviderでアプリ全体をラップして認証機能を提供します
+ */
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 
