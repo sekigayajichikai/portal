@@ -1,9 +1,9 @@
 /**
  * Newsletter サービス
- * 
+ *
  * NewsletterとArticleのCRUD操作を提供します。
  * Supabaseデータベースとの連携を担当します。
- * 
+ *
  * @module services/newsletterService
  */
 
@@ -12,10 +12,10 @@ import { Newsletter, Article } from '../types/index.js';
 
 /**
  * Newsletterと記事を保存
- * 
+ *
  * PDFから抽出したNewsletterと記事をSupabaseに保存します。
  * トランザクション的に処理され、Newsletter保存後に記事を一括保存します。
- * 
+ *
  * @param newsletter - 保存するNewsletter情報（idとcreated_atは自動生成）
  * @param articles - 保存する記事の配列（idとnewsletter_idは自動設定）
  * @returns 保存されたNewsletterと記事の配列
@@ -75,10 +75,10 @@ export async function saveNewsletter(
 
 /**
  * Newsletter一覧を取得（記事数も含む）
- * 
+ *
  * 保存されている全Newsletterを新しい順に取得します。
  * 各Newsletterに紐づく記事の件数も同時に取得します。
- * 
+ *
  * @returns Newsletter配列（article_countプロパティ付き）
  * @throws Supabase未接続またはデータベースエラー
  */
@@ -126,9 +126,9 @@ export async function getNewsletters(): Promise<
 
 /**
  * 特定のNewsletterの記事を取得
- * 
+ *
  * Newsletter IDに紐づく全記事をdisplay_order順に取得します。
- * 
+ *
  * @param newsletterId - NewsletterのUUID
  * @returns 記事の配列
  * @throws Supabase未接続またはデータベースエラー
@@ -161,10 +161,10 @@ export async function getArticlesByNewsletterId(
 
 /**
  * 既存のNewsletterに新しい記事を追加
- * 
+ *
  * 既に保存されているNewsletterに対して、追加のPDFから抽出した記事を追加します。
  * 既存の記事数を取得して、display_orderを連番で設定します。
- * 
+ *
  * @param newsletterId - 追加先のNewsletter ID
  * @param newArticles - 追加する記事の配列
  * @returns 追加された記事の配列
@@ -228,10 +228,10 @@ export async function addArticlesToNewsletter(
 
 /**
  * Newsletter削除（記事も一緒に削除される）
- * 
+ *
  * ON DELETE CASCADEにより、Newsletterを削除すると
  * 紐づく記事も自動的に削除されます。
- * 
+ *
  * @param newsletterId - 削除するNewsletterのUUID
  * @throws Supabase未接続またはデータベースエラー
  */
@@ -258,15 +258,15 @@ export async function deleteNewsletter(newsletterId: string): Promise<void> {
 
 /**
  * 記事を更新
- * 
+ *
  * 既存の記事の内容を部分的に更新します。
  * updated_atタイムスタンプは自動的に現在時刻に更新されます。
- * 
+ *
  * @param articleId - 更新する記事のUUID
  * @param updates - 更新するフィールドと値のオブジェクト
  * @returns 更新後の記事データ
  * @throws Supabase未接続またはデータベースエラー
- * 
+ *
  * @example
  * ```typescript
  * await updateArticle('article-123', {
@@ -312,14 +312,14 @@ export async function updateArticle(
 
 /**
  * 複数記事のdisplay_orderを一括更新
- * 
+ *
  * ドラッグ&ドロップなどで記事の順序を変更した際に使用します。
  * 記事IDと新しいdisplay_orderの配列を受け取り、一括で更新します。
- * 
+ *
  * @param updates - 記事IDとdisplay_orderのペアの配列
  * @returns 更新された記事の数
  * @throws Supabase未接続またはデータベースエラー
- * 
+ *
  * @example
  * ```typescript
  * await updateArticleOrders([
@@ -341,7 +341,7 @@ export async function updateArticleOrders(
 
   // 各記事を個別に更新（Supabaseは一括更新のupsertをサポート）
   let updatedCount = 0;
-  
+
   for (const { articleId, displayOrder } of updates) {
     const { error } = await supabase
       .from('articles')
@@ -355,7 +355,7 @@ export async function updateArticleOrders(
       console.error(`❌ 記事順序更新エラー (ID: ${articleId}):`, error);
       throw error;
     }
-    
+
     updatedCount++;
   }
 
@@ -366,12 +366,12 @@ export async function updateArticleOrders(
 
 /**
  * 記事を削除
- * 
+ *
  * 指定された記事をデータベースから削除します。
- * 
+ *
  * @param articleId - 削除する記事のUUID
  * @throws Supabase未接続またはデータベースエラー
- * 
+ *
  * @example
  * ```typescript
  * await deleteArticle('article-123');

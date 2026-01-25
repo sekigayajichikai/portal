@@ -31,18 +31,18 @@ interface CircularBoardProps {
 export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted }) => {
   // タブ管理
   const [activeTab, setActiveTab] = useState<'text' | 'pdf' | 'saved'>('text');
-  
+
   // テキスト回覧板の状態
   const [circulars, setCirculars] = useState<Circular[]>(MOCK_CIRCULARS);
   const [isCreating, setIsCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
-  
+
   // デジタル回覧板の状態
   const [newsletters, setNewsletters] = useState<Newsletter[]>([]);
   const [newsletterTitle, setNewsletterTitle] = useState('');
-  
+
   // 複数PDF対応の新しい状態管理
   const [currentNewsletter, setCurrentNewsletter] = useState<Newsletter | null>(null);
   const [uploadedPDFs, setUploadedPDFs] = useState<{
@@ -56,7 +56,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
   const [accumulatedArticles, setAccumulatedArticles] = useState<Article[]>([]);
   const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
   const [isProcessingPDF, setIsProcessingPDF] = useState(false);
-  
+
   // メタデータ入力ダイアログの状態
   const [showMetadataDialog, setShowMetadataDialog] = useState(false);
   const [suggestedMetadata, setSuggestedMetadata] = useState({
@@ -65,7 +65,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
   });
   const [pendingPDFBase64, setPendingPDFBase64] = useState<string | null>(null);
   const [isMetadataLoading, setIsMetadataLoading] = useState(false);
-  
+
   // Supabase保存の状態
   const [isSaving, setIsSaving] = useState(false);
 
@@ -99,7 +99,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
 
   /**
    * デジタル回覧板と記事をSupabaseに保存
-   * 
+   *
    * Newsletter作成時に即座に保存されるため、この関数は編集モードでのみ使用されます。
    */
   const handleSaveNewsletter = async () => {
@@ -235,7 +235,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
 
   /**
    * 共通のデジタル回覧板作成処理
-   * 
+   *
    * Newsletter作成時に即座にSupabaseに保存します（記事0件で保存）。
    * 保存後は編集モードとして扱い、後からPDFを追加できます。
    */
@@ -341,7 +341,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
       // AIでメタデータ提案
       const metadata = await extractPDFMetadata(pdfBase64);
       console.log('🔍 CircularBoard: AIから取得したメタデータ:', metadata);
-      
+
       setSuggestedMetadata(metadata);
       console.log('🔍 CircularBoard: setSuggestedMetadata実行後');
 
@@ -631,10 +631,10 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
    */
   const handleDuplicateCancel = () => {
     setShowDuplicateDialog(false);
-    
+
     // 新しい記事を全て追加（重複を無視）
     setAccumulatedArticles(prev => [...prev, ...pendingNewArticles]);
-    
+
     // 選択をクリア
     setSelectedPDF(null);
     setPendingPDFBase64(null);
@@ -648,9 +648,9 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
    * 記事が更新された時の処理
    */
   const handleArticleUpdate = (articleId: string, updates: Partial<Article>) => {
-    setAccumulatedArticles(prev => 
-      prev.map(article => 
-        article.id === articleId 
+    setAccumulatedArticles(prev =>
+      prev.map(article =>
+        article.id === articleId
           ? { ...article, ...updates, updated_at: new Date().toISOString() }
           : article
       )
@@ -659,18 +659,18 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
 
   /**
    * 記事を削除する処理
-   * 
+   *
    * Supabaseに保存済みの記事はデータベースからも削除します。
    * 新規作成中の記事（IDが'a-'で始まる）はローカル状態からのみ削除します。
    */
   const handleArticleDelete = async (articleId: string) => {
     console.log('📍 handleArticleDelete開始:', articleId);
-    
+
     try {
       // 新規作成中の記事かどうかを判定
       const isNewArticle = articleId.startsWith('a-');
       console.log('📍 記事タイプ:', isNewArticle ? '新規作成中' : 'Supabase保存済み');
-      
+
       if (!isNewArticle) {
         // Supabaseに保存済みの記事の場合、データベースからも削除
         console.log('🗑️ Supabaseから記事を削除中...', articleId);
@@ -679,7 +679,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
       } else {
         console.log('📝 新規作成中の記事なので、ローカル状態からのみ削除します');
       }
-      
+
       // ローカル状態から削除
       console.log('🗑️ ローカル状態から削除中...');
       setAccumulatedArticles(prev => {
@@ -690,7 +690,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
         });
         return filtered;
       });
-      
+
       alert('記事を削除しました');
       console.log('✅ handleArticleDelete完了');
     } catch (error: any) {
@@ -895,7 +895,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                 <FileText size={20} className="text-primary-600" />
                 新しいデジタル回覧板を作成
               </h3>
-              
+
               <div className="space-y-6">
                 {/* 月号形式セクション */}
                 <div className="space-y-3">
@@ -903,7 +903,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                     <Calendar size={16} className="text-primary-600" />
                     月号形式
                   </h4>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-slate-600 mb-2">
                       年月を選択
@@ -933,14 +933,14 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* プレビュー */}
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-sm text-blue-700">
                       タイトル: <span className="font-bold">{generateMonthlyTitle()}</span>
                     </p>
                   </div>
-                  
+
                   <button
                     onClick={handleCreateMonthlyNewsletter}
                     className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
@@ -965,7 +965,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                     <FileText size={16} className="text-primary-600" />
                     カスタムタイトル
                   </h4>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-slate-600 mb-2">
                       タイトル（自由入力）
@@ -978,7 +978,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                       placeholder="例: 特別号、臨時号、新年号など"
                     />
                   </div>
-                  
+
                   <button
                     onClick={handleCreateCustomNewsletter}
                     disabled={!newsletterTitle}
@@ -996,8 +996,8 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
             <div className="space-y-6">
               {/* Newsletter情報バナー */}
               <div className={`p-4 rounded-xl border ${
-                isEditMode 
-                  ? 'bg-orange-50 border-orange-200' 
+                isEditMode
+                  ? 'bg-orange-50 border-orange-200'
                   : 'bg-primary-50 border-primary-200'
               }`}>
                 <div className="flex items-center justify-between">
@@ -1012,7 +1012,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                     }`}>
                       {isEditMode ? (
                         <>
-                          Supabase保存済み / 既存の記事: {accumulatedArticles.filter(a => a.id && !a.id.startsWith('a-')).length}件 / 
+                          Supabase保存済み / 既存の記事: {accumulatedArticles.filter(a => a.id && !a.id.startsWith('a-')).length}件 /
                           新規追加: {accumulatedArticles.filter(a => !a.id || a.id.startsWith('a-')).length}件
                           {uploadedPDFs.length > 0 && ` / 追加PDF: ${uploadedPDFs.length}個`}
                         </>
@@ -1028,8 +1028,8 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                   <button
                     onClick={handleResetNewsletter}
                     className={`text-sm underline ${
-                      isEditMode 
-                        ? 'text-orange-600 hover:text-orange-800' 
+                      isEditMode
+                        ? 'text-orange-600 hover:text-orange-800'
                         : 'text-primary-600 hover:text-primary-800'
                     }`}
                   >
@@ -1086,12 +1086,12 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                   <Upload size={20} className="text-primary-600" />
                   PDFを追加
                 </h4>
-                
+
                 <div className="space-y-4">
                   {/* 抽出モード選択 */}
                   <div className="space-y-3">
                     <p className="text-sm font-medium text-slate-700 mb-3">抽出モード</p>
-                    
+
                     {/* カード1: 自治会のお知らせ */}
                     <div
                       onClick={() => setExtractionMode('detailed')}
@@ -1114,7 +1114,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* カード2: 地域の知らせ */}
                     <div
                       onClick={() => setExtractionMode('brief')}
@@ -1211,7 +1211,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                         <>
                           記事一覧 ({accumulatedArticles.length}件)
                           <span className="text-sm font-normal text-slate-500 ml-2">
-                            既存: {accumulatedArticles.filter(a => a.id && !a.id.startsWith('a-')).length}件 / 
+                            既存: {accumulatedArticles.filter(a => a.id && !a.id.startsWith('a-')).length}件 /
                             新規: {accumulatedArticles.filter(a => !a.id || a.id.startsWith('a-')).length}件
                           </span>
                         </>
@@ -1237,7 +1237,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
                       )}
                     </button>
                   </div>
-                  
+
                   <ArticleList
                     articles={accumulatedArticles}
                     categories={MOCK_CATEGORIES}
@@ -1257,7 +1257,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
           <NewsletterList onEditNewsletter={handleStartEdit} />
         </div>
       )}
-      
+
       {/* PDFメタデータ入力ダイアログ */}
       <PDFMetadataDialog
         isOpen={showMetadataDialog}

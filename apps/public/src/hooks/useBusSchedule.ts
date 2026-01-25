@@ -9,7 +9,7 @@ import { fetchBusSchedules } from '@cc-saas/shared/services';
 
 /**
  * 現在の日付が休日（土日祝）かどうかを判定
- * 
+ *
  * @param date - 判定する日付
  * @returns 休日の場合true
  */
@@ -22,7 +22,7 @@ function isHoliday(date: Date): boolean {
 
 /**
  * データベースのBusScheduleを住民向け表示用に変換
- * 
+ *
  * @param schedule - データベースから取得したバス時刻表
  * @param currentDate - 現在の日付（平日/休日判定用）
  * @returns 住民向け表示用のバス時刻表
@@ -59,12 +59,12 @@ export const useBusScheduleData = () => {
         setIsLoading(true);
         const dbSchedules = await fetchBusSchedules();
         const currentDate = new Date();
-        
+
         // データベースのデータを住民向け表示用に変換
         const residentSchedules = dbSchedules.map((schedule) =>
           convertToBusScheduleForResident(schedule, currentDate)
         );
-        
+
         setSchedules(residentSchedules);
         setError(null);
       } catch (err: any) {

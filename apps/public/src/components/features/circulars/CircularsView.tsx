@@ -1,9 +1,9 @@
 /**
  * 会員向けデジタル回覧板閲覧コンポーネント
- * 
+ *
  * adminで作成されたデジタル回覧板（Newsletter/Article）を
  * 会員が閲覧できる機能を提供します。
- * 
+ *
  * 主な機能:
  * - Newsletter一覧の取得と選択
  * - 選択したNewsletterの記事一覧表示
@@ -68,7 +68,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:78',message:'CircularsView component mounted',data:{isSimpleMode},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
   // #endregion
-  
+
   // State管理
   const [newsletters, setNewsletters] = useState<(Newsletter & { article_count: number })[]>([]);
   const [selectedNewsletterId, setSelectedNewsletterId] = useState<string | null>(null);
@@ -86,18 +86,18 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:98',message:'fetchNewsletters started',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
-      
+
       setIsLoading(true);
       setError(null);
       try {
         const data = await getNewsletters();
-        
+
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:105',message:'Newsletters fetched successfully',data:{count:data.length,newsletters:data},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
-        
+
         setNewsletters(data);
-        
+
         // 最新のNewsletterを自動選択
         if (data.length > 0 && !selectedNewsletterId) {
           setSelectedNewsletterId(data[0].id);
@@ -106,7 +106,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:115',message:'Newsletter fetch error',data:{error:err.message,stack:err.stack},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
-        
+
         console.error('Newsletter取得エラー:', err);
         setError('デジタル回覧板の読み込みに失敗しました');
       } finally {
@@ -135,34 +135,34 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
         const visibleArticles = data.filter(
           (article) => article.visibility === 'public' || article.visibility === 'members-only'
         );
-        
+
         // 優先度順にソート（高→中→低）
         // 優先度が同じ場合は、ピン留め → 表示順序 → 作成日時の順
         const sortedArticles = visibleArticles.sort((a, b) => {
           // 優先度のソート順を定義
           const priorityOrder = { high: 0, medium: 1, low: 2 };
           const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
-          
+
           if (priorityDiff !== 0) {
             return priorityDiff;
           }
-          
+
           // 優先度が同じ場合はピン留めを優先
           if (a.is_pinned !== b.is_pinned) {
             return a.is_pinned ? -1 : 1;
           }
-          
+
           // display_orderが設定されている場合はそれに従う
           if (a.display_order !== null && b.display_order !== null) {
             return a.display_order - b.display_order;
           }
           if (a.display_order !== null) return -1;
           if (b.display_order !== null) return 1;
-          
+
           // 最後に作成日時の新しい順
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         });
-        
+
         setArticles(sortedArticles);
       } catch (err: any) {
         console.error('記事取得エラー:', err);
@@ -202,9 +202,9 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:165',message:'openArticleDetail called',data:{articleId:article.id,articleTitle:article.title,hasContent:!!article.content},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
     // #endregion
-    
+
     setSelectedArticle(article);
-    
+
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:170',message:'setSelectedArticle called',data:{articleId:article.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
     // #endregion
@@ -413,7 +413,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                   <div className="h-px flex-1 bg-slate-300"></div>
                 </div>
               </div>
-              
+
               {/* 地域情報の記事一覧 */}
               <div className="space-y-3">
                 {articles

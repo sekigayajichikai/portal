@@ -16,15 +16,15 @@ const HomeView: React.FC<HomeViewProps> = ({ isSimpleMode, busSchedules, events,
     const day = currentTime.getDay();
     const isHoliday = day === 0 || day === 6;
     const times = isHoliday ? schedule.scheduleData.holiday : schedule.scheduleData.weekday;
-    
+
     if (times.length === 0) return '--:--';
-    
+
     const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
     const nextTime = times.find((time) => {
       const [hour, minute] = time.split(':').map(Number);
       return hour * 60 + minute > currentMinutes;
     });
-    
+
     return nextTime || times[0];
   };
 

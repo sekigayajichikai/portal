@@ -99,12 +99,12 @@ SELECT COUNT(*) FROM bus_schedules WHERE is_active = true;
 SELECT DISTINCT stop_name FROM bus_schedules WHERE is_active = true ORDER BY stop_name;
 
 -- 全データを確認（詳細）
-SELECT 
+SELECT
   stop_name,
   destination,
   route_name,
   is_active
-FROM bus_schedules 
+FROM bus_schedules
 ORDER BY stop_name, destination;
 ```
 
@@ -112,13 +112,13 @@ ORDER BY stop_name, destination;
 
 ### パターン1: データベースに4件しかない場合
 
-**症状**: 
+**症状**:
 - App.tsx のログで「ユニークなバス停の数: 4件」と表示される
 - ドロップダウンに4件表示される
 
 **原因**: データベースに実際に4つのバス停しか登録されていない
 
-**解決方法**: 
+**解決方法**:
 1. 管理画面でバス時刻表のPDFをアップロードして追加登録
 2. またはSupabaseダッシュボードで直接レコードを追加
 

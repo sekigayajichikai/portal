@@ -1,6 +1,6 @@
 /**
  * バス停選択コンポーネント
- * 
+ *
  * ドロップダウンでバス停を選択し、確認ダイアログを経てお気に入りに追加します。
  */
 
@@ -64,7 +64,7 @@ export const BusStopSelector: React.FC<BusStopSelectorProps> = ({
           <Plus size={16} />
           バス停を追加
         </label>
-        
+
         <button
           onClick={() => !isFull && setIsDropdownOpen(!isDropdownOpen)}
           disabled={isFull}
@@ -78,14 +78,14 @@ export const BusStopSelector: React.FC<BusStopSelectorProps> = ({
         >
           <span className="flex items-center gap-2">
             <MapPin size={18} className={isFull ? 'text-slate-400' : 'text-blue-600'} />
-            {isFull 
-              ? `お気に入りは最大${maxFavorites}つまでです` 
+            {isFull
+              ? `お気に入りは最大${maxFavorites}つまでです`
               : availableStops.length === 0
                 ? '登録されているバス停がありません'
                 : 'バス停を選択してください'}
           </span>
-          <ChevronDown 
-            size={20} 
+          <ChevronDown
+            size={20}
             className={`transition-transform ${
               isDropdownOpen ? 'rotate-180' : ''
             } ${isFull ? 'text-slate-400' : 'text-slate-600'}`}
@@ -101,11 +101,11 @@ export const BusStopSelector: React.FC<BusStopSelectorProps> = ({
               onClick={() => setIsDropdownOpen(false)}
               style={{ pointerEvents: 'auto' }}
             ></div>
-            
+
             {/* ドロップダウンリスト */}
-            <div 
+            <div
               className="absolute top-full left-0 right-0 z-20 mt-2 bg-white rounded-lg shadow-2xl border-2 border-slate-200 overflow-hidden"
-              style={{ 
+              style={{
                 maxHeight: '300px',
                 display: 'flex',
                 flexDirection: 'column'
@@ -117,11 +117,11 @@ export const BusStopSelector: React.FC<BusStopSelectorProps> = ({
                   {availableStops.length}件のバス停
                 </p>
               </div>
-              
+
               {/* スクロール可能なリスト */}
-              <div 
+              <div
                 className="p-1 overflow-y-scroll"
-                style={{ 
+                style={{
                   flex: '1 1 auto',
                   minHeight: 0,
                   maxHeight: '250px'
@@ -135,9 +135,9 @@ export const BusStopSelector: React.FC<BusStopSelectorProps> = ({
                       index !== availableStops.length - 1 ? 'border-b border-slate-100' : ''
                     }`}
                   >
-                    <MapPin 
-                      size={18} 
-                      className="text-slate-400 group-hover:text-blue-600 transition-colors flex-shrink-0" 
+                    <MapPin
+                      size={18}
+                      className="text-slate-400 group-hover:text-blue-600 transition-colors flex-shrink-0"
                     />
                     <span className="text-slate-700 font-medium group-hover:text-blue-700 transition-colors">
                       {stopName}

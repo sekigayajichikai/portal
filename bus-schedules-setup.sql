@@ -11,26 +11,26 @@
 CREATE TABLE IF NOT EXISTS bus_schedules (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID,
-  
+
   -- 基本情報
   route_name TEXT NOT NULL,           -- 路線名（例: "駅方面"）
   stop_name TEXT NOT NULL,            -- バス停名（例: "自治会館前"）
   destination TEXT,                   -- 行き先（例: "中央駅前"）
-  
+
   -- 時刻データ（JSON形式）
   -- { "weekday": ["08:00", "09:30"], "holiday": ["09:00", "11:00"] }
   schedule_data JSONB NOT NULL,
-  
+
   -- メタ情報
   source_pdf_url TEXT,                -- 元PDFのURL
   valid_from DATE,                    -- 有効期間開始
   valid_until DATE,                   -- 有効期間終了
   notes TEXT,                         -- 備考（運休情報など）
-  
+
   -- 表示制御
   display_order INTEGER DEFAULT 0,
   is_active BOOLEAN DEFAULT true,
-  
+
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

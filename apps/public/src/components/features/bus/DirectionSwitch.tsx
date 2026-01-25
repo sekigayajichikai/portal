@@ -1,6 +1,6 @@
 /**
  * 方面切り替えボタンコンポーネント
- * 
+ *
  * 複数の方面（destination）がある場合に表示し、
  * ユーザーが見たい方面を選択できるようにします。
  */
@@ -29,7 +29,7 @@ export const DirectionSwitch: React.FC<DirectionSwitchProps> = ({
     <div className="flex gap-3 mb-3">
       {destinations.map((destination) => {
         const isSelected = destination === selected;
-        
+
         return (
           <button
             key={destination}

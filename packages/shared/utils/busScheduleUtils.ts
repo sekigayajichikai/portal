@@ -1,6 +1,6 @@
 /**
  * バス時刻表関連のユーティリティ関数
- * 
+ *
  * バス停のグループ化や方面別の時刻表整理などの機能を提供します。
  */
 
@@ -8,12 +8,12 @@ import type { BusSchedule, BusStopGroup } from '../types/index.js';
 
 /**
  * バススケジュールをバス停ごとにグループ化
- * 
+ *
  * 同じバス停で複数の方面（destination）がある場合、それぞれを分けて管理します。
- * 
+ *
  * @param schedules - バススケジュールの配列
  * @returns バス停ごとにグループ化されたデータ
- * 
+ *
  * @example
  * ```typescript
  * const schedules = [
@@ -21,7 +21,7 @@ import type { BusSchedule, BusStopGroup } from '../types/index.js';
  *   { stopName: '自治会館前', destination: '市民病院方面', ... },
  *   { stopName: '中央公園', destination: '駅方面', ... },
  * ];
- * 
+ *
  * const grouped = groupByBusStop(schedules);
  * // [
  * //   {
@@ -70,7 +70,7 @@ export function groupByBusStop(schedules: BusSchedule[]): BusStopGroup[] {
 
 /**
  * バス停名のユニークなリストを取得
- * 
+ *
  * @param schedules - バススケジュールの配列
  * @returns バス停名の配列（重複なし、アルファベット順）
  */
@@ -81,7 +81,7 @@ export function getUniqueBusStops(schedules: BusSchedule[]): string[] {
 
 /**
  * 特定のバス停と方面のスケジュールを取得
- * 
+ *
  * @param schedules - バススケジュールの配列
  * @param stopName - バス停名
  * @param destination - 方面（任意）

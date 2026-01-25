@@ -227,10 +227,10 @@ export async function extractBriefArticleFromPDF(
 
 /**
  * PDFからメタデータ（タイトル、号数）を抽出
- * 
+ *
  * Claude APIを使用してPDFの先頭部分を解析し、
  * 広報誌のタイトルと号数を抽出します。
- * 
+ *
  * @param pdfBase64 - Base64エンコードされたPDFデータ
  * @returns タイトルと号数の提案
  */

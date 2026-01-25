@@ -8,8 +8,8 @@
 -- =====================================================
 
 -- article_type カラムを追加（デフォルトは 'official'）
-ALTER TABLE articles 
-ADD COLUMN IF NOT EXISTS article_type TEXT NOT NULL DEFAULT 'official' 
+ALTER TABLE articles
+ADD COLUMN IF NOT EXISTS article_type TEXT NOT NULL DEFAULT 'official'
 CHECK (article_type IN ('official', 'local-info'));
 
 -- インデックスを追加（パフォーマンス向上）

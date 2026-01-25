@@ -56,7 +56,7 @@ const SortableBusCard: React.FC<SortableBusCardProps> = ({
     transform,
     transition,
     isDragging,
-  } = useSortable({ 
+  } = useSortable({
     id: schedule.id,
   });
 
@@ -72,8 +72,8 @@ const SortableBusCard: React.FC<SortableBusCardProps> = ({
       ref={setNodeRef}
       style={style}
       className={`border rounded-lg overflow-hidden transition-all ${
-        isDragging 
-          ? 'border-blue-400 shadow-lg' 
+        isDragging
+          ? 'border-blue-400 shadow-lg'
           : 'border-slate-200'
       }`}
     >
@@ -109,7 +109,7 @@ const SortableBusCard: React.FC<SortableBusCardProps> = ({
             <div className="flex items-center gap-3">
               <div className="text-xs text-slate-500 whitespace-nowrap">
                 平日 {schedule.scheduleData.weekday.length}本
-                {schedule.scheduleData.holiday.length > 0 && 
+                {schedule.scheduleData.holiday.length > 0 &&
                   ` / 休日 ${schedule.scheduleData.holiday.length}本`
                 }
               </div>
@@ -120,7 +120,7 @@ const SortableBusCard: React.FC<SortableBusCardProps> = ({
               )}
             </div>
           </button>
-          
+
           <div className="flex gap-1 ml-2 flex-shrink-0">
             <button
               onClick={(e) => {
@@ -217,12 +217,12 @@ export const LifestyleManager: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState('');
   const [editingSchedule, setEditingSchedule] = useState<Omit<BusSchedule, 'id' | 'createdAt' | 'updatedAt'> | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  
+
   // 路線管理用の状態
   const [routes, setRoutes] = useState<string[]>([]);
   const [newRouteName, setNewRouteName] = useState('');
   const [selectedRoute, setSelectedRoute] = useState<string>('');
-  
+
   // トグル開閉状態を管理（バス停ごとのID）
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
@@ -236,11 +236,11 @@ export const LifestyleManager: React.FC = () => {
       setIsLoading(true);
       const schedules = await fetchAllBusSchedules();
       setBusSchedules(schedules);
-      
+
       // 既存の路線名を抽出
       const uniqueRoutes = Array.from(new Set(schedules.map(s => s.routeName).filter(Boolean)));
       setRoutes(uniqueRoutes);
-      
+
       // デフォルトで最初の路線を選択
       if (uniqueRoutes.length > 0 && !selectedRoute) {
         setSelectedRoute(uniqueRoutes[0]);
@@ -259,12 +259,12 @@ export const LifestyleManager: React.FC = () => {
       alert('路線名を入力してください');
       return;
     }
-    
+
     if (routes.includes(newRouteName.trim())) {
       alert('この路線名は既に登録されています');
       return;
     }
-    
+
     const updatedRoutes = [...routes, newRouteName.trim()];
     setRoutes(updatedRoutes);
     setSelectedRoute(newRouteName.trim());
@@ -529,7 +529,7 @@ export const LifestyleManager: React.FC = () => {
         {/* 路線登録セクション */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6">
           <h3 className="font-bold text-slate-800 mb-4">路線を登録</h3>
-          
+
           <div className="flex gap-3 mb-4">
             <input
               type="text"

@@ -1,6 +1,6 @@
 /**
  * お気に入りバス停管理フック
- * 
+ *
  * localStorageを使用してお気に入りバス停を永続化します。
  * 最大5つまで登録可能です。
  */
@@ -12,7 +12,7 @@ const MAX_FAVORITES = 5;
 
 /**
  * お気に入りバス停を管理するフック
- * 
+ *
  * @returns お気に入りバス停の状態と操作関数
  */
 export function useFavoriteBusStops() {
@@ -26,12 +26,12 @@ export function useFavoriteBusStops() {
       console.log('⭐ useFavoriteBusStops - localStorage読み込み開始');
       const saved = localStorage.getItem(STORAGE_KEY);
       console.log('  📦 保存されているデータ (raw):', saved);
-      
+
       if (saved) {
         const parsed = JSON.parse(saved);
         console.log('  📦 パース後のデータ:', parsed);
         console.log('  📦 データ型:', typeof parsed, Array.isArray(parsed) ? '(配列)' : '(配列ではない)');
-        
+
         if (Array.isArray(parsed)) {
           setFavorites(parsed);
           console.log('  ✅ お気に入りバス停をセット:', parsed);
@@ -52,7 +52,7 @@ export function useFavoriteBusStops() {
 
   /**
    * お気に入りに追加
-   * 
+   *
    * @param stopName - バス停名
    * @returns 追加成功の場合true、失敗の場合false
    */
@@ -82,7 +82,7 @@ export function useFavoriteBusStops() {
 
   /**
    * お気に入りから削除
-   * 
+   *
    * @param stopName - バス停名
    */
   const removeFavorite = (stopName: string): void => {
@@ -97,7 +97,7 @@ export function useFavoriteBusStops() {
 
   /**
    * お気に入りかどうかを確認
-   * 
+   *
    * @param stopName - バス停名
    * @returns お気に入りの場合true
    */
@@ -107,7 +107,7 @@ export function useFavoriteBusStops() {
 
   /**
    * お気に入りがいっぱいかどうかを確認
-   * 
+   *
    * @returns 最大数に達している場合true
    */
   const isFull = (): boolean => {

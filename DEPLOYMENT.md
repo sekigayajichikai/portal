@@ -67,38 +67,38 @@
    以下のSQLファイルを **この順番で** 実行してください。各ファイルの内容をコピーして、SQL Editorにペーストし、「Run」ボタンをクリックします。
 
    #### ① 基本テーブルの作成
-   
+
    **ファイル**: [`database-setup.sql`](database-setup.sql)
-   
+
    - デジタル回覧板（newsletters）と記事（articles）のテーブルを作成します
    - 実行後、「Success. No rows returned」と表示されればOK
 
    #### ② ストレージの設定（開発環境用）
-   
+
    **ファイル**: [`storage-setup-dev.sql`](storage-setup-dev.sql)
-   
+
    - PDFファイルをアップロードするためのストレージを設定します
    - ⚠️ **注意**: これは開発環境用の設定です（認証なしでアップロード可能）
    - 本番環境では [`storage-setup-prod.sql`](storage-setup-prod.sql) の使用を推奨しますが、認証機能の実装が必要です
 
    #### ③ バス時刻表の設定
-   
+
    **ファイル**: [`bus-schedules-setup.sql`](bus-schedules-setup.sql)
-   
+
    - バス時刻表機能に必要なテーブルを作成します
 
    #### ④ 記事タイプの追加
-   
+
    **ファイル**: [`add-article-type.sql`](add-article-type.sql)
-   
+
    - 記事の分類機能を追加します
 
    #### ⑤ ラジオ番組機能の設定
-   
+
    **ファイル**: [`radio-programs-setup.sql`](radio-programs-setup.sql)
    **ファイル**: [`radio-storage-setup.sql`](radio-storage-setup.sql)
    **ファイル**: [`radio-programs-rls-setup.sql`](radio-programs-rls-setup.sql)
-   
+
    - AIラジオ番組の生成と保存に必要なテーブルとストレージを設定します
    - 3つのファイルを順番に実行してください
 
@@ -118,13 +118,12 @@
    - 「API」タブを選択
 
 2. **必要な情報をコピー**
-   
+
    以下の2つの情報を **メモ帳などに保存** してください（後でVercelの環境変数として使用します）:
 
    | 項目 | Supabase画面での表示名 | 環境変数名 | 形式 |
    |------|---------------------|-----------|------|
-   | **プロジェクトURL** | Project URL | `VITE_SUPABASE_URL` | `https://xxxxx.supabase.co` |
-   | **匿名キー** | anon public | `VITE_SUPABASE_ANON_KEY` | `eyJ...`で始まる長い文字列 |
+   | **プロジェクトURL** | Project URL | `VITE_SUPABASE_URL` | `https:// | **匿名キー** | anon public | `VITE_SUPABASE_ANON_KEY` | `eyJ...`で始まる長い文字列 |
 
    📝 **コピーのヒント**: 各項目の右側にあるコピーアイコンをクリックすると、クリップボードにコピーされます。
 
@@ -150,7 +149,8 @@
 
 デプロイする前に、このプロジェクトが **GitHubにプッシュされている** ことを確認してください。
 
-**確認方法**:
+**確認方法**:xxxxx.supabase.co` |
+
 - GitHubでリポジトリページを開いて、最新のコードが反映されているか確認
 
 **まだプッシュしていない場合**:
@@ -228,7 +228,7 @@ git push origin main
 | `VITE_SUPABASE_URL` | ステップ1-3で取得したURL | `https://xxxxx.supabase.co` の形式 |
 | `VITE_SUPABASE_ANON_KEY` | ステップ1-3で取得したキー | `eyJ...` で始まる長い文字列 |
 
-📝 **重要**: 
+📝 **重要**:
 - `VITE_APP_PASSWORD` は **推測されにくいパスワード** を設定してください
 - これがアプリにアクセスするためのパスワードになります
 - 自治会のメンバーにはこのパスワードを共有します
@@ -503,7 +503,7 @@ git push origin main
 
 **症状**: Vercelのデプロイは成功したが、URLにアクセスできない
 
-**原因**: 
+**原因**:
 - デプロイ直後でDNSが伝播していない
 - ブラウザのキャッシュ
 

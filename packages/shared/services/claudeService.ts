@@ -134,7 +134,7 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
 - official: 自治会からの公式なお知らせ
 - local-info: 地域からのお知らせ（※このPDFは自治会公式なので使用しない）
 
-**priority**: 
+**priority**:
 - high: 締切あり、要対応、全会員が必ず確認すべき情報
   例：施設休館、ゴミ収集変更、重要イベント、アンケート締切
 - medium: 確認推奨のお知らせ、イベント告知
@@ -155,24 +155,24 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
   - 段落は空行で区切る
   - 日時や場所などの重要情報は **太字** で強調
   - 改行を適切に保持
-  
+
   【出力例】
   ## イベント概要
   日時: **1月10日（土）10:00-12:00**
   場所: **関ヶ谷公民館**
-  
+
   ## 内容
   新春の伝統行事「どんど焼き」を開催します。
-  
+
   - お正月飾りやお札をお持ちください
   - ぜんざいの無料提供あり
-  
+
   ## 参加方法
   事前申込不要。当日直接会場へお越しください。
 
 **tags**: 関連キーワード3-5個（配列）
 
-**visibility**: 
+**visibility**:
 - public: 地域全体に公開してOKな情報
 - members-only: 会員限定（デフォルト）
 - board-only: 役員のみ
@@ -506,10 +506,10 @@ function mockExtractBriefArticle(filename: string): ExtractionResult {
 
 /**
  * PDFからメタデータ（タイトル、号数）を抽出
- * 
+ *
  * Claude APIを使用してPDFの先頭部分を解析し、
  * 広報誌のタイトルと号数を抽出します。
- * 
+ *
  * @param pdfBase64 - Base64エンコードされたPDFデータ
  * @returns タイトルと号数の提案
  */
@@ -550,7 +550,7 @@ JSON形式で出力してください：
 
   try {
     const startTime = Date.now();
-    
+
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 500, // メタデータのみなので少なく
@@ -604,9 +604,9 @@ JSON形式で出力してください：
       suggestedTitle: metadata.title || '広報誌',
       suggestedIssueNumber: metadata.issueNumber || '',
     };
-    
+
     console.log('✅ 最終的に返す値:', result);
-    
+
     return result;
   } catch (error) {
     console.error('メタデータ抽出エラー:', error);
