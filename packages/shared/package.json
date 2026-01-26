@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "@google/genai": "^1.37.0",
-    "@supabase/supabase-js": "^2.91.0"
+    "@supabase/supabase-js": "^2.91.0",
+    "openai": "^4.77.3"
   },
   "peerDependencies": {
     "react": "^19.2.3"
