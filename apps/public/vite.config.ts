@@ -23,9 +23,10 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: {
             'react-vendor': ['react', 'react-dom'],
-          }
-
-
+          },
+        },
+      },
+    },
     define: {
       // Gemini AI
       'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY),
