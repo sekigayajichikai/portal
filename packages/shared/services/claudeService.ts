@@ -358,9 +358,9 @@ export async function extractBriefArticleFromPDF(
       ...articleData,
       attachments: [
         {
-          type: 'pdf',
+          type: 'pdf' as const,
           url: pdfUrl,
-          filename: pdfFilename,
+          label: pdfFilename,
         },
       ],
     };

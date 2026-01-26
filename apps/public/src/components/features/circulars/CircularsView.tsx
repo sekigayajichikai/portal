@@ -639,7 +639,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                       >
                         <FileText size={20} className="text-blue-600" />
                         <span className="text-sm text-slate-700 flex-1">
-                          {attachment.label || attachment.filename || 'ファイル'}
+                          {attachment.label || 'ファイル'}
                         </span>
                         <span className="text-xs text-slate-500 uppercase">{attachment.type}</span>
                       </a>
