@@ -17,6 +17,7 @@
     "./utils/*": "./utils/*.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@google/genai": "^1.37.0",
     "@supabase/supabase-js": "^2.91.0",
     "openai": "^4.77.3"
