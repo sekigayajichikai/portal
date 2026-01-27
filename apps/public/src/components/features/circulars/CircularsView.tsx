@@ -47,6 +47,54 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 /**
+ * カテゴリの英日マッピング
+ */
+const CATEGORY_LABELS: Record<string, string> = {
+  'event': 'イベント',
+  'notice': 'お知らせ',
+  'meeting': '会議',
+  'culture': '文化',
+  'report': '報告',
+  'fee': '会費',
+  'local-info': '地域情報',
+};
+
+/**
+ * タグの英日マッピング
+ */
+const TAG_LABELS: Record<string, string> = {
+  // カテゴリ系
+  'event': 'イベント',
+  'notice': 'お知らせ',
+  'meeting': '会議',
+  'culture': '文化',
+  'report': '報告',
+  'fee': '会費',
+  'local-info': '地域情報',
+  
+  // 季節・行事
+  '正月': '正月',
+  '夏祭り': '夏祭り',
+  'どんど焼き': 'どんど焼き',
+  
+  // 場所
+  '奥座公園': '奥座公園',
+  '会館': '会館',
+  '公民館': '公民館',
+  
+  // 一般的なタグ
+  'ごみ': 'ごみ',
+  '資源': '資源',
+  '俳句': '俳句',
+  'イベント': 'イベント',
+  'お知らせ': 'お知らせ',
+  '会議': '会議',
+  '文化': '文化',
+  '報告': '報告',
+  '地域': '地域',
+};
+
+/**
  * 優先度バッジのスタイル
  */
 const PRIORITY_STYLES: Record<string, string> = {
@@ -331,7 +379,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                       CATEGORY_COLORS[article.category] || 'bg-gray-100 text-gray-700'
                     }`}
                   >
-                    {article.category}
+                    {CATEGORY_LABELS[article.category] || article.category}
                   </span>
                 </div>
                 {article.priority === 'high' && (
@@ -378,7 +426,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                           key={index}
                           className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded"
                         >
-                          #{tag}
+                          #{TAG_LABELS[tag] || tag}
                         </span>
                       ))}
                       {article.tags.length > 2 && (
@@ -442,7 +490,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                       CATEGORY_COLORS[article.category] || 'bg-gray-100 text-gray-700'
                     }`}
                   >
-                    {article.category}
+                    {CATEGORY_LABELS[article.category] || article.category}
                   </span>
                 </div>
                 {article.priority === 'high' && (
@@ -489,7 +537,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                           key={index}
                           className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded"
                         >
-                          #{tag}
+                          #{TAG_LABELS[tag] || tag}
                         </span>
                       ))}
                       {article.tags.length > 2 && (
@@ -543,7 +591,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                         CATEGORY_COLORS[selectedArticle.category] || 'bg-gray-100 text-gray-700'
                       }`}
                     >
-                      {selectedArticle.category}
+                      {CATEGORY_LABELS[selectedArticle.category] || selectedArticle.category}
                     </span>
                     {selectedArticle.priority === 'high' && (
                       <span
@@ -614,7 +662,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                         key={index}
                         className="text-xs px-3 py-1 bg-slate-100 text-slate-600 rounded-full"
                       >
-                        #{tag}
+                        #{TAG_LABELS[tag] || tag}
                       </span>
                     ))}
                   </div>
