@@ -11,6 +11,7 @@ interface MainLayoutProps {
   toggleSimpleMode: () => void;
   user: User | null;
   forceSimpleMode?: boolean;
+  enableAllFeatures?: boolean;
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({
@@ -21,6 +22,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({
   toggleSimpleMode,
   user,
   forceSimpleMode = false,
+  enableAllFeatures = true,
 }) => {
   return (
     <div
@@ -39,8 +41,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({
         {children}
       </main>
 
-      {/* Navigation Bar */}
-      {activeTab !== 'dashboard' && (
+      {/* Navigation Bar - enableAllFeaturesがfalseの場合は非表示 */}
+      {enableAllFeatures && activeTab !== 'dashboard' && (
         <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} isSimpleMode={isSimpleMode} />
       )}
 

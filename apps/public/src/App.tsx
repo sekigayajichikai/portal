@@ -40,7 +40,10 @@ const AppContent: React.FC = () => {
     return saved === 'true';
   };
 
-  const [activeTab, setActiveTab] = useState<TabType>('home');
+  // 初期タブの設定：ユーザーテスト版では回覧板から開始
+  const [activeTab, setActiveTab] = useState<TabType>(
+    enableAllFeatures ? 'home' : 'circulars'
+  );
   const [isSimpleMode, setIsSimpleMode] = useState(loadSimpleModeFromStorage);
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -149,6 +152,7 @@ const AppContent: React.FC = () => {
       toggleSimpleMode={toggleSimpleMode}
       user={user}
       forceSimpleMode={forceSimpleMode}
+      enableAllFeatures={enableAllFeatures}
     >
       {activeTab === 'dashboard' && (
         enableAllFeatures ? (
