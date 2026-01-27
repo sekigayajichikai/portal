@@ -255,6 +255,129 @@ export async function deleteAudio(path: string): Promise<void> {
 }
 
 /**
+ * ダイジェスト音声ファイルをSupabase Storageにアップロード
+ *
+ * ファイルは newsletters バケットに保存され、年月でフォルダ分けされます。
+ * 例: newsletters/2025/01/digest-newsletter-title-1234567890.mp3
+ *
+ * @param file - アップロードする音声ファイル（File形式）
+ * @returns アップロード結果（URL、パス、ファイル名）
+ * @throws アップロードに失敗した場合
+ */
+export async function uploadDigestAudio(file: File): Promise<UploadResult> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storageService.ts:uploadDigestAudio:entry',message:'Function entry',data:{fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storageService.ts:uploadDigestAudio:noSupabase',message:'Supabase not configured',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    throw new Error('Supabaseが設定されていません');
+  }
+
+  // ファイルサイズチェック（50MB以下）
+  const maxSize = 50 * 1024 * 1024; // 50MB
+  if (file.size > maxSize) {
+    throw new Error('ファイルサイズが大きすぎます（50MB以下にしてください）');
+  }
+
+  // サポートされている音声フォーマットをチェック
+  const supportedFormats = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/mp4', 'audio/m4a'];
+  if (!supportedFormats.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a)$/i)) {
+    throw new Error('サポートされていない音声フォーマットです（mp3, wav, m4a のみ対応）');
+  }
+
+  // ファイル名の生成（年月/digest-ファイル名-タイムスタンプ.拡張子）
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const timestamp = Date.now();
+  const fileExtension = file.name.split('.').pop() || 'mp3';
+  const safeOriginalName = sanitizeFilename(file.name.replace(/\.[^.]+$/, ''));
+  const filename = `digest-${safeOriginalName}-${timestamp}.${fileExtension}`;
+  const path = `${year}/${month}/${filename}`;
+
+  // Content-Typeを決定
+  let contentType = file.type || 'audio/mpeg';
+  if (fileExtension === 'mp3') contentType = 'audio/mpeg';
+  else if (fileExtension === 'wav') contentType = 'audio/wav';
+  else if (fileExtension === 'm4a') contentType = 'audio/mp4';
+
+  try {
+    console.log('📤 ダイジェスト音声をアップロード中...', filename);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storageService.ts:uploadDigestAudio:beforeUpload',message:'Before Supabase upload',data:{path:path,contentType:contentType,filename:filename},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+
+    // 音声ファイルをアップロード（newslettersバケットを使用）
+    const { data, error } = await supabase.storage.from('newsletters').upload(path, file, {
+      contentType: contentType,
+      cacheControl: '3600',
+      upsert: false, // 同名ファイルの上書きを防ぐ
+    });
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storageService.ts:uploadDigestAudio:afterUpload',message:'After Supabase upload',data:{hasData:!!data,hasError:!!error,errorMessage:error?.message,dataPath:data?.path},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+
+    if (error) {
+      console.error('Supabase Storage ダイジェスト音声アップロードエラー:', error);
+      throw new Error(`ダイジェスト音声のアップロードに失敗しました: ${error.message}`);
+    }
+
+    // 公開URLを取得
+    const { data: urlData } = supabase.storage.from('newsletters').getPublicUrl(path);
+
+    console.log('✅ ダイジェスト音声アップロード完了:', urlData.publicUrl);
+
+    return {
+      url: urlData.publicUrl,
+      path: data.path,
+      filename: file.name, // 元のファイル名を保持
+    };
+  } catch (error: any) {
+    console.error('ダイジェスト音声アップロード処理エラー:', error);
+    throw new Error(`ダイジェスト音声のアップロードに失敗しました: ${error.message}`);
+  }
+}
+
+/**
+ * ダイジェスト音声ファイルを削除
+ *
+ * @param path - 削除するファイルのパス（バケット内の相対パス）
+ * @throws 削除に失敗した場合
+ */
+export async function deleteDigestAudio(path: string): Promise<void> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    throw new Error('Supabaseが設定されていません');
+  }
+
+  if (!path) {
+    console.warn('削除するパスが指定されていません');
+    return;
+  }
+
+  try {
+    console.log('🗑️ ダイジェスト音声を削除中...', path);
+
+    const { error } = await supabase.storage.from('newsletters').remove([path]);
+
+    if (error) {
+      console.error('Supabase Storage ダイジェスト音声削除エラー:', error);
+      throw new Error(`ダイジェスト音声の削除に失敗しました: ${error.message}`);
+    }
+
+    console.log('✅ ダイジェスト音声削除完了');
+  } catch (error: any) {
+    console.error('ダイジェスト音声削除処理エラー:', error);
+    throw new Error(`ダイジェスト音声の削除に失敗しました: ${error.message}`);
+  }
+}
+
+/**
  * 画像ファイルをSupabase Storageにアップロード
  *
  * ファイルは newsletter-images バケットに保存され、年月でフォルダ分けされます。

@@ -17,4 +17,6 @@ export interface Newsletter {
   created_by: string;
   created_at: string;
   published_at: string | null;
+  digest_audio_url?: string | null; // ダイジェスト版音声ファイルのURL
+  digest_audio_filename?: string | null; // ダイジェスト版音声ファイルの元のファイル名
 }

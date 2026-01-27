@@ -5,9 +5,9 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, generateRadioProgram, getRadioProgramByNewsletterId } from '@cc-saas/shared';
+import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, generateRadioProgram, getRadioProgramByNewsletterId, uploadDigestAudio, updateNewsletterDigestAudio, deleteDigestAudio, deleteNewsletterDigestAudio } from '@cc-saas/shared';
 import { Newsletter, Article, RadioGenerationProgress } from '@cc-saas/shared/types';
-import { FileText, Calendar, ChevronRight, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Radio, Download, Play } from 'lucide-react';
+import { FileText, Calendar, ChevronRight, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Radio, Download, Play, Upload } from 'lucide-react';
 import { ArticleList } from './ArticleList';
 import { MOCK_CATEGORIES } from '@/constants';
 
@@ -36,6 +36,10 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   const [radioProgress, setRadioProgress] = useState<RadioGenerationProgress | null>(null);
   const [generatedRadioUrl, setGeneratedRadioUrl] = useState<string | null>(null);
   const [existingRadioProgram, setExistingRadioProgram] = useState<any | null>(null);
+
+  // ダイジェスト音声アップロードの状態
+  const [isUploadingDigest, setIsUploadingDigest] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   /**
    * コンポーネントマウント時にデジタル回覧板一覧を読み込み
@@ -104,6 +108,150 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     setGeneratedRadioUrl(null);
     setRadioProgress(null);
     setExistingRadioProgram(null);
+  };
+
+  /**
+   * ダイジェスト音声をアップロード
+   */
+  const handleDigestAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:entry',message:'Function entry',data:{hasFiles:!!e.target.files,filesLength:e.target.files?.length,hasSelectedNewsletter:!!selectedNewsletter,selectedNewsletterId:selectedNewsletter?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    const file = e.target.files?.[0];
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:afterFileGet',message:'After file extraction',data:{hasFile:!!file,fileName:file?.name,fileSize:file?.size,fileType:file?.type},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    if (!file || !selectedNewsletter) return;
+
+    // ファイルサイズチェック（50MB以下）
+    if (file.size > 50 * 1024 * 1024) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:fileSizeError',message:'File size too large',data:{fileSize:file.size,maxSize:50*1024*1024},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      alert('ファイルサイズが大きすぎます（50MB以下にしてください）');
+      e.target.value = ''; // input要素をリセット
+      return;
+    }
+
+    const confirmed = confirm(
+      `「${selectedNewsletter.title}」にダイジェスト音声をアップロードしますか？\n\n` +
+      `ファイル: ${file.name}\n` +
+      `サイズ: ${(file.size / 1024 / 1024).toFixed(2)} MB\n\n` +
+      (selectedNewsletter.digest_audio_url ? '既存の音声は上書きされます。' : '')
+    );
+
+    if (!confirmed) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:userCancelled',message:'User cancelled upload',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      e.target.value = ''; // input要素をリセット
+      return;
+    }
+
+    setIsUploadingDigest(true);
+    setUploadError(null);
+
+    try {
+      console.log('📤 ダイジェスト音声をアップロード中...', file.name);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:beforeUpload',message:'Before uploadDigestAudio',data:{fileName:file.name,fileSize:file.size},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+
+      // 1. 音声ファイルをアップロード
+      const result = await uploadDigestAudio(file);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:afterUpload',message:'After uploadDigestAudio',data:{resultUrl:result.url,resultPath:result.path,resultFilename:result.filename},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      console.log('✅ アップロード完了:', result.url);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:beforeUpdateNewsletter',message:'Before updateNewsletterDigestAudio',data:{newsletterId:selectedNewsletter.id,audioUrl:result.url,audioFilename:result.filename},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+
+      // 2. Newsletterテーブルを更新
+      await updateNewsletterDigestAudio(
+        selectedNewsletter.id,
+        result.url,
+        result.filename
+      );
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:afterUpdateNewsletter',message:'After updateNewsletterDigestAudio',data:{success:true},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      console.log('✅ Newsletter更新完了');
+
+      // 3. 画面を更新
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:beforeLoadNewsletters',message:'Before loadNewsletters',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      await loadNewsletters();
+      
+      // 選択中のNewsletterを再取得
+      const updatedNewsletters = await getNewsletters();
+      const updatedNewsletter = updatedNewsletters.find(n => n.id === selectedNewsletter.id);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:afterRefresh',message:'After refresh',data:{foundNewsletter:!!updatedNewsletter,digestAudioUrl:updatedNewsletter?.digest_audio_url},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      if (updatedNewsletter) {
+        setSelectedNewsletter(updatedNewsletter as Newsletter);
+      }
+
+      alert('ダイジェスト音声をアップロードしました');
+    } catch (error: any) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:error',message:'Upload error caught',data:{errorMessage:error.message,errorStack:error.stack},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'ALL'})}).catch(()=>{});
+      // #endregion
+      console.error('❌ アップロードエラー:', error);
+      setUploadError(error.message);
+      alert('アップロードに失敗しました: ' + error.message);
+    } finally {
+      setIsUploadingDigest(false);
+      e.target.value = ''; // input要素をリセット
+    }
+  };
+
+  /**
+   * ダイジェスト音声を削除
+   */
+  const handleDeleteDigestAudio = async () => {
+    if (!selectedNewsletter?.digest_audio_url) return;
+
+    const confirmed = confirm(
+      `「${selectedNewsletter.title}」のダイジェスト音声を削除しますか？\n\n` +
+      `この操作は取り消せません。`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      console.log('🗑️ ダイジェスト音声を削除中...');
+
+      // 1. StorageからURLのパスを抽出して削除
+      const url = new URL(selectedNewsletter.digest_audio_url);
+      const pathParts = url.pathname.split('/newsletters/');
+      if (pathParts.length > 1) {
+        const path = pathParts[1];
+        await deleteDigestAudio(path);
+        console.log('✅ Storage削除完了');
+      }
+
+      // 2. Newsletterテーブルを更新
+      await deleteNewsletterDigestAudio(selectedNewsletter.id);
+      console.log('✅ Newsletter更新完了');
+
+      // 3. 画面を更新
+      await loadNewsletters();
+      
+      // 選択中のNewsletterを再取得
+      const updatedNewsletters = await getNewsletters();
+      const updatedNewsletter = updatedNewsletters.find(n => n.id === selectedNewsletter.id);
+      if (updatedNewsletter) {
+        setSelectedNewsletter(updatedNewsletter as Newsletter);
+      }
+
+      alert('ダイジェスト音声を削除しました');
+    } catch (error: any) {
+      console.error('❌ 削除エラー:', error);
+      alert('削除に失敗しました: ' + error.message);
+    }
   };
 
   /**
@@ -295,6 +443,45 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               )}
             </button>
 
+            {/* ダイジェスト音声アップロードボタン */}
+            <label
+              className={`flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors ${
+                isUploadingDigest ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+              }`}
+              title="ダイジェスト音声をアップロード"
+            >
+              {isUploadingDigest ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  アップロード中...
+                </>
+              ) : (
+                <>
+                  <Upload size={18} />
+                  {selectedNewsletter.digest_audio_url ? '音声を更新' : 'ダイジェスト音声'}
+                </>
+              )}
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={handleDigestAudioUpload}
+                disabled={isUploadingDigest}
+                className="hidden"
+              />
+            </label>
+
+            {/* ダイジェスト音声削除ボタン */}
+            {selectedNewsletter.digest_audio_url && (
+              <button
+                onClick={handleDeleteDigestAudio}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition-colors"
+                title="ダイジェスト音声を削除"
+              >
+                <Trash2 size={18} />
+                音声削除
+              </button>
+            )}
+
             {/* 編集ボタン（下書きのみ） */}
             {onEditNewsletter && selectedNewsletter.status === 'draft' && (
               <button
@@ -403,6 +590,43 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               <button
                 onClick={() => window.open(generatedRadioUrl, '_blank')}
                 className="flex-1 py-2 bg-pink-500 hover:bg-pink-600 text-white font-bold text-sm rounded-lg flex items-center justify-center gap-2 transition-colors"
+              >
+                <Play size={16} />
+                新しいタブで開く
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ダイジェスト音声プレビュー */}
+        {selectedNewsletter.digest_audio_url && (
+          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border-2 border-purple-300 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-purple-500 p-3 rounded-xl">
+                  <span className="text-3xl">📻</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-purple-900">ダイジェスト音声</h3>
+                  <p className="text-sm text-purple-700">
+                    {selectedNewsletter.digest_audio_filename || 'digest-audio.mp3'}
+                  </p>
+                </div>
+              </div>
+              <a
+                href={selectedNewsletter.digest_audio_url}
+                download={selectedNewsletter.digest_audio_filename || 'digest-audio.mp3'}
+                className="p-2 hover:bg-white/30 rounded-lg transition-colors"
+                title="ダウンロード"
+              >
+                <Download size={20} className="text-purple-700" />
+              </a>
+            </div>
+            <audio controls src={selectedNewsletter.digest_audio_url} className="w-full" />
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => window.open(selectedNewsletter.digest_audio_url!, '_blank')}
+                className="flex-1 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm rounded-lg flex items-center justify-center gap-2 transition-colors"
               >
                 <Play size={16} />
                 新しいタブで開く

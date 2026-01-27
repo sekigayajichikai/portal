@@ -118,6 +118,8 @@ export async function getNewsletters(): Promise<
     created_by: item.created_by,
     created_at: item.created_at,
     published_at: item.published_at,
+    digest_audio_url: item.digest_audio_url,
+    digest_audio_filename: item.digest_audio_filename,
     article_count: item.articles[0]?.count || 0,
   }));
 
@@ -396,4 +398,112 @@ export async function deleteArticle(articleId: string): Promise<void> {
   }
 
   console.log('✅ 記事削除完了');
+}
+
+/**
+ * Newsletterのダイジェスト音声情報を更新
+ *
+ * 指定されたNewsletterにダイジェスト版音声ファイルのURLとファイル名を設定します。
+ *
+ * @param newsletterId - 更新するNewsletterのUUID
+ * @param audioUrl - ダイジェスト音声ファイルの公開URL
+ * @param audioFilename - ダイジェスト音声ファイルの元のファイル名
+ * @returns 更新後のNewsletterデータ
+ * @throws Supabase未接続またはデータベースエラー
+ *
+ * @example
+ * ```typescript
+ * await updateNewsletterDigestAudio(
+ *   'newsletter-123',
+ *   'https://example.com/audio.mp3',
+ *   'digest-audio.mp3'
+ * );
+ * ```
+ */
+export async function updateNewsletterDigestAudio(
+  newsletterId: string,
+  audioUrl: string,
+  audioFilename: string
+): Promise<Newsletter> {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'newsletterService.ts:updateNewsletterDigestAudio:entry',message:'Function entry',data:{newsletterId:newsletterId,audioUrl:audioUrl,audioFilename:audioFilename},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'newsletterService.ts:updateNewsletterDigestAudio:noSupabase',message:'Supabase not connected',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  console.log('📝 Newsletterのダイジェスト音声情報を更新中... ID:', newsletterId);
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'newsletterService.ts:updateNewsletterDigestAudio:beforeUpdate',message:'Before DB update',data:{newsletterId:newsletterId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+
+  const { data, error } = await supabase
+    .from('newsletters')
+    .update({
+      digest_audio_url: audioUrl,
+      digest_audio_filename: audioFilename,
+    })
+    .eq('id', newsletterId)
+    .select()
+    .single();
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'newsletterService.ts:updateNewsletterDigestAudio:afterUpdate',message:'After DB update',data:{hasData:!!data,hasError:!!error,errorMessage:error?.message,dataDigestAudioUrl:data?.digest_audio_url},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+  // #endregion
+
+  if (error) {
+    console.error('❌ Newsletter音声情報更新エラー:', error);
+    throw error;
+  }
+
+  console.log('✅ Newsletter音声情報更新完了:', newsletterId);
+
+  return data;
+}
+
+/**
+ * Newsletterのダイジェスト音声情報を削除
+ *
+ * 指定されたNewsletterのダイジェスト音声情報（URLとファイル名）をnullに設定します。
+ *
+ * @param newsletterId - 更新するNewsletterのUUID
+ * @returns 更新後のNewsletterデータ
+ * @throws Supabase未接続またはデータベースエラー
+ *
+ * @example
+ * ```typescript
+ * await deleteNewsletterDigestAudio('newsletter-123');
+ * ```
+ */
+export async function deleteNewsletterDigestAudio(
+  newsletterId: string
+): Promise<Newsletter> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  console.log('🗑️ Newsletterのダイジェスト音声情報を削除中... ID:', newsletterId);
+
+  const { data, error } = await supabase
+    .from('newsletters')
+    .update({
+      digest_audio_url: null,
+      digest_audio_filename: null,
+    })
+    .eq('id', newsletterId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ Newsletter音声情報削除エラー:', error);
+    throw error;
+  }
+
+  console.log('✅ Newsletter音声情報削除完了:', newsletterId);
+
+  return data;
 }
