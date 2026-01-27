@@ -625,8 +625,8 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
               {selectedArticle.attachments.length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
-                    <Paperclip size={16} />
-                    添付ファイル
+                    <FileText size={16} />
+                    元の回覧板を見る
                   </p>
                   <div className="space-y-2">
                     {selectedArticle.attachments.map((attachment, index) => (
@@ -639,7 +639,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                       >
                         <FileText size={20} className="text-blue-600" />
                         <span className="text-sm text-slate-700 flex-1">
-                          {attachment.label || 'ファイル'}
+                          {attachment.label || '回覧板PDF'}
                         </span>
                         <span className="text-xs text-slate-500 uppercase">{attachment.type}</span>
                       </a>

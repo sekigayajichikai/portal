@@ -40,11 +40,68 @@ npm install
 
 ### 2. 環境変数の設定
 
-`.env.example` をコピーして `.env` ファイルを作成し、必要なAPI keyを設定してください。
+#### 🔄 環境別設定ファイル（推奨）
+
+開発環境と本番環境でSupabaseを使い分けるため、**環境別の設定ファイル**を使用することを強く推奨します。
+
+**ファイル構成:**
+
+```
+CC-SaaS/
+├── .env.development.local  # 開発環境用（Gitにコミットされない）
+└── .env.production.local   # 本番ビルドテスト用（参考、Gitにコミットされない）
+```
+
+**設定方法:**
+
+1. **`.env.development.local`を作成**（開発環境用）
+
+プロジェクトルートに以下の内容で`.env.development.local`ファイルを作成してください：
+
+```bash
+# 開発環境用Supabase設定
+VITE_SUPABASE_URL=https://your-dev-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-dev-anon-key
+
+# その他の環境変数
+VITE_GEMINI_API_KEY=your-gemini-api-key
+VITE_APP_PASSWORD=dev123  # 開発用パスワード
+```
+
+2. **`.env.production.local`を作成**（オプション、ローカルで本番ビルドをテストする場合）
+
+```bash
+# 本番環境用Supabase設定（参考用）
+# Vercelデプロイ時はVercelの環境変数が優先されます
+VITE_SUPABASE_URL=https://your-prod-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-prod-anon-key
+
+VITE_GEMINI_API_KEY=your-gemini-api-key
+VITE_APP_PASSWORD=your-production-password
+```
+
+**自動切り替えの仕組み:**
+
+- `npm run dev` → 自動的に`.env.development.local`を読み込み、開発用Supabaseに接続
+- `npm run build` → 自動的に`.env.production.local`を読み込み、本番用設定でビルド
+- Vercelデプロイ時 → Vercelの環境変数が優先され、本番用Supabaseに接続
+
+**メリット:**
+
+- ✅ 開発中に誤って本番データを変更するリスクがゼロ
+- ✅ 環境の切り替えが自動で行われる（手動変更不要）
+- ✅ `.local`ファイルは自動的にGit管理外（機密情報が漏洩しない）
+- ✅ チーム開発時も各メンバーが独自の設定を持てる
+
+#### 📝 従来の方法（シンプルだが非推奨）
+
+環境別ファイルを使わない場合は、`.env.example` をコピーして `.env` ファイルを作成してください。
 
 ```bash
 cp .env.example .env
 ```
+
+⚠️ **注意**: この方法では開発用と本番用の設定を手動で切り替える必要があります。
 
 #### 必須の環境変数
 

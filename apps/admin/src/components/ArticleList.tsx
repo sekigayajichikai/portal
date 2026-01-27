@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { Article, Category, Priority, updateArticle, updateArticleOrders } from '@cc-saas/shared';
-import { ChevronDown, ChevronUp, Calendar, Tag, Eye, EyeOff, Pin, FileText, Edit2, GripVertical, Download, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Calendar, Tag, Eye, EyeOff, Pin, FileText, Edit2, GripVertical, Download, Trash2, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -778,7 +778,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <p className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
                           <FileText size={16} />
-                          添付ファイル
+                          添付ファイルリンク
                         </p>
                         <div className="space-y-2">
                           {article.attachments.map((attachment: any, index: number) => (
@@ -797,7 +797,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 text-blue-600 group-hover:text-blue-700">
-                                <Download size={16} />
+                                <ExternalLink size={16} />
                                 <span className="text-sm font-medium">開く</span>
                               </div>
                             </a>
