@@ -22,8 +22,15 @@ function getClaudeClient(): Anthropic | null {
     (import.meta as any).env?.VITE_ANTHROPIC_API_KEY ||
     (import.meta as any).env?.ANTHROPIC_API_KEY;
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:getClaudeClient',message:'Claudeクライアント取得',data:{hasApiKey:!!apiKey,apiKeyLength:apiKey?.length,apiKeyPrefix:apiKey?.substring(0,10),processEnvExists:typeof process !== 'undefined',hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+  // #endregion
+
   if (!apiKey) {
     console.warn('Claude APIキーが設定されていません。モックデータを使用します。');
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:getClaudeClient:nokey',message:'APIキーなし',data:{hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     return null;
   }
 
@@ -49,8 +56,15 @@ export async function extractArticlesFromPDF(
 ): Promise<ExtractionResult> {
   const client = getClaudeClient();
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:start',message:'Claude抽出開始',data:{hasClient:!!client,pdfSize:pdfBase64.length,hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+  // #endregion
+
   if (!client) {
     // APIキーがない場合はモックデータを返す
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:mock',message:'モックデータ返却',data:{reason:'clientなし',hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     return mockExtractArticles();
   }
 
