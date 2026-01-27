@@ -102,13 +102,40 @@
    - ラジオ回覧板の生成と保存に必要なテーブルとストレージを設定します
    - 3つのファイルを順番に実行してください
 
+   #### ⑥ ダイジェスト音声機能の追加
+
+   **ファイル**: [`add-digest-audio-columns.sql`](add-digest-audio-columns.sql)
+
+   - newslettersテーブルにダイジェスト版音声ファイルのURLとファイル名を保存するカラムを追加します
+
+   #### ⑦ 記事サムネイル機能の追加
+
+   **ファイル**: [`add-thumbnail-column.sql`](add-thumbnail-column.sql)
+
+   - articlesテーブルにサムネイル画像URLを保存するカラムを追加します
+
+   #### ⑧ 保留画像管理テーブルの作成
+
+   **ファイル**: [`pending-images-setup.sql`](pending-images-setup.sql)
+
+   - PDFから抽出された画像で、記事への紐付けが保留中のものを管理するテーブルを作成します
+
+   #### ⑨ Newsletter画像用ストレージの設定（本番環境用）
+
+   **ファイル**: [`newsletter-images-storage-setup-prod.sql`](newsletter-images-storage-setup-prod.sql)
+
+   - 画像専用のStorageバケットとアクセスポリシーを設定します
+   - ⚠️ **注意**: 本番環境用の設定です（匿名ユーザーもアップロード可能 - RLSエラー対策）
+   - 開発環境では [`newsletter-images-storage-setup.sql`](newsletter-images-storage-setup.sql) を使用してください
+
 3. **テーブルの確認**
    - 左メニューから「Table Editor」を選択
    - 以下のテーブルが作成されていることを確認:
-     - newsletters
-     - articles
+     - newsletters（digest_audio_url, digest_audio_filenameカラムを含む）
+     - articles（thumbnail_urlカラムを含む）
      - bus_schedules
      - radio_programs
+     - pending_images（新規作成）
      - （他にもいくつかのテーブルが表示されます）
 
 ### 1-3. Supabase接続情報の取得
@@ -359,6 +386,80 @@ git push origin main
    - 一般ユーザーアプリの「デジタル回覧板」タブを開く
    - 作成した記事が表示されることを確認
    - ✅ データベース連携が正常に動作しています
+
+---
+
+## ステップ6: 既存プロジェクトの本番環境を更新する場合
+
+⚠️ **このセクションは既にデプロイ済みの本番環境がある場合のみ必要です**
+
+既にデプロイ済みのプロジェクトで、DEV環境では動作しているが本番環境でエラーが発生する場合（例: `Could not find the 'digest_audio_filename' column`）、本番環境のSupabaseでマイグレーションが不足している可能性があります。
+
+### 6-1. 統合マイグレーションスクリプトの実行
+
+新しく追加されたすべてのマイグレーションを一括で実行できる統合スクリプトを用意しています。
+
+1. **Supabaseダッシュボード（本番環境）にアクセス**
+   - [https://supabase.com](https://supabase.com) を開く
+   - 本番用プロジェクトを選択
+
+2. **SQL Editorを開く**
+   - 左メニューから「SQL Editor」を選択
+   - 「New query」をクリック
+
+3. **統合マイグレーションスクリプトを実行**
+   - [`production-migrations.sql`](production-migrations.sql) の内容を全てコピー
+   - SQL Editorにペースト
+   - 「Run」ボタンをクリック
+   - ⏳ 約10-20秒で完了します
+
+4. **実行結果の確認**
+   - エラーが表示されていないことを確認
+   - 「Success. No rows returned」または類似のメッセージが表示されればOK
+
+### 6-2. マイグレーション内容の確認
+
+統合スクリプトは以下の4つのマイグレーションを含んでいます：
+
+| マイグレーション | 追加内容 |
+|----------------|---------|
+| ① ダイジェスト音声機能 | newslettersテーブルに `digest_audio_url`, `digest_audio_filename` カラムを追加 |
+| ② 記事サムネイル機能 | articlesテーブルに `thumbnail_url` カラムを追加 |
+| ③ 保留画像管理テーブル | `pending_images` テーブルを新規作成 |
+| ④ Newsletter画像ストレージ | `newsletter-images` バケットとアクセスポリシーを作成 |
+
+### 6-3. 実行後の確認
+
+1. **テーブルの確認**
+   - Supabaseダッシュボードの左メニューから「Table Editor」を選択
+   - 以下を確認:
+     - `newsletters` テーブルに `digest_audio_url`, `digest_audio_filename` カラムが存在
+     - `articles` テーブルに `thumbnail_url` カラムが存在
+     - `pending_images` テーブルが作成されている
+
+2. **Storageの確認**
+   - 左メニューから「Storage」を選択
+   - `newsletter-images` バケットが作成されていることを確認
+   - バケットを開いて「Policies」タブで以下のポリシーが設定されていることを確認:
+     - Public Access newsletter images (SELECT)
+     - Allow anonymous upload newsletter images (INSERT)
+     - Allow anonymous update newsletter images (UPDATE)
+     - Allow anonymous delete newsletter images (DELETE)
+
+3. **アプリケーションの動作確認**
+   - 本番環境のアプリケーションにアクセス
+   - エラーが解消されていることを確認
+   - 各機能が正常に動作することを確認
+
+### 6-4. 冪等性について
+
+`production-migrations.sql` は冪等性を持つように設計されています：
+
+- すべてのSQL文に `IF NOT EXISTS` または `ON CONFLICT` を使用
+- 既に一部実行済みでも安全に再実行可能
+- 何度実行してもエラーにならず、同じ結果が得られます
+
+**つまり、既に一部のマイグレーションを実行済みの場合でも、安全に実行できます。**
 
 ---
 

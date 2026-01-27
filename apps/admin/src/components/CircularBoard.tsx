@@ -136,6 +136,7 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
           visibility: article.visibility,
           source: article.source,
           attachments: article.attachments,
+          thumbnail_url: article.thumbnail_url,
           display_order: null,
           is_pinned: article.is_pinned,
         }));
@@ -418,12 +419,13 @@ export const CircularBoard: React.FC<CircularBoardProps> = ({ onEventsExtracted 
           ...article,
           article_type: 'official', // 自治会公式として設定
           source: `${title}${issueNumber ? ` ${issueNumber}` : ''}`,
+          thumbnail_url: null, // 初期状態ではnull（後から画像を追加可能）
           // 詳細抽出でも元PDFを添付（全記事に共通）
           attachments: [
             {
               type: 'pdf',
               url: uploadResult.url,
-              filename: uploadResult.filename,
+              label: uploadResult.filename,
             },
           ],
           created_at: new Date().toISOString(),

@@ -11,9 +11,9 @@
  * - コンパクトなUIデザイン（タグ小さめ、重要情報を目立たせる）
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Newsletter, Article, getNewsletters, getArticlesByNewsletterId } from '@cc-saas/shared';
-import { FileText, Calendar, Tag, AlertCircle, Paperclip, X, ChevronDown, Loader2 } from 'lucide-react';
+import { FileText, Calendar, Tag, AlertCircle, Paperclip, X, ChevronDown, Loader2, ExternalLink, Image } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -253,6 +253,34 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
    */
   const selectedNewsletter = newsletters.find((n) => n.id === selectedNewsletterId);
 
+  /**
+   * 自治会公式記事のPDF一覧を取得（重複除外）
+   */
+  const uniqueOfficialPDFs = useMemo(() => {
+    const pdfMap = new Map<string, { url: string; label: string }>();
+    
+    articles
+      .filter(article => article.article_type === 'official')
+      .forEach(article => {
+        article.attachments?.forEach(attachment => {
+          if (attachment.type === 'pdf' && !pdfMap.has(attachment.url)) {
+            // labelが空の場合、filenameまたはURLからファイル名を取得
+            const displayLabel = attachment.label || 
+                                (attachment as any).filename || 
+                                attachment.url.split('/').pop() || 
+                                'PDF資料';
+            
+            pdfMap.set(attachment.url, {
+              url: attachment.url,
+              label: displayLabel
+            });
+          }
+        });
+      });
+    
+    return Array.from(pdfMap.values());
+  }, [articles]);
+
   return (
     <div className="space-y-4 pb-6">
       {/* ヘッダー */}
@@ -473,9 +501,13 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                       )}
                     </div>
 
-                    {/* 添付ファイルアイコン */}
-                    {article.attachments.length > 0 && (
-                      <Paperclip size={14} className="text-slate-400" />
+                    {/* 添付ファイルアイコン（PDFは別セクションに表示するため除外） */}
+                    {article.attachments.filter(att => att.type !== 'pdf').length > 0 && (
+                      article.attachments.some(att => att.type === 'image') ? (
+                        <Image size={14} className="text-slate-400" />
+                      ) : (
+                        <Paperclip size={14} className="text-slate-400" />
+                      )
                     )}
                   </div>
                 </div>
@@ -483,6 +515,41 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
             </button>
           ))}
             </div>
+          )}
+
+          {/* 原本を読むセクション */}
+          {uniqueOfficialPDFs.length > 0 && (
+            <>
+              {/* セクション区切り線 */}
+              <div className="flex items-center gap-4 mt-8 mb-6">
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
+                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide flex-shrink-0">
+                  記事をPDF版で読む
+                </h2>
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-slate-300" />
+              </div>
+
+              {/* PDFリンク一覧 */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
+                <div className="space-y-3">
+                  {uniqueOfficialPDFs.map((pdf, index) => (
+                    <a
+                      key={index}
+                      href={pdf.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors group"
+                    >
+                      <FileText className="w-5 h-5 text-red-600 flex-shrink-0" />
+                      <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900">
+                        {pdf.label}
+                      </span>
+                      <ExternalLink className="w-4 h-4 text-slate-400 ml-auto" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
 
           {/* 地域のお知らせセクション */}
@@ -600,7 +667,11 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
 
                     {/* 添付ファイルアイコン */}
                     {article.attachments.length > 0 && (
-                      <Paperclip size={14} className="text-slate-400" />
+                      article.attachments.some(att => att.type === 'image') ? (
+                        <Image size={14} className="text-slate-400" />
+                      ) : (
+                        <Paperclip size={14} className="text-slate-400" />
+                      )
                     )}
                   </div>
                 </div>
@@ -746,7 +817,13 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
               )}
 
               {/* PDFとその他の添付ファイル */}
-              {selectedArticle.attachments.filter(att => att.type !== 'image').length > 0 && (
+              {selectedArticle.attachments.filter(att => {
+                // 画像は除外
+                if (att.type === 'image') return false;
+                // 自治会公式記事のPDFは「原本を読む」セクションに表示するため除外
+                if (selectedArticle.article_type === 'official' && att.type === 'pdf') return false;
+                return true;
+              }).length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
                     <FileText size={16} />
@@ -754,7 +831,13 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                   </p>
                   <div className="space-y-2">
                     {selectedArticle.attachments
-                      .filter(att => att.type !== 'image')
+                      .filter(att => {
+                        // 画像は除外
+                        if (att.type === 'image') return false;
+                        // 自治会公式記事のPDFは「原本を読む」セクションに表示するため除外
+                        if (selectedArticle.article_type === 'official' && att.type === 'pdf') return false;
+                        return true;
+                      })
                       .map((attachment, index) => (
                         <a
                           key={index}
