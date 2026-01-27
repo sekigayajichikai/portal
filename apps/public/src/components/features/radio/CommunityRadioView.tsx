@@ -97,10 +97,10 @@ const CommunityRadioView: React.FC<CommunityRadioViewProps> = ({ isSimpleMode })
             <span className="text-4xl">📻</span>
           </div>
           <h2 className="text-2xl font-black text-slate-800 mb-2">
-            {isSimpleMode ? 'ラジオ番組' : 'Community Radio'}
+            {isSimpleMode ? 'ラジオ回覧板' : 'Radio Circulars'}
           </h2>
           <p className="text-slate-500">
-            {isSimpleMode ? 'まだラジオ番組がありません' : 'No radio programs available yet'}
+            {isSimpleMode ? 'まだラジオ回覧板がありません' : 'No radio circulars available yet'}
           </p>
         </div>
       </div>
@@ -125,7 +125,7 @@ const CommunityRadioView: React.FC<CommunityRadioViewProps> = ({ isSimpleMode })
           </div>
         )}
         <h2 className="text-2xl font-black text-slate-800">
-          {isSimpleMode ? '地域ラジオ' : 'Community Radio'}
+          {isSimpleMode ? 'ラジオ回覧板' : 'Radio Circulars'}
         </h2>
         <p className="text-slate-500 font-bold">
           {selectedProgram ? selectedProgram.title : 'Now Playing...'}
@@ -218,7 +218,7 @@ const CommunityRadioView: React.FC<CommunityRadioViewProps> = ({ isSimpleMode })
           <p
             className={`text-xs font-bold mb-4 uppercase tracking-widest ${isSimpleMode ? 'text-slate-500' : 'text-yellow-400'}`}
           >
-            {isSimpleMode ? 'ラジオ番組一覧' : 'Radio Programs'}
+            {isSimpleMode ? 'ラジオ回覧板一覧' : 'Radio Circulars List'}
           </p>
           <div className="space-y-3">
             {radioPrograms.map((program, index) => (

@@ -353,7 +353,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
               <h3 className={`text-2xl font-bold mb-1 ${
                 isSimpleMode ? 'text-slate-900' : 'text-indigo-900'
               }`}>
-                聞く！回覧板
+                ラジオ回覧板
               </h3>
               <p className={`text-sm ${
                 isSimpleMode ? 'text-slate-600' : 'text-indigo-700'
@@ -797,7 +797,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
             <div className="flex items-start justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-slate-900 mb-1">
-                  聞く！回覧板
+                  ラジオ回覧板
                 </h2>
                 <p className="text-sm text-slate-600">
                   {selectedNewsletter.title}

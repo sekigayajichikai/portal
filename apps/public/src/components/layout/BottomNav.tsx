@@ -14,7 +14,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, isSimple
     { id: 'garbage', icon: '🗑️', label: 'ゴミ' },
     { id: 'bus', icon: '🚌', label: 'バス' },
     { id: 'calendar', icon: '📅', label: '予定' },
-    { id: 'radio', icon: '📻', label: 'ラジオ' },
+    { id: 'radio', icon: '📻', label: 'ラジオ回覧板' },
   ];
 
   return (
