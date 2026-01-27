@@ -10,6 +10,7 @@ interface MainLayoutProps {
   isSimpleMode: boolean;
   toggleSimpleMode: () => void;
   user: User | null;
+  forceSimpleMode?: boolean;
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({
@@ -19,6 +20,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({
   isSimpleMode,
   toggleSimpleMode,
   user,
+  forceSimpleMode = false,
 }) => {
   return (
     <div
@@ -29,6 +31,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({
         toggleSimpleMode={toggleSimpleMode}
         user={user}
         setActiveTab={setActiveTab}
+        forceSimpleMode={forceSimpleMode}
       />
 
       {/* Main Content Area */}

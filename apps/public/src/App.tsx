@@ -16,6 +16,7 @@ import GarbageCalendarView from '@/components/features/garbage/GarbageCalendarVi
 import BusScheduleView from '@/components/features/bus/BusScheduleView';
 import EventCalendarView from '@/components/features/calendar/EventCalendarView';
 import CommunityRadioView from '@/components/features/radio/CommunityRadioView';
+import ComingSoon from '@/components/features/common/ComingSoon';
 import { fetchBusSchedules } from '@cc-saas/shared/services';
 import type { BusSchedule } from '@cc-saas/shared/types';
 import { AuthProvider, useAuth, PasswordLogin } from '@cc-saas/shared';
@@ -27,8 +28,14 @@ import { AuthProvider, useAuth, PasswordLogin } from '@cc-saas/shared';
 const AppContent: React.FC = () => {
   const { isAuthenticated, isLoading } = useAuth();
 
+  // 環境変数から機能制御フラグを取得
+  const enableAllFeatures = import.meta.env.VITE_ENABLE_ALL_FEATURES !== 'false';
+  const forceSimpleMode = import.meta.env.VITE_FORCE_SIMPLE_MODE === 'true';
+
   // localStorageから設定を読み込み（永続化）
+  // シンプルモード強制時は常にtrueを返す
   const loadSimpleModeFromStorage = (): boolean => {
+    if (forceSimpleMode) return true;
     const saved = localStorage.getItem('isSimpleMode');
     return saved === 'true';
   };
@@ -110,6 +117,9 @@ const AppContent: React.FC = () => {
   };
 
   const toggleSimpleMode = () => {
+    // シンプルモード強制時は切り替えを無効化
+    if (forceSimpleMode) return;
+    
     const newMode = !isSimpleMode;
     setIsSimpleMode(newMode);
     // localStorageに保存（永続化）
@@ -138,52 +148,99 @@ const AppContent: React.FC = () => {
       isSimpleMode={isSimpleMode}
       toggleSimpleMode={toggleSimpleMode}
       user={user}
+      forceSimpleMode={forceSimpleMode}
     >
       {activeTab === 'dashboard' && (
-        <Dashboard
-          user={user}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
-          isSimpleMode={isSimpleMode}
-          circulars={circulars}
-          toggleRead={toggleCircularRead}
-          payments={payments}
-          onPay={handlePayment}
-        />
+        enableAllFeatures ? (
+          <Dashboard
+            user={user}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
+            isSimpleMode={isSimpleMode}
+            circulars={circulars}
+            toggleRead={toggleCircularRead}
+            payments={payments}
+            onPay={handlePayment}
+          />
+        ) : (
+          <ComingSoon 
+            featureName="ダッシュボード" 
+            icon="📊" 
+            isSimpleMode={isSimpleMode} 
+          />
+        )
       )}
 
       {activeTab === 'home' && (
-        <HomeView
-          isSimpleMode={isSimpleMode}
-          busSchedules={busSchedules}
-          events={MOCK_EVENTS}
-          currentTime={currentTime}
-        />
+        enableAllFeatures ? (
+          <HomeView
+            isSimpleMode={isSimpleMode}
+            busSchedules={busSchedules}
+            events={MOCK_EVENTS}
+            currentTime={currentTime}
+          />
+        ) : (
+          <ComingSoon 
+            featureName="ホーム" 
+            icon="🏠" 
+            isSimpleMode={isSimpleMode} 
+          />
+        )
       )}
-
-      {/* #region agent log */}
-      {(()=>{fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:100',message:'Rendering circulars tab check',data:{activeTab,shouldRenderCirculars:activeTab==='circulars'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});return null;})()}
-      {/* #endregion */}
 
       {activeTab === 'circulars' && <CircularsView isSimpleMode={isSimpleMode} />}
 
       {activeTab === 'garbage' && (
-        <GarbageCalendarView isSimpleMode={isSimpleMode} garbageData={GARBAGE_DATA} />
+        enableAllFeatures ? (
+          <GarbageCalendarView isSimpleMode={isSimpleMode} garbageData={GARBAGE_DATA} />
+        ) : (
+          <ComingSoon 
+            featureName="ゴミカレンダー" 
+            icon="🗑️" 
+            isSimpleMode={isSimpleMode} 
+          />
+        )
       )}
 
       {activeTab === 'bus' && (
-        <BusScheduleView
-          isSimpleMode={isSimpleMode}
-          busSchedules={busSchedules}
-          currentTime={currentTime}
-        />
+        enableAllFeatures ? (
+          <BusScheduleView
+            isSimpleMode={isSimpleMode}
+            busSchedules={busSchedules}
+            currentTime={currentTime}
+          />
+        ) : (
+          <ComingSoon 
+            featureName="バススケジュール" 
+            icon="🚌" 
+            isSimpleMode={isSimpleMode} 
+          />
+        )
       )}
 
       {activeTab === 'calendar' && (
-        <EventCalendarView isSimpleMode={isSimpleMode} events={MOCK_EVENTS} />
+        enableAllFeatures ? (
+          <EventCalendarView isSimpleMode={isSimpleMode} events={MOCK_EVENTS} />
+        ) : (
+          <ComingSoon 
+            featureName="イベントカレンダー" 
+            icon="📅" 
+            isSimpleMode={isSimpleMode} 
+          />
+        )
       )}
 
-      {activeTab === 'radio' && <CommunityRadioView isSimpleMode={isSimpleMode} />}
+      {activeTab === 'radio' && (
+        enableAllFeatures ? (
+          <CommunityRadioView isSimpleMode={isSimpleMode} />
+        ) : (
+          <ComingSoon 
+            featureName="コミュニティラジオ" 
+            icon="📻" 
+            isSimpleMode={isSimpleMode} 
+          />
+        )
+      )}
     </MainLayout>
   );
 };
