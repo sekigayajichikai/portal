@@ -5,9 +5,10 @@
  * モーダルダイアログです。
  */
 
-import React, { useState, useEffect } from 'react';
-import { Article, Category, Priority, Visibility } from '@cc-saas/shared';
-import { X, Save, Loader2, Eye, EyeOff, Pin, Calendar } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Article, Category, Priority, Visibility, Attachment } from '@cc-saas/shared';
+import { X, Save, Loader2, Eye, EyeOff, Pin, Calendar, Image as ImageIcon, Upload, Trash2 } from 'lucide-react';
+import { uploadImage, deleteImage } from '@cc-saas/shared/services/storageService';
 
 /**
  * ArticleEditDialogコンポーネントのProps
@@ -42,6 +43,9 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [newTag, setNewTag] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   /**
    * 記事が変更されたら、フォームデータを初期化
@@ -60,7 +64,12 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
         tags: article.tags,
         visibility: article.visibility,
         is_pinned: article.is_pinned,
+        attachments: article.attachments,
+        thumbnail_url: article.thumbnail_url,
       });
+      // 既存の画像attachmentsを読み込み
+      const existingImages = article.attachments.filter(att => att.type === 'image');
+      setUploadedImages(existingImages);
       setErrors({});
     }
   }, [article]);
@@ -102,6 +111,101 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
       const newTags = [...formData.tags];
       newTags.splice(index, 1);
       updateField('tags', newTags);
+    }
+  };
+
+  /**
+   * 画像ファイル選択時の処理
+   */
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      const newImages: Attachment[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          const result = await uploadImage(file);
+          
+          const imageAttachment: Attachment = {
+            type: 'image',
+            url: result.url,
+            label: result.filename,
+          };
+          
+          newImages.push(imageAttachment);
+        } catch (error: any) {
+          console.error(`画像 ${file.name} のアップロードエラー:`, error);
+          alert(`画像 ${file.name} のアップロードに失敗しました: ${error.message}`);
+        }
+      }
+
+      if (newImages.length > 0) {
+        const updatedImages = [...uploadedImages, ...newImages];
+        setUploadedImages(updatedImages);
+
+        // attachmentsを更新（画像以外も含める）
+        const nonImageAttachments = formData.attachments?.filter(att => att.type !== 'image') || [];
+        const allAttachments = [...nonImageAttachments, ...updatedImages];
+        updateField('attachments', allAttachments);
+
+        // 最初の画像をサムネイルに設定（まだサムネイルがない場合）
+        if (!formData.thumbnail_url && updatedImages.length > 0) {
+          updateField('thumbnail_url', updatedImages[0].url);
+        }
+      }
+    } catch (error) {
+      console.error('画像アップロード処理エラー:', error);
+      alert('画像のアップロードに失敗しました');
+    } finally {
+      setIsUploading(false);
+      // input要素をリセット（同じファイルを再選択できるように）
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  /**
+   * 画像を削除
+   */
+  const handleImageDelete = async (index: number) => {
+    const imageToDelete = uploadedImages[index];
+    
+    if (!confirm(`画像「${imageToDelete.label}」を削除しますか？`)) {
+      return;
+    }
+
+    try {
+      // Storageから削除（URLからパスを抽出）
+      const url = new URL(imageToDelete.url);
+      const pathParts = url.pathname.split('/newsletter-images/');
+      if (pathParts.length > 1) {
+        const storagePath = pathParts[1];
+        await deleteImage(storagePath);
+      }
+
+      // ローカル状態から削除
+      const updatedImages = uploadedImages.filter((_, i) => i !== index);
+      setUploadedImages(updatedImages);
+
+      // attachmentsを更新
+      const nonImageAttachments = formData.attachments?.filter(att => att.type !== 'image') || [];
+      const allAttachments = [...nonImageAttachments, ...updatedImages];
+      updateField('attachments', allAttachments);
+
+      // 削除した画像がサムネイルだった場合、サムネイルを更新
+      if (formData.thumbnail_url === imageToDelete.url) {
+        updateField('thumbnail_url', updatedImages.length > 0 ? updatedImages[0].url : null);
+      }
+
+      console.log('画像を削除しました');
+    } catch (error: any) {
+      console.error('画像削除エラー:', error);
+      alert(`画像の削除に失敗しました: ${error.message}`);
     }
   };
 
@@ -405,6 +509,88 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
                 </span>
               ))}
             </div>
+          </div>
+
+          {/* 画像アップロード */}
+          <div className="border-t pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <label className="block text-sm font-medium text-slate-700 flex items-center gap-2">
+                <ImageIcon size={18} />
+                画像
+              </label>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Upload size={16} />
+                {isUploading ? 'アップロード中...' : '画像を追加'}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                multiple
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+            </div>
+
+            {/* 画像一覧 */}
+            {uploadedImages.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {uploadedImages.map((image, index) => (
+                  <div key={index} className="relative group">
+                    <div className="aspect-square rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
+                      <img
+                        src={image.url}
+                        alt={image.label}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    
+                    {/* サムネイルバッジ */}
+                    {index === 0 && (
+                      <div className="absolute top-2 left-2 bg-primary-600 text-white text-xs px-2 py-1 rounded-full font-medium">
+                        サムネイル
+                      </div>
+                    )}
+
+                    {/* 削除ボタン */}
+                    <button
+                      type="button"
+                      onClick={() => handleImageDelete(index)}
+                      className="absolute top-2 right-2 p-2 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
+                      title="画像を削除"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+
+                    {/* ファイル名 */}
+                    <p className="mt-2 text-xs text-slate-600 truncate">
+                      {image.label}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50">
+                <ImageIcon size={48} className="mx-auto text-slate-400 mb-2" />
+                <p className="text-sm text-slate-600 mb-1">画像がありません</p>
+                <p className="text-xs text-slate-500">
+                  画像を追加すると、最初の画像が自動的にサムネイルに設定されます
+                </p>
+              </div>
+            )}
+
+            {/* アップロード中の表示 */}
+            {isUploading && (
+              <div className="mt-4 flex items-center justify-center gap-2 text-primary-600">
+                <Loader2 size={20} className="animate-spin" />
+                <span className="text-sm">画像をアップロード中...</span>
+              </div>
+            )}
           </div>
         </div>
 

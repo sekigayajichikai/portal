@@ -113,10 +113,6 @@ const PRIORITY_LABELS: Record<string, string> = {
 };
 
 const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:78',message:'CircularsView component mounted',data:{isSimpleMode},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
-
   // State管理
   const [newsletters, setNewsletters] = useState<(Newsletter & { article_count: number })[]>([]);
   const [selectedNewsletterId, setSelectedNewsletterId] = useState<string | null>(null);
@@ -131,18 +127,10 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
    */
   useEffect(() => {
     const fetchNewsletters = async () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:98',message:'fetchNewsletters started',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-
       setIsLoading(true);
       setError(null);
       try {
         const data = await getNewsletters();
-
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:105',message:'Newsletters fetched successfully',data:{count:data.length,newsletters:data},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
 
         setNewsletters(data);
 
@@ -151,10 +139,6 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
           setSelectedNewsletterId(data[0].id);
         }
       } catch (err: any) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:115',message:'Newsletter fetch error',data:{error:err.message,stack:err.stack},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-
         console.error('Newsletter取得エラー:', err);
         setError('デジタル回覧板の読み込みに失敗しました');
       } finally {
@@ -247,15 +231,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
    * 記事詳細モーダルを開く
    */
   const openArticleDetail = (article: Article) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:165',message:'openArticleDetail called',data:{articleId:article.id,articleTitle:article.title,hasContent:!!article.content},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-
     setSelectedArticle(article);
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:170',message:'setSelectedArticle called',data:{articleId:article.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
   };
 
   /**
@@ -358,90 +334,104 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                 .map((article) => (
             <button
               key={article.id}
-              onClick={() => {
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:310',message:'Article card clicked',data:{articleId:article.id,articleTitle:article.title},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
-                // #endregion
-                openArticleDetail(article);
-              }}
+              onClick={() => openArticleDetail(article)}
               className={`w-full text-left p-4 rounded-xl border transition-all hover:scale-[1.02] active:scale-[0.98] ${
                 isSimpleMode
                   ? 'bg-white border-slate-300 hover:border-blue-400 hover:shadow-md'
                   : 'bg-white border-slate-200 hover:border-indigo-400 hover:shadow-lg'
               }`}
             >
-              {/* ヘッダー行: カテゴリー + 優先度 */}
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{CATEGORY_ICONS[article.category] || '📄'}</span>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      CATEGORY_COLORS[article.category] || 'bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    {CATEGORY_LABELS[article.category] || article.category}
-                  </span>
-                </div>
-                {article.priority === 'high' && (
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full font-bold ${
-                      PRIORITY_STYLES[article.priority]
-                    }`}
-                  >
-                    {PRIORITY_LABELS[article.priority]}
-                  </span>
+              <div className="flex gap-4">
+                {/* サムネイル画像 */}
+                {article.thumbnail_url ? (
+                  <div className="flex-shrink-0 w-24 h-24 sm:w-32 sm:h-32 rounded-lg overflow-hidden bg-slate-100">
+                    <img
+                      src={article.thumbnail_url}
+                      alt={article.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-shrink-0 w-24 h-24 sm:w-32 sm:h-32 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <span className="text-4xl sm:text-5xl">{CATEGORY_ICONS[article.category] || '📄'}</span>
+                  </div>
                 )}
-              </div>
 
-              {/* タイトル */}
-              <h3 className={`font-bold mb-1 ${isSimpleMode ? 'text-slate-900' : 'text-slate-800'}`}>
-                {article.title}
-              </h3>
+                {/* 記事内容 */}
+                <div className="flex-1 min-w-0">
+                  {/* ヘッダー行: カテゴリー + 優先度 */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          CATEGORY_COLORS[article.category] || 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {CATEGORY_LABELS[article.category] || article.category}
+                      </span>
+                    </div>
+                    {article.priority === 'high' && (
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full font-bold ${
+                          PRIORITY_STYLES[article.priority]
+                        }`}
+                      >
+                        {PRIORITY_LABELS[article.priority]}
+                      </span>
+                    )}
+                  </div>
 
-              {/* 要約 */}
-              <p className="text-sm text-slate-600 mb-2 line-clamp-2">{article.brief}</p>
+                  {/* タイトル */}
+                  <h3 className={`font-bold mb-1 ${isSimpleMode ? 'text-slate-900' : 'text-slate-800'}`}>
+                    {article.title}
+                  </h3>
 
-              {/* フッター: 期限 + タグ + 添付 */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* 期限 */}
-                  {article.deadline && (
-                    <span
-                      className={`text-xs flex items-center gap-1 ${
-                        isDeadlineNear(article.deadline)
-                          ? 'text-red-600 font-bold'
-                          : 'text-slate-500'
-                      }`}
-                    >
-                      <Calendar size={12} />
-                      期限: {formatDate(article.deadline)}
-                    </span>
-                  )}
+                  {/* 要約 */}
+                  <p className="text-sm text-slate-600 mb-2 line-clamp-2">{article.brief}</p>
 
-                  {/* タグ（小さく表示） */}
-                  {article.tags.length > 0 && (
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {article.tags.slice(0, 2).map((tag, index) => (
+                  {/* フッター: 期限 + タグ + 添付 */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* 期限 */}
+                      {article.deadline && (
                         <span
-                          key={index}
-                          className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded"
+                          className={`text-xs flex items-center gap-1 ${
+                            isDeadlineNear(article.deadline)
+                              ? 'text-red-600 font-bold'
+                              : 'text-slate-500'
+                          }`}
                         >
-                          #{TAG_LABELS[tag] || tag}
-                        </span>
-                      ))}
-                      {article.tags.length > 2 && (
-                        <span className="text-[10px] text-slate-400">
-                          +{article.tags.length - 2}
+                          <Calendar size={12} />
+                          期限: {formatDate(article.deadline)}
                         </span>
                       )}
-                    </div>
-                  )}
-                </div>
 
-                {/* 添付ファイルアイコン */}
-                {article.attachments.length > 0 && (
-                  <Paperclip size={14} className="text-slate-400" />
-                )}
+                      {/* タグ（小さく表示） */}
+                      {article.tags.length > 0 && (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {article.tags.slice(0, 2).map((tag, index) => (
+                            <span
+                              key={index}
+                              className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded"
+                            >
+                              #{TAG_LABELS[tag] || tag}
+                            </span>
+                          ))}
+                          {article.tags.length > 2 && (
+                            <span className="text-[10px] text-slate-400">
+                              +{article.tags.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 添付ファイルアイコン */}
+                    {article.attachments.length > 0 && (
+                      <Paperclip size={14} className="text-slate-400" />
+                    )}
+                  </div>
+                </div>
               </div>
             </button>
           ))}
@@ -469,90 +459,104 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                   .map((article) => (
             <button
               key={article.id}
-              onClick={() => {
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:310',message:'Article card clicked',data:{articleId:article.id,articleTitle:article.title},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
-                // #endregion
-                openArticleDetail(article);
-              }}
+              onClick={() => openArticleDetail(article)}
               className={`w-full text-left p-4 rounded-xl border transition-all hover:scale-[1.02] active:scale-[0.98] ${
                 isSimpleMode
                   ? 'bg-white border-slate-300 hover:border-blue-400 hover:shadow-md'
                   : 'bg-white border-slate-200 hover:border-indigo-400 hover:shadow-lg'
               }`}
             >
-              {/* ヘッダー行: カテゴリー + 優先度 */}
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{CATEGORY_ICONS[article.category] || '📄'}</span>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      CATEGORY_COLORS[article.category] || 'bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    {CATEGORY_LABELS[article.category] || article.category}
-                  </span>
-                </div>
-                {article.priority === 'high' && (
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full font-bold ${
-                      PRIORITY_STYLES[article.priority]
-                    }`}
-                  >
-                    {PRIORITY_LABELS[article.priority]}
-                  </span>
+              <div className="flex gap-4">
+                {/* サムネイル画像 */}
+                {article.thumbnail_url ? (
+                  <div className="flex-shrink-0 w-24 h-24 sm:w-32 sm:h-32 rounded-lg overflow-hidden bg-slate-100">
+                    <img
+                      src={article.thumbnail_url}
+                      alt={article.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-shrink-0 w-24 h-24 sm:w-32 sm:h-32 rounded-lg bg-slate-100 flex items-center justify-center">
+                    <span className="text-4xl sm:text-5xl">{CATEGORY_ICONS[article.category] || '📄'}</span>
+                  </div>
                 )}
-              </div>
 
-              {/* タイトル */}
-              <h3 className={`font-bold mb-1 ${isSimpleMode ? 'text-slate-900' : 'text-slate-800'}`}>
-                {article.title}
-              </h3>
+                {/* 記事内容 */}
+                <div className="flex-1 min-w-0">
+                  {/* ヘッダー行: カテゴリー + 優先度 */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          CATEGORY_COLORS[article.category] || 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {CATEGORY_LABELS[article.category] || article.category}
+                      </span>
+                    </div>
+                    {article.priority === 'high' && (
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full font-bold ${
+                          PRIORITY_STYLES[article.priority]
+                        }`}
+                      >
+                        {PRIORITY_LABELS[article.priority]}
+                      </span>
+                    )}
+                  </div>
 
-              {/* 要約 */}
-              <p className="text-sm text-slate-600 mb-2 line-clamp-2">{article.brief}</p>
+                  {/* タイトル */}
+                  <h3 className={`font-bold mb-1 ${isSimpleMode ? 'text-slate-900' : 'text-slate-800'}`}>
+                    {article.title}
+                  </h3>
 
-              {/* フッター: 期限 + タグ + 添付 */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* 期限 */}
-                  {article.deadline && (
-                    <span
-                      className={`text-xs flex items-center gap-1 ${
-                        isDeadlineNear(article.deadline)
-                          ? 'text-red-600 font-bold'
-                          : 'text-slate-500'
-                      }`}
-                    >
-                      <Calendar size={12} />
-                      期限: {formatDate(article.deadline)}
-                    </span>
-                  )}
+                  {/* 要約 */}
+                  <p className="text-sm text-slate-600 mb-2 line-clamp-2">{article.brief}</p>
 
-                  {/* タグ（小さく表示） */}
-                  {article.tags.length > 0 && (
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {article.tags.slice(0, 2).map((tag, index) => (
+                  {/* フッター: 期限 + タグ + 添付 */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* 期限 */}
+                      {article.deadline && (
                         <span
-                          key={index}
-                          className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded"
+                          className={`text-xs flex items-center gap-1 ${
+                            isDeadlineNear(article.deadline)
+                              ? 'text-red-600 font-bold'
+                              : 'text-slate-500'
+                          }`}
                         >
-                          #{TAG_LABELS[tag] || tag}
-                        </span>
-                      ))}
-                      {article.tags.length > 2 && (
-                        <span className="text-[10px] text-slate-400">
-                          +{article.tags.length - 2}
+                          <Calendar size={12} />
+                          期限: {formatDate(article.deadline)}
                         </span>
                       )}
-                    </div>
-                  )}
-                </div>
 
-                {/* 添付ファイルアイコン */}
-                {article.attachments.length > 0 && (
-                  <Paperclip size={14} className="text-slate-400" />
-                )}
+                      {/* タグ（小さく表示） */}
+                      {article.tags.length > 0 && (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {article.tags.slice(0, 2).map((tag, index) => (
+                            <span
+                              key={index}
+                              className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded"
+                            >
+                              #{TAG_LABELS[tag] || tag}
+                            </span>
+                          ))}
+                          {article.tags.length > 2 && (
+                            <span className="text-[10px] text-slate-400">
+                              +{article.tags.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 添付ファイルアイコン */}
+                    {article.attachments.length > 0 && (
+                      <Paperclip size={14} className="text-slate-400" />
+                    )}
+                  </div>
+                </div>
               </div>
             </button>
           ))}
@@ -568,9 +572,6 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
       ) : null}
 
       {/* 記事詳細モーダル */}
-      {/* #region agent log */}
-      {(()=>{fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:395',message:'Modal render check',data:{hasSelectedArticle:!!selectedArticle,selectedArticleId:selectedArticle?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});return null;})()}
-      {/* #endregion */}
       {selectedArticle && (
         <div
           className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in"
@@ -641,9 +642,6 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
 
               {/* 本文（マークダウン対応） */}
               <div className="prose-compact max-w-none mb-6 text-slate-700">
-                {/* #region agent log */}
-                {(()=>{fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CircularsView.tsx:470',message:'Rendering markdown content',data:{contentLength:selectedArticle.content?.length,contentPreview:selectedArticle.content?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H'})}).catch(()=>{});return null;})()}
-                {/* #endregion */}
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
                   {selectedArticle.content}
                 </ReactMarkdown>
@@ -669,29 +667,62 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                 </div>
               )}
 
-              {/* 添付ファイル */}
-              {selectedArticle.attachments.length > 0 && (
+              {/* 画像 */}
+              {selectedArticle.attachments.filter(att => att.type === 'image').length > 0 && (
+                <div className="mb-6">
+                  <p className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
+                    <FileText size={16} />
+                    画像
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {selectedArticle.attachments
+                      .filter(att => att.type === 'image')
+                      .map((attachment, index) => (
+                        <div key={index} className="group">
+                          <a
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block rounded-lg overflow-hidden bg-slate-100 border border-slate-200 hover:border-blue-400 transition-all"
+                          >
+                            <img
+                              src={attachment.url}
+                              alt={attachment.label}
+                              className="w-full h-auto object-cover"
+                            />
+                          </a>
+                          <p className="mt-2 text-xs text-slate-600">{attachment.label}</p>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* PDFとその他の添付ファイル */}
+              {selectedArticle.attachments.filter(att => att.type !== 'image').length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
                     <FileText size={16} />
                     元の回覧板を見る
                   </p>
                   <div className="space-y-2">
-                    {selectedArticle.attachments.map((attachment, index) => (
-                      <a
-                        key={index}
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors"
-                      >
-                        <FileText size={20} className="text-blue-600" />
-                        <span className="text-sm text-slate-700 flex-1">
-                          {attachment.label || '回覧板PDF'}
-                        </span>
-                        <span className="text-xs text-slate-500 uppercase">{attachment.type}</span>
-                      </a>
-                    ))}
+                    {selectedArticle.attachments
+                      .filter(att => att.type !== 'image')
+                      .map((attachment, index) => (
+                        <a
+                          key={index}
+                          href={attachment.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors"
+                        >
+                          <FileText size={20} className="text-blue-600" />
+                          <span className="text-sm text-slate-700 flex-1">
+                            {attachment.label || '回覧板PDF'}
+                          </span>
+                          <span className="text-xs text-slate-500 uppercase">{attachment.type}</span>
+                        </a>
+                      ))}
                   </div>
                 </div>
               )}

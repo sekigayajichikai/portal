@@ -255,6 +255,166 @@ export async function deleteAudio(path: string): Promise<void> {
 }
 
 /**
+ * 画像ファイルをSupabase Storageにアップロード
+ *
+ * ファイルは newsletter-images バケットに保存され、年月でフォルダ分けされます。
+ * 例: newsletter-images/2025/01/image-1234567890.jpg
+ *
+ * @param file - アップロードする画像ファイル
+ * @returns アップロード結果（URL、パス、ファイル名）
+ * @throws アップロードに失敗した場合
+ */
+export async function uploadImage(file: File): Promise<UploadResult> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    throw new Error('Supabaseが設定されていません');
+  }
+
+  // ファイル形式チェック
+  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  if (!validTypes.includes(file.type)) {
+    throw new Error('画像ファイル形式が無効です。JPEG、PNG、GIF、WEBPのみサポートしています。');
+  }
+
+  // ファイルサイズチェック（5MB以下）
+  const maxSize = 5 * 1024 * 1024; // 5MB
+  if (file.size > maxSize) {
+    throw new Error('画像ファイルサイズは5MB以下にしてください。');
+  }
+
+  // 画像を圧縮（最大幅1200px、品質80%）
+  const compressedBlob = await compressImage(file);
+
+  // ファイル名の生成（年月/image-タイムスタンプ.拡張子）
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const timestamp = Date.now();
+  const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const filename = `image-${timestamp}.${extension}`;
+  const path = `${year}/${month}/${filename}`;
+
+  try {
+    // 画像をアップロード
+    const { data, error } = await supabase.storage
+      .from('newsletter-images')
+      .upload(path, compressedBlob, {
+        contentType: file.type,
+        cacheControl: '3600',
+        upsert: false, // 同名ファイルの上書きを防ぐ
+      });
+
+    if (error) {
+      console.error('Supabase Storage 画像アップロードエラー:', error);
+      throw new Error(`画像のアップロードに失敗しました: ${error.message}`);
+    }
+
+    // 公開URLを取得
+    const { data: urlData } = supabase.storage.from('newsletter-images').getPublicUrl(path);
+
+    return {
+      url: urlData.publicUrl,
+      path: data.path,
+      filename: file.name, // 元のファイル名を保持
+    };
+  } catch (error: any) {
+    console.error('画像アップロード処理エラー:', error);
+    throw new Error(`画像のアップロードに失敗しました: ${error.message}`);
+  }
+}
+
+/**
+ * 画像を圧縮（最大幅1200px、品質80%）
+ *
+ * @param file - 圧縮する画像ファイル
+ * @returns 圧縮された画像Blob
+ */
+async function compressImage(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      img.src = e.target?.result as string;
+    };
+
+    reader.onerror = () => {
+      reject(new Error('画像の読み込みに失敗しました'));
+    };
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      // 最大幅1200pxに制限
+      const maxWidth = 1200;
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width;
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Canvasコンテキストの取得に失敗しました'));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // 品質80%でBlobに変換
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('画像の圧縮に失敗しました'));
+          }
+        },
+        file.type,
+        0.8
+      );
+    };
+
+    img.onerror = () => {
+      reject(new Error('画像の読み込みに失敗しました'));
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * 画像ファイルを削除
+ *
+ * @param path - 削除するファイルのパス（バケット内の相対パス）
+ * @throws 削除に失敗した場合
+ */
+export async function deleteImage(path: string): Promise<void> {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    throw new Error('Supabaseが設定されていません');
+  }
+
+  try {
+    const { error } = await supabase.storage.from('newsletter-images').remove([path]);
+
+    if (error) {
+      console.error('Supabase Storage 画像削除エラー:', error);
+      throw new Error(`画像の削除に失敗しました: ${error.message}`);
+    }
+  } catch (error: any) {
+    console.error('画像削除処理エラー:', error);
+    throw new Error(`画像の削除に失敗しました: ${error.message}`);
+  }
+}
+
+/**
  * ストレージの使用状況を取得（デバッグ用）
  *
  * @returns バケット内のファイル一覧

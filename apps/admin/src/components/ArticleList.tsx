@@ -792,8 +792,15 @@ export const ArticleList: React.FC<ArticleListProps> = ({
                               <div className="flex items-center gap-3">
                                 <FileText size={18} className="text-blue-600" />
                                 <div>
-                                  <p className="text-sm font-medium text-slate-800">{attachment.filename}</p>
-                                  <p className="text-xs text-slate-500">PDFファイル</p>
+                                  <p className="text-sm font-medium text-slate-800">
+                                    {attachment.label || attachment.filename || 'ファイル'}
+                                  </p>
+                                  <p className="text-xs text-slate-500">
+                                    {attachment.type === 'image' && '画像ファイル'}
+                                    {attachment.type === 'pdf' && 'PDFファイル'}
+                                    {attachment.type === 'link' && 'リンク'}
+                                    {!['image', 'pdf', 'link'].includes(attachment.type) && 'ファイル'}
+                                  </p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 text-blue-600 group-hover:text-blue-700">

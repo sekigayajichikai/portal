@@ -42,6 +42,7 @@ export interface Article {
   visibility: Visibility;
   source: string; // "関ヶ谷だより" | "会報ふれあい"
   attachments: Attachment[];
+  thumbnail_url: string | null; // サムネイル画像URL（最初にアップロードした画像を自動設定）
 
   // 表示制御
   display_order: number | null;
