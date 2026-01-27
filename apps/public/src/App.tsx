@@ -19,14 +19,13 @@ import CommunityRadioView from '@/components/features/radio/CommunityRadioView';
 import ComingSoon from '@/components/features/common/ComingSoon';
 import { fetchBusSchedules } from '@cc-saas/shared/services';
 import type { BusSchedule } from '@cc-saas/shared/types';
-import { AuthProvider, useAuth, PasswordLogin } from '@cc-saas/shared';
+import { AuthProvider } from '@cc-saas/shared';
 
 /**
  * アプリケーションのメインコンテンツ
- * 認証状態をチェックして、未ログイン時はPasswordLoginを表示します
+ * アプリケーションの主要な状態管理とレイアウトを提供します
  */
 const AppContent: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
 
   // 環境変数から機能制御フラグを取得
   const enableAllFeatures = import.meta.env.VITE_ENABLE_ALL_FEATURES !== 'false';
@@ -129,21 +128,7 @@ const AppContent: React.FC = () => {
     localStorage.setItem('isSimpleMode', String(newMode));
   };
 
-  // 認証状態の初期化中
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="text-xl text-gray-600">読み込み中...</div>
-      </div>
-    );
-  }
-
-  // 未ログインの場合はパスワード入力画面を表示
-  if (!isAuthenticated) {
-    return <PasswordLogin />;
-  }
-
-  // ログイン済みの場合は通常のアプリを表示
+  // アプリケーションのメインレイアウトを表示
   return (
     <MainLayout
       activeTab={activeTab}
