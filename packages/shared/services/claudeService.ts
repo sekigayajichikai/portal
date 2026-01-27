@@ -73,6 +73,10 @@ export async function extractArticlesFromPDF(
   // プロンプト生成
   const prompt = generateExtractionPrompt(categories);
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:before-api-call',message:'Claude API呼び出し直前',data:{model:'claude-sonnet-4-20250514',max_tokens:8000,promptLength:prompt.length,pdfSize:pdfBase64.length,hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+  // #endregion
+
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -98,21 +102,38 @@ export async function extractArticlesFromPDF(
       ],
     });
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:after-api-call',message:'Claude API呼び出し成功',data:{responseId:response.id,model:response.model,stopReason:response.stop_reason,contentLength:response.content?.length,usage:response.usage,hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
+
     // レスポンスからテキストを抽出
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:no-text-content',message:'テキストレスポンスが見つからない',data:{contentTypes:response.content.map(c=>c.type),hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H6'})}).catch(()=>{});
+      // #endregion
       throw new Error('テキストレスポンスが見つかりません');
     }
 
     // JSONを抽出して解析
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:before-parse',message:'JSON解析開始',data:{textLength:textContent.text.length,textPreview:textContent.text.substring(0,200),hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H6'})}).catch(()=>{});
+    // #endregion
     const articles = parseArticlesFromResponse(textContent.text);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:success',message:'記事抽出完了',data:{articleCount:articles.length,processingTime:Date.now()-startTime,hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+    // #endregion
 
     return {
       articles,
       processingTime: Date.now() - startTime,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Claude API エラー:', error);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:error',message:'Claude APIエラー',data:{errorType:error?.constructor?.name,errorMessage:error?.message,errorStatus:error?.status,errorCode:error?.error?.type,errorDetail:error?.error?.message,errorStack:error?.stack?.substring(0,500),hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+    // #endregion
     throw error;
   }
 }
