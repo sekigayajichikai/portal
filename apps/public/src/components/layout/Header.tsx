@@ -16,14 +16,14 @@ const Header: React.FC<HeaderProps> = ({ isSimpleMode, toggleSimpleMode, user, s
     >
       <div className="flex items-center gap-2" onClick={() => setActiveTab('home')}>
         <div
-          className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-lg transition-transform ${isSimpleMode ? 'bg-slate-700 text-white' : 'bg-yellow-400 animate-bounce'}`}
+          className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shadow-lg transition-transform ${isSimpleMode ? 'bg-blue-50 text-slate-700' : 'bg-yellow-400 animate-bounce'}`}
         >
-          {isSimpleMode ? '自' : '🎉'}
+          {isSimpleMode ? '🏘️' : '🎉'}
         </div>
         <h1
           className={`text-xl font-extrabold tracking-tight ${isSimpleMode ? 'text-slate-700' : 'text-slate-800'}`}
         >
-          {isSimpleMode ? '自治会ポータル' : 'Playground Town'}
+          {isSimpleMode ? 'まちポータル' : 'Playground Town'}
         </h1>
       </div>
 
