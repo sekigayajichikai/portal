@@ -123,7 +123,6 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
   const [error, setError] = useState<string | null>(null);
 
   // ダイジェスト音声プレイヤーの状態管理
-  const [showDigestPlayer, setShowDigestPlayer] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -356,41 +355,125 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
       {/* ダイジェスト音声ボタン */}
       {selectedNewsletter?.digest_audio_url && (
         <button
-          onClick={() => setShowDigestPlayer(true)}
-          className={`w-full p-6 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${
+          onClick={() => {
+            if (audioRef.current) {
+              if (isPlaying) {
+                audioRef.current.pause();
+                setIsPlaying(false);
+              } else {
+                audioRef.current.play();
+                setIsPlaying(true);
+              }
+            }
+          }}
+          className={`w-full p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${
             isSimpleMode
               ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100'
               : 'border-indigo-500 bg-gradient-to-br from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100'
           }`}
         >
-          <div className="flex flex-col items-center gap-4">
-            {/* アニメーションアイコン */}
-            <div className="relative w-24 h-24">
-              <div className={`absolute inset-0 rounded-full animate-pulse opacity-20 ${
-                isSimpleMode ? 'bg-blue-400' : 'bg-indigo-400'
-              }`}></div>
-              <div className={`absolute inset-4 rounded-full animate-pulse delay-75 opacity-20 ${
-                isSimpleMode ? 'bg-indigo-400' : 'bg-purple-400'
-              }`}></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-6xl animate-pulse">📻</span>
-              </div>
+          <div className="flex items-center justify-center gap-3">
+            {/* 再生/一時停止アイコン */}
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+              isSimpleMode ? 'bg-blue-500' : 'bg-indigo-500'
+            } ${isPlaying ? 'animate-pulse' : ''}`}>
+              <span className="text-2xl">{isPlaying ? '⏸️' : '▶️'}</span>
             </div>
             {/* テキスト */}
-            <div className="text-center">
-              <h3 className={`text-2xl font-bold mb-1 ${
+            <div className="text-left">
+              <h3 className={`text-lg font-bold ${
                 isSimpleMode ? 'text-slate-900' : 'text-indigo-900'
               }`}>
-                ラジオ回覧板
+                {isPlaying ? '音声を一時停止' : '音声ダイジェストを再生'}
               </h3>
-              <p className={`text-sm ${
+              <p className={`text-xs ${
                 isSimpleMode ? 'text-slate-600' : 'text-indigo-700'
               }`}>
-                （ダイジェスト版）
+                回覧板の内容を音声で聴く
               </p>
             </div>
           </div>
         </button>
+      )}
+
+      {/* 簡易音声プレーヤー */}
+      {selectedNewsletter?.digest_audio_url && (
+        <>
+          {/* 音声要素（非表示） */}
+          <audio
+            ref={audioRef}
+            src={selectedNewsletter.digest_audio_url}
+            onTimeUpdate={(e) => {
+              const audio = e.currentTarget;
+              setCurrentTime(audio.currentTime);
+            }}
+            onLoadedMetadata={(e) => {
+              const audio = e.currentTarget;
+              setDuration(audio.duration);
+            }}
+            onEnded={() => {
+              setIsPlaying(false);
+              setCurrentTime(0);
+            }}
+          />
+
+          {/* プレーヤーコントロール（再生中のみ表示） */}
+          {isPlaying && (
+            <div
+              className={`p-4 rounded-xl border transition-all animate-in slide-in-from-top-2 ${
+                isSimpleMode
+                  ? 'bg-white border-blue-300'
+                  : 'bg-white/50 backdrop-blur-sm border-indigo-300'
+              }`}
+            >
+              {/* プログレスバー */}
+              <div className="mb-3">
+                <div
+                  className="w-full h-2 bg-slate-200 rounded-full cursor-pointer overflow-hidden"
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const percentage = x / rect.width;
+                    const newTime = percentage * duration;
+                    if (audioRef.current) {
+                      audioRef.current.currentTime = newTime;
+                    }
+                  }}
+                >
+                  <div
+                    className={`h-full transition-all ${
+                      isSimpleMode ? 'bg-blue-600' : 'bg-indigo-600'
+                    }`}
+                    style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs text-slate-600 mt-1">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+              </div>
+
+              {/* 再生情報 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-700 font-medium">再生中</span>
+                  <div className="flex gap-1">
+                    <div className={`w-1 h-3 rounded-full animate-pulse ${
+                      isSimpleMode ? 'bg-blue-500' : 'bg-indigo-500'
+                    }`}></div>
+                    <div className={`w-1 h-3 rounded-full animate-pulse delay-75 ${
+                      isSimpleMode ? 'bg-blue-500' : 'bg-indigo-500'
+                    }`}></div>
+                    <div className={`w-1 h-3 rounded-full animate-pulse delay-150 ${
+                      isSimpleMode ? 'bg-blue-500' : 'bg-indigo-500'
+                    }`}></div>
+                  </div>
+                </div>
+                <span className="text-xs text-slate-500">{selectedNewsletter.title}</span>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* 記事一覧 */}
@@ -866,115 +949,6 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
         </div>
       )}
 
-      {/* ダイジェスト音声プレイヤーモーダル */}
-      {showDigestPlayer && selectedNewsletter?.digest_audio_url && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in"
-          onClick={() => setShowDigestPlayer(false)}
-        >
-          <div
-            className="bg-white rounded-2xl max-w-md w-full p-6 animate-in zoom-in-95 slide-in-from-bottom-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* ヘッダー */}
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-1">
-                  ラジオ回覧板
-                </h2>
-                <p className="text-sm text-slate-600">
-                  {selectedNewsletter.title}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowDigestPlayer(false)}
-                className="p-2 rounded-full hover:bg-slate-100 transition-colors"
-              >
-                <X size={24} className="text-slate-700" />
-              </button>
-            </div>
-
-            {/* ラジオアイコン */}
-            <div className="flex justify-center mb-6">
-              <div className="relative w-32 h-32">
-                <div className={`absolute inset-0 bg-blue-400 rounded-full opacity-20 ${
-                  isPlaying ? 'animate-pulse' : ''
-                }`}></div>
-                <div className={`absolute inset-4 bg-indigo-400 rounded-full opacity-20 ${
-                  isPlaying ? 'animate-pulse delay-75' : ''
-                }`}></div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className={`text-7xl ${isPlaying ? 'animate-pulse' : ''}`}>📻</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 音声要素（非表示） */}
-            <audio
-              ref={audioRef}
-              src={selectedNewsletter.digest_audio_url}
-              onTimeUpdate={(e) => {
-                const audio = e.currentTarget;
-                setCurrentTime(audio.currentTime);
-              }}
-              onLoadedMetadata={(e) => {
-                const audio = e.currentTarget;
-                setDuration(audio.duration);
-              }}
-              onEnded={() => {
-                setIsPlaying(false);
-                setCurrentTime(0);
-              }}
-            />
-
-            {/* プログレスバー */}
-            <div className="mb-4">
-              <div
-                className="w-full h-2 bg-slate-200 rounded-full cursor-pointer overflow-hidden"
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const percentage = x / rect.width;
-                  const newTime = percentage * duration;
-                  if (audioRef.current) {
-                    audioRef.current.currentTime = newTime;
-                  }
-                }}
-              >
-                <div
-                  className="h-full bg-indigo-600 transition-all"
-                  style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-xs text-slate-500 mt-1">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
-
-            {/* コントロールボタン */}
-            <div className="flex items-center justify-center gap-6">
-              {/* 再生/一時停止ボタン */}
-              <button
-                onClick={() => {
-                  if (audioRef.current) {
-                    if (isPlaying) {
-                      audioRef.current.pause();
-                      setIsPlaying(false);
-                    } else {
-                      audioRef.current.play();
-                      setIsPlaying(true);
-                    }
-                  }
-                }}
-                className="w-16 h-16 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg"
-              >
-                <span className="text-3xl">{isPlaying ? '⏸️' : '▶️'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
