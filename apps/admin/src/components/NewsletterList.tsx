@@ -61,7 +61,12 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
       console.log('✅ デジタル回覧板読み込み完了:', data.length, '件');
     } catch (error: any) {
       console.error('❌ デジタル回覧板読み込みエラー:', error);
-      setError('デジタル回覧板の読み込みに失敗しました: ' + error.message);
+      const msg = error?.message ?? '';
+      const isFailedFetch = typeof msg === 'string' && msg.includes('Failed to fetch');
+      const userMessage = isFailedFetch
+        ? 'デジタル回覧板の読み込みに失敗しました（接続エラー）。Supabaseプロジェクトが一時停止していないか、ネットワークとブラウザの開発者ツール（ネットワークタブ）を確認してください。'
+        : 'デジタル回覧板の読み込みに失敗しました: ' + msg;
+      setError(userMessage);
     } finally {
       setIsLoading(false);
     }

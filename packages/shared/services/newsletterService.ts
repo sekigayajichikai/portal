@@ -105,23 +105,30 @@ export async function getNewsletters(): Promise<
     throw error;
   }
 
-  console.log('✅ Newsletter取得完了:', data.length, '件');
+  const safeData = data ?? [];
+  console.log('✅ Newsletter取得完了:', safeData.length, '件');
 
-  // 記事数を展開
-  const newsletters = data.map((item: any) => ({
-    id: item.id,
-    organization_id: item.organization_id,
-    title: item.title,
-    issue_date: item.issue_date,
-    source_pdf_url: item.source_pdf_url,
-    status: item.status,
-    created_by: item.created_by,
-    created_at: item.created_at,
-    published_at: item.published_at,
-    digest_audio_url: item.digest_audio_url,
-    digest_audio_filename: item.digest_audio_filename,
-    article_count: item.articles[0]?.count || 0,
-  }));
+  // 記事数を展開（Supabaseの返却形式が配列/オブジェクトどちらでも対応）
+  const newsletters = safeData.map((item: any) => {
+    const count =
+      Array.isArray(item.articles)
+        ? item.articles[0]?.count
+        : item.articles?.count;
+    return {
+      id: item.id,
+      organization_id: item.organization_id,
+      title: item.title,
+      issue_date: item.issue_date,
+      source_pdf_url: item.source_pdf_url,
+      status: item.status,
+      created_by: item.created_by,
+      created_at: item.created_at,
+      published_at: item.published_at,
+      digest_audio_url: item.digest_audio_url,
+      digest_audio_filename: item.digest_audio_filename,
+      article_count: count ?? 0,
+    };
+  });
 
   return newsletters;
 }
