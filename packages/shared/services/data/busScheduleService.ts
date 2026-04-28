@@ -6,8 +6,8 @@
  * @module services/busScheduleService
  */
 
-import { getSupabaseClient } from './supabaseClient.js';
-import type { BusSchedule } from '../types/index.js';
+import { getSupabaseClient } from '../supabaseClient.js';
+import type { BusSchedule } from '../../types/index.js';
 
 /**
  * バス時刻表を保存

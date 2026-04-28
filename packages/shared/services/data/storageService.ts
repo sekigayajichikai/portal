@@ -6,7 +6,7 @@
  * @module services/storageService
  */
 
-import { getSupabaseClient } from './supabaseClient.js';
+import { getSupabaseClient } from '../supabaseClient.js';
 
 /**
  * PDFアップロードの結果

@@ -7,9 +7,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { Article, Category, ExtractionResult } from '../types/index.js';
-import type { BusScheduleExtractionResult, BusSchedule } from '../types/index.js';
-import { MOCK_ARTICLES } from '../constants/mockData.js';
+import type { Article, Category, ExtractionResult } from '../../types/index.js';
+import type { BusScheduleExtractionResult, BusSchedule } from '../../types/index.js';
+import { MOCK_ARTICLES } from '../../constants/mockData.js';
 
 /**
  * Claude APIクライアントを取得

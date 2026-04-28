@@ -7,7 +7,7 @@
  */
 
 import { GoogleGenAI, Type } from '@google/genai';
-import { PublicEvent } from '../types/index.js';
+import { PublicEvent } from '../../types/index.js';
 
 /**
  * Gemini AI クライアントインスタンスを取得する

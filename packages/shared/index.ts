@@ -13,14 +13,14 @@ export * from './components/PasswordLogin.js';
 export * from './types/auth.js';
 
 // サービス
-export * from './services/geminiService.js';
-export * from './services/claudeService.js';
-export * from './services/openRouterService.js';
-export * from './services/aiService.js';
+export * from './services/ai/geminiService.js';
+export * from './services/ai/claudeService.js';
+export * from './services/ai/openRouterService.js';
+export * from './services/ai/aiService.js';
 export * from './services/supabaseClient.js';
-export * from './services/newsletterService.js';
-export * from './services/radioService.js';
-export * from './services/storageService.js';
+export * from './services/data/newsletterService.js';
+export * from './services/data/radioService.js';
+export * from './services/data/storageService.js';
 
 // 定数・モックデータ
 export * from './constants/index.js';

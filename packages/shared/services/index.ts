@@ -2,9 +2,12 @@
  * サービスのエントリーポイント
  */
 
-export * from './geminiService.js';
-export * from './storageService.js';
-export * from './aiService.js';
-export * from './busScheduleService.js';
-export * from './newsletterService.js';
-export * from './radioService.js';
+// AI services
+export * from './ai/geminiService.js';
+export * from './ai/aiService.js';
+
+// Data services
+export * from './data/storageService.js';
+export * from './data/busScheduleService.js';
+export * from './data/newsletterService.js';
+export * from './data/radioService.js';

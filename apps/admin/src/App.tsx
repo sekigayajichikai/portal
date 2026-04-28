@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Layout } from '@/components/Layout';
-import { Dashboard } from '@/components/Dashboard';
-import { MemberManagement } from '@/components/MemberManagement';
-import { CircularBoard } from '@/components/CircularBoard';
-import { FeeManagement } from '@/components/FeeManagement';
-import { LifestyleManager } from '@/components/LifestyleManager';
-import { RadioGenerator } from '@/components/RadioGenerator';
-import { PublicContent } from '@/components/PublicContent';
+import { Layout } from '@/components/layout/Layout';
+import { Dashboard } from '@/components/layout/Dashboard';
+import { MemberManagement } from '@/components/members/MemberManagement';
+import { CircularBoard } from '@/components/circulars/CircularBoard';
+import { FeeManagement } from '@/components/members/FeeManagement';
+import { LifestyleManager } from '@/components/lifestyle/LifestyleManager';
+import { RadioGenerator } from '@/components/radio/RadioGenerator';
+import { PublicContent } from '@/components/content/PublicContent';
 import { AppView, PublicEvent, AuthProvider, useAuth, PasswordLogin } from '@cc-saas/shared';
 
 /**

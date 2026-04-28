@@ -15,8 +15,8 @@ import {
   deleteArticle,
 } from '@cc-saas/shared';
 // 統合AIサービスを使用（Anthropic/OpenRouterを自動選択）
-import { extractArticlesFromPDF, extractBriefArticleFromPDF, convertPDFToBase64, extractPDFMetadata } from '@cc-saas/shared/services/aiService';
-import { uploadPDF } from '@cc-saas/shared/services/storageService';
+import { extractArticlesFromPDF, extractBriefArticleFromPDF, convertPDFToBase64, extractPDFMetadata } from '@cc-saas/shared/services/ai/aiService';
+import { uploadPDF } from '@cc-saas/shared/services/data/storageService';
 import { MOCK_CIRCULARS, MOCK_CATEGORIES, MOCK_ARTICLES } from '@/constants';
 import { Sparkles, Send, Eye, Loader2, Calendar, FileText, Upload, Trash2, Save, Check, ChevronRight, Edit3 } from 'lucide-react';
 import { ArticleList } from './ArticleList';

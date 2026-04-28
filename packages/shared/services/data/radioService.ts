@@ -8,16 +8,16 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
-import { supabase } from './supabaseClient.js';
+import { supabase } from '../supabaseClient.js';
 import { getArticlesByNewsletterId } from './newsletterService.js';
 import { uploadAudio } from './storageService.js';
-import { generateRadioAudio } from './geminiService.js';
+import { generateRadioAudio } from '../ai/geminiService.js';
 import {
   RadioProgram,
   RadioGenerationRequest,
   RadioGenerationProgress,
   Article,
-} from '../types/index.js';
+} from '../../types/index.js';
 
 /**
  * Gemini AI クライアントインスタンスを取得する

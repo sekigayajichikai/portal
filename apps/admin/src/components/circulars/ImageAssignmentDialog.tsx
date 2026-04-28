@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, XCircle, Image as ImageIcon, FileText, Sparkles } from 'lucide-react';
 import type { PendingImage, Article } from '@cc-saas/shared';
-import { getPendingImagesByNewsletterId, assignImageToArticle, rejectPendingImage } from '@cc-saas/shared/services/pendingImageService';
+import { getPendingImagesByNewsletterId, assignImageToArticle, rejectPendingImage } from '@cc-saas/shared/services/image/pendingImageService';
 import { updateArticle } from '@cc-saas/shared';
 
 interface ImageAssignmentDialogProps {

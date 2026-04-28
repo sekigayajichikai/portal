@@ -7,8 +7,8 @@
  */
 
 import OpenAI from 'openai';
-import type { Article, Category, ExtractionResult } from '../types/index.js';
-import { MOCK_ARTICLES } from '../constants/mockData.js';
+import type { Article, Category, ExtractionResult } from '../../types/index.js';
+import { MOCK_ARTICLES } from '../../constants/mockData.js';
 
 /**
  * OpenRouterクライアントを取得

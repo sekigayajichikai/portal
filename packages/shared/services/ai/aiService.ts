@@ -6,7 +6,7 @@
  * @module services/aiService
  */
 
-import type { Category, ExtractionResult, BusScheduleExtractionResult } from '../types/index.js';
+import type { Category, ExtractionResult, BusScheduleExtractionResult } from '../../types/index.js';
 import * as claudeService from './claudeService.js';
 import * as openRouterService from './openRouterService.js';
 

@@ -7,8 +7,8 @@
  * @module services/newsletterService
  */
 
-import { getSupabaseClient } from './supabaseClient.js';
-import { Newsletter, Article } from '../types/index.js';
+import { getSupabaseClient } from '../supabaseClient.js';
+import { Newsletter, Article } from '../../types/index.js';
 
 /**
  * Newsletterと記事を保存

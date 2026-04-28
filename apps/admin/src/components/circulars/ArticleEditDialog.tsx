@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Article, Category, Priority, Visibility, Attachment } from '@cc-saas/shared';
 import { X, Save, Loader2, Eye, EyeOff, Pin, Calendar, Image as ImageIcon, Upload, Trash2 } from 'lucide-react';
-import { uploadImage, deleteImage } from '@cc-saas/shared/services/storageService';
+import { uploadImage, deleteImage } from '@cc-saas/shared/services/data/storageService';
 
 /**
  * ArticleEditDialogコンポーネントのProps

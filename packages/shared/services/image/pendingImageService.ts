@@ -7,8 +7,8 @@
  * @module services/pendingImageService
  */
 
-import { getSupabaseClient } from './supabaseClient.js';
-import type { PendingImage, PendingImageInput } from '../types/index.js';
+import { getSupabaseClient } from '../supabaseClient.js';
+import type { PendingImage, PendingImageInput } from '../../types/index.js';
 
 /**
  * 保留画像を保存

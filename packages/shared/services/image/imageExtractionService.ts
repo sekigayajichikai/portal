@@ -8,7 +8,7 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
-import type { ImageDetectionResult, ImageWithContext } from '../types/index.js';
+import type { ImageDetectionResult, ImageWithContext } from '../../types/index.js';
 
 // pdfjs-distのWorkerを設定（ブラウザ環境用）
 if (typeof window !== 'undefined') {
