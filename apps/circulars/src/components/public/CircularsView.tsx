@@ -193,14 +193,9 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
       }
     });
 
-    const sortByPublisher = (list: Map<string, any>) =>
-      Array.from(list.values()).sort((a, b) =>
-        (publisherOrder[a.publisher] ?? 100) - (publisherOrder[b.publisher] ?? 100)
-      );
-
     return {
-      sourcePdfs: sortByPublisher(sourceMap),
-      attachmentPdfs: sortByPublisher(attachMap),
+      sourcePdfs: Array.from(sourceMap.values()),
+      attachmentPdfs: Array.from(attachMap.values()),
     };
   }, [articles, selectedNewsletter, publisherOrder]);
 
