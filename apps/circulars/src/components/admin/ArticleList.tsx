@@ -433,12 +433,15 @@ export const ArticleList: React.FC<ArticleListProps> = ({
   /**
    * 記事の内容を表示レベルに応じて取得
    */
+  const cleanHtmlTags = (text: string): string =>
+    text?.replace(/<br\s*\/?>/gi, '\n').replace(/<\/?[^>]+(>|$)/g, '') || '';
+
   const getArticleContent = (article: Article): string => {
     switch (viewLevel) {
       case 'summary':
-        return article.summary;
+        return cleanHtmlTags(article.summary);
       case 'content':
-        return article.content;
+        return cleanHtmlTags(article.content);
     }
   };
 
