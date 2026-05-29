@@ -32,6 +32,41 @@ const turndown = new TurndownService({
   codeBlockStyle: 'fenced',
 });
 
+// テーブル変換ルール（Tiptapはtableを非対応だが、HTMLを壊さずMarkdownに戻す）
+turndown.addRule('table', {
+  filter: ['table'],
+  replacement(_content, node) {
+    const table = node as HTMLTableElement;
+    const rows: string[][] = [];
+    table.querySelectorAll('tr').forEach((tr) => {
+      const cells: string[] = [];
+      tr.querySelectorAll('th, td').forEach((cell) => {
+        cells.push((cell.textContent || '').trim());
+      });
+      if (cells.length > 0) rows.push(cells);
+    });
+    if (rows.length === 0) return '';
+    const colCount = Math.max(...rows.map((r) => r.length));
+    const lines: string[] = [];
+    rows.forEach((row, i) => {
+      const padded = Array.from({ length: colCount }, (_, c) => row[c] || '');
+      lines.push('| ' + padded.join(' | ') + ' |');
+      if (i === 0) {
+        lines.push('| ' + padded.map(() => '---').join(' | ') + ' |');
+      }
+    });
+    return '\n\n' + lines.join('\n') + '\n\n';
+  },
+});
+
+// thead/tbody/tr/td/thはtableルール内で処理するので無視
+turndown.addRule('tableElements', {
+  filter: ['thead', 'tbody', 'tfoot', 'tr', 'td', 'th'],
+  replacement(content) {
+    return content;
+  },
+});
+
 // marked設定（Markdown→HTML変換）
 marked.setOptions({
   breaks: true,
