@@ -208,7 +208,11 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
 - priority: "low"
 - すべて含める（省略しない）
 
-4. 出力形式：
+4. 禁止事項：
+- HTMLタグ（<br>, <p>, <b>, <table>など）は絶対に使わないでください
+- 改行はMarkdownの改行（空行または行末2スペース）を使用してください
+
+5. 出力形式：
 必ずJSON形式で返してください。前後の説明文は不要です。
 
 {
@@ -262,7 +266,22 @@ function parseArticlesFromResponse(
     throw new Error('記事配列が見つかりません');
   }
 
-  return parsed.articles;
+  // HTMLタグを除去（AIが<br>等を混入させることがある）
+  return parsed.articles.map((article: any) => {
+    const cleanHtml = (text: string | null | undefined) => {
+      if (!text) return text;
+      return text
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/?[^>]+(>|$)/g, '');
+    };
+    return {
+      ...article,
+      content: cleanHtml(article.content),
+      summary: cleanHtml(article.summary),
+      brief: cleanHtml(article.brief),
+      headline: cleanHtml(article.headline),
+    };
+  });
 }
 
 /**
