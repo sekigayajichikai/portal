@@ -265,15 +265,9 @@ export async function deleteAudio(path: string): Promise<void> {
  * @throws アップロードに失敗した場合
  */
 export async function uploadDigestAudio(file: File): Promise<UploadResult> {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storageService.ts:uploadDigestAudio:entry',message:'Function entry',data:{fileName:file.name,fileSize:file.size,fileType:file.type},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
   const supabase = getSupabaseClient();
 
   if (!supabase) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storageService.ts:uploadDigestAudio:noSupabase',message:'Supabase not configured',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     throw new Error('Supabaseが設定されていません');
   }
 
@@ -307,9 +301,6 @@ export async function uploadDigestAudio(file: File): Promise<UploadResult> {
 
   try {
     console.log('📤 ダイジェスト音声をアップロード中...', filename);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storageService.ts:uploadDigestAudio:beforeUpload',message:'Before Supabase upload',data:{path:path,contentType:contentType,filename:filename},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
 
     // 音声ファイルをアップロード（newslettersバケットを使用）
     const { data, error } = await supabase.storage.from('newsletters').upload(path, file, {
@@ -317,9 +308,6 @@ export async function uploadDigestAudio(file: File): Promise<UploadResult> {
       cacheControl: '3600',
       upsert: false, // 同名ファイルの上書きを防ぐ
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'storageService.ts:uploadDigestAudio:afterUpload',message:'After Supabase upload',data:{hasData:!!data,hasError:!!error,errorMessage:error?.message,dataPath:data?.path},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
 
     if (error) {
       console.error('Supabase Storage ダイジェスト音声アップロードエラー:', error);

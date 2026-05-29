@@ -8,13 +8,11 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { ImageDetectionResult, ImageWithContext } from '../../types/index.js';
 
-// pdfjs-distのWorkerを設定（ブラウザ環境用）
-if (typeof window !== 'undefined') {
-  // CDN経由でWorkerを読み込み（バージョンを指定）
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js`;
-}
+// pdfjs-distのWorkerを設定（バンドラー経由で同梱バージョンを使用）
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 /**
  * PDFから画像を抽出
@@ -190,6 +188,154 @@ async function extractImageObjectsFromPage(page: any): Promise<Blob[]> {
   }
 
   return images;
+}
+
+/**
+ * PDFから全ページの画像オブジェクトを抽出
+ *
+ * AIの画像検出結果を必要とせず、pdfjs-distで直接画像オブジェクトを抽出します。
+ * 小さい画像（装飾等）は自動的にフィルタリングされます。
+ *
+ * @param pdfBase64 - Base64エンコードされたPDFデータ
+ * @param minWidth - 最小幅（これ以下の画像はスキップ）デフォルト100px
+ * @param minHeight - 最小高さ（これ以下の画像はスキップ）デフォルト100px
+ * @returns 抽出された画像Blobとページ番号の配列
+ */
+export async function extractAllImagesFromPDF(
+  pdfBase64: string,
+  minWidth: number = 100,
+  minHeight: number = 100
+): Promise<{ imageData: Blob; pageNumber: number; width: number; height: number }[]> {
+  const startTime = Date.now();
+  console.log('🖼️ PDFから全画像を自動抽出中...');
+
+  try {
+    // Base64をUint8Arrayに変換
+    const binaryString = atob(pdfBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // PDFドキュメントを読み込み
+    const loadingTask = pdfjsLib.getDocument({ data: bytes });
+    const pdfDocument = await loadingTask.promise;
+
+    console.log('📄 PDF読み込み完了:', pdfDocument.numPages, 'ページ');
+
+    let extractedImages: { imageData: Blob; pageNumber: number; width: number; height: number }[] = [];
+
+    // まず画像オブジェクトの直接抽出を試みる
+    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+      try {
+        const page = await pdfDocument.getPage(pageNum);
+        const operatorList = await page.getOperatorList();
+
+        for (let i = 0; i < operatorList.fnArray.length; i++) {
+          const fn = operatorList.fnArray[i];
+
+          if (fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintInlineImageXObject) {
+            try {
+              const imageName = operatorList.argsArray[i][0];
+              const imageObj = await page.objs.get(imageName);
+
+              if (imageObj && imageObj.data && imageObj.width >= minWidth && imageObj.height >= minHeight) {
+                const canvas = document.createElement('canvas');
+                canvas.width = imageObj.width;
+                canvas.height = imageObj.height;
+                const ctx = canvas.getContext('2d');
+
+                if (ctx) {
+                  const imageData = new ImageData(
+                    new Uint8ClampedArray(imageObj.data),
+                    imageObj.width,
+                    imageObj.height
+                  );
+                  ctx.putImageData(imageData, 0, 0);
+
+                  const blob = await new Promise<Blob>((resolve, reject) => {
+                    canvas.toBlob(
+                      (blob) => {
+                        if (blob) resolve(blob);
+                        else reject(new Error('Blob変換失敗'));
+                      },
+                      'image/png',
+                      0.9
+                    );
+                  });
+
+                  extractedImages.push({
+                    imageData: blob,
+                    pageNumber: pageNum,
+                    width: imageObj.width,
+                    height: imageObj.height,
+                  });
+
+                  console.log(`✅ 画像抽出: Page ${pageNum} (${imageObj.width}x${imageObj.height})`);
+                }
+              }
+            } catch (error) {
+              console.warn(`⚠️ 画像オブジェクト取得スキップ (Page ${pageNum}):`, error);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ ページ ${pageNum} の処理をスキップ:`, error);
+      }
+    }
+
+    // 画像オブジェクトが見つからなかった場合、各ページをCanvasレンダリングして抽出
+    if (extractedImages.length === 0) {
+      console.log('📄 画像オブジェクトが見つからないため、ページレンダリングで抽出します...');
+
+      for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+        try {
+          const page = await pdfDocument.getPage(pageNum);
+          const scale = 3.0; // 高解像度でレンダリング
+          const viewport = page.getViewport({ scale });
+
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d');
+
+          if (!ctx) continue;
+
+          await page.render({ canvasContext: ctx, viewport }).promise;
+
+          const blob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob(
+              (blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error('Blob変換失敗'));
+              },
+              'image/png',
+              0.95
+            );
+          });
+
+          extractedImages.push({
+            imageData: blob,
+            pageNumber: pageNum,
+            width: viewport.width,
+            height: viewport.height,
+          });
+
+          console.log(`✅ ページ画像抽出: Page ${pageNum} (${viewport.width}x${viewport.height})`);
+        } catch (error) {
+          console.warn(`⚠️ ページ ${pageNum} のレンダリングをスキップ:`, error);
+        }
+      }
+    }
+
+    const processingTime = Date.now() - startTime;
+    console.log(`🎉 画像自動抽出完了: ${extractedImages.length}件 (${processingTime}ms)`);
+
+    return extractedImages;
+  } catch (error) {
+    console.error('❌ PDF画像自動抽出エラー:', error);
+    throw new Error(`PDFから画像を抽出できませんでした: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /**

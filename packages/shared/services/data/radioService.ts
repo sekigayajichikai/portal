@@ -90,10 +90,6 @@ export const generateRadioProgram = async (
     const script = await generateRadioScriptFromArticles(sortedArticles, targetDurationMinutes);
     console.log(`📝 台本生成完了: ${script.length}文字`);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'radioService.ts:92',message:'SCRIPT GENERATED',data:{scriptLength:script.length,scriptWordCount:script.split(/\s+/).length,scriptPreview:script.substring(0,300),scriptFull:script},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B'})}).catch(()=>{});
-    // #endregion
-
     // ステップ4: 台本全体から音声を生成（1回のみ）
     onProgress?.({
       status: 'generating',

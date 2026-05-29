@@ -11,7 +11,6 @@ import {
 
 import Dashboard from '@/components/features/dashboard/Dashboard';
 import HomeView from '@/components/features/home/HomeView';
-import CircularsView from '@/components/features/circulars/CircularsView';
 import GarbageCalendarView from '@/components/features/garbage/GarbageCalendarView';
 import BusScheduleView from '@/components/features/bus/BusScheduleView';
 import EventCalendarView from '@/components/features/calendar/EventCalendarView';
@@ -39,10 +38,7 @@ const AppContent: React.FC = () => {
     return saved === 'true';
   };
 
-  // 初期タブの設定：ユーザーテスト版では回覧板から開始
-  const [activeTab, setActiveTab] = useState<TabType>(
-    enableAllFeatures ? 'home' : 'circulars'
-  );
+  const [activeTab, setActiveTab] = useState<TabType>('home');
   const [isSimpleMode, setIsSimpleMode] = useState(loadSimpleModeFromStorage);
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -176,8 +172,6 @@ const AppContent: React.FC = () => {
           />
         )
       )}
-
-      {activeTab === 'circulars' && <CircularsView isSimpleMode={isSimpleMode} />}
 
       {activeTab === 'garbage' && (
         enableAllFeatures ? (

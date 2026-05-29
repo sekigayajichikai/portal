@@ -27,17 +27,6 @@ function getAIProvider(): AIProvider {
     (import.meta as any).env?.VITE_AI_PROVIDER ||
     'auto';
 
-  // #region agent log
-  // デバッグログ
-  console.log('🔍 環境変数チェック:', {
-    'import.meta.env.VITE_AI_PROVIDER': (import.meta as any).env?.VITE_AI_PROVIDER,
-    'import.meta.env.VITE_OPENROUTER_API_KEY': (import.meta as any).env?.VITE_OPENROUTER_API_KEY ? '設定済み' : '未設定',
-    'import.meta.env.VITE_ANTHROPIC_API_KEY': (import.meta as any).env?.VITE_ANTHROPIC_API_KEY ? '設定済み' : '未設定',
-    'provider': provider,
-  });
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:getAIProvider',message:'環境変数チェック',data:{vite_ai_provider:(import.meta as any).env?.VITE_AI_PROVIDER,vite_openrouter_key_exists:!!(import.meta as any).env?.VITE_OPENROUTER_API_KEY,vite_anthropic_key_exists:!!(import.meta as any).env?.VITE_ANTHROPIC_API_KEY,openrouter_key_prefix:(import.meta as any).env?.VITE_OPENROUTER_API_KEY?.substring(0,10),anthropic_key_prefix:(import.meta as any).env?.VITE_ANTHROPIC_API_KEY?.substring(0,10),provider:provider,hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
-
   return provider.toLowerCase() as AIProvider;
 }
 
@@ -56,14 +45,6 @@ function checkAvailableProviders(): {
     (typeof process !== 'undefined' && process.env?.OPENROUTER_API_KEY) ||
     (import.meta as any).env?.VITE_OPENROUTER_API_KEY;
 
-  // #region agent log
-  console.log('🔑 APIキーチェック:', {
-    'OpenRouter': openRouterKey ? `設定済み (${openRouterKey.substring(0, 15)}...)` : '❌ 未設定',
-    'Anthropic': anthropicKey ? `設定済み (${anthropicKey.substring(0, 15)}...)` : '❌ 未設定',
-  });
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:checkAvailableProviders',message:'APIキー確認',data:{hasAnthropic:!!anthropicKey,hasOpenRouter:!!openRouterKey,anthropicKeyLength:anthropicKey?.length,openRouterKeyLength:openRouterKey?.length,allEnvKeys:Object.keys((import.meta as any).env||{}),hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
-
   return {
     hasAnthropic: !!anthropicKey,
     hasOpenRouter: !!openRouterKey,
@@ -77,24 +58,14 @@ function selectProvider(): 'anthropic' | 'openrouter' | null {
   const configuredProvider = getAIProvider();
   const available = checkAvailableProviders();
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:selectProvider:start',message:'プロバイダー選択開始',data:{configuredProvider:configuredProvider,hasAnthropic:available.hasAnthropic,hasOpenRouter:available.hasOpenRouter,hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
-  // #endregion
-
   // 明示的に指定されている場合
   if (configuredProvider === 'anthropic' && available.hasAnthropic) {
     console.log('✅ Anthropic Claude APIを使用します');
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:selectProvider:anthropic',message:'Anthropic選択',data:{reason:'明示的指定',hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
     return 'anthropic';
   }
 
   if (configuredProvider === 'openrouter' && available.hasOpenRouter) {
     console.log('✅ OpenRouter経由でAIモデルを使用します');
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:selectProvider:openrouter',message:'OpenRouter選択',data:{reason:'明示的指定',hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
     return 'openrouter';
   }
 
@@ -103,25 +74,16 @@ function selectProvider(): 'anthropic' | 'openrouter' | null {
     // Anthropicを優先（PDF直接処理に対応しているため）
     if (available.hasAnthropic) {
       console.log('✅ Anthropic Claude APIを使用します（自動選択）');
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:selectProvider:auto-anthropic',message:'Anthropic自動選択',data:{reason:'auto-anthropic優先',hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
       return 'anthropic';
     }
 
     if (available.hasOpenRouter) {
       console.log('✅ OpenRouter経由でAIモデルを使用します（自動選択）');
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:selectProvider:auto-openrouter',message:'OpenRouter自動選択',data:{reason:'auto-openrouter',hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
       return 'openrouter';
     }
   }
 
   console.warn('⚠️ AIプロバイダーが設定されていません。モックデータを使用します。');
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:selectProvider:null',message:'プロバイダーなし（モック使用）',data:{configuredProvider:configuredProvider,hasAnthropic:available.hasAnthropic,hasOpenRouter:available.hasOpenRouter,hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
   return null;
 }
 
@@ -145,44 +107,25 @@ export async function extractArticlesFromPDF(
 ): Promise<ExtractionResult> {
   const provider = selectProvider();
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:extractArticlesFromPDF:start',message:'PDF抽出開始',data:{provider:provider,pdfSize:pdfBase64.length,categoriesCount:categories.length,hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-  // #endregion
-
   try {
     switch (provider) {
       case 'anthropic':
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:extractArticlesFromPDF:anthropic-call',message:'Anthropic呼び出し',data:{provider:'anthropic',hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
         return await claudeService.extractArticlesFromPDF(pdfBase64, categories);
 
       case 'openrouter':
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:extractArticlesFromPDF:openrouter-call',message:'OpenRouter呼び出し',data:{provider:'openrouter',hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
         return await openRouterService.extractArticlesFromPDF(pdfBase64, categories);
 
       default:
         // モックデータにフォールバック
         console.log('📋 モックデータを使用します');
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:extractArticlesFromPDF:mock',message:'モックデータ使用',data:{provider:provider,reason:'APIキー未設定',hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
         return await claudeService.extractArticlesFromPDF(pdfBase64, categories);
     }
   } catch (error: any) {
     console.error(`${provider}での処理に失敗しました:`, error);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:extractArticlesFromPDF:error',message:'エラー発生',data:{provider:provider,errorMessage:error.message,errorStack:error.stack,hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
-    // #endregion
 
     // OpenRouterでPDF処理に失敗した場合、Anthropicにフォールバック
     if (provider === 'openrouter' && checkAvailableProviders().hasAnthropic) {
       console.log('🔄 Anthropic Claude APIにフォールバックします');
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'aiService.ts:extractArticlesFromPDF:fallback',message:'Anthropicにフォールバック',data:{from:'openrouter',hostname:window.location.hostname},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
       return await claudeService.extractArticlesFromPDF(pdfBase64, categories);
     }
 
@@ -279,30 +222,25 @@ export async function extractBriefArticleFromPDF(
  * @returns タイトルと号数の提案
  */
 export async function extractPDFMetadata(
-  pdfBase64: string
+  pdfBase64: string,
+  publisherNames?: string[]
 ): Promise<{
   suggestedTitle: string;
   suggestedIssueNumber: string;
+  suggestedPublisher: string;
 }> {
   const provider = selectProvider();
 
   switch (provider) {
     case 'anthropic':
       console.log('✅ Anthropic Claude APIでメタデータを抽出します');
-      return claudeService.extractPDFMetadata(pdfBase64);
+      return claudeService.extractPDFMetadata(pdfBase64, publisherNames);
     case 'openrouter':
-      // OpenRouterは現在PDFサポートが不完全なのでフォールバック
-      console.warn('⚠️ OpenRouterはPDFメタデータ抽出に対応していません。デフォルト値を使用します。');
-      return {
-        suggestedTitle: '広報誌',
-        suggestedIssueNumber: '',
-      };
+      console.warn('⚠️ OpenRouterはPDFメタデータ抽出に対応していません。');
+      return { suggestedTitle: '', suggestedIssueNumber: '', suggestedPublisher: '' };
     default:
-      console.warn('⚠️ AIプロバイダーが設定されていません。デフォルト値を使用します。');
-      return {
-        suggestedTitle: '広報誌',
-        suggestedIssueNumber: '',
-      };
+      console.warn('⚠️ AIプロバイダーが設定されていません。');
+      return { suggestedTitle: '', suggestedIssueNumber: '', suggestedPublisher: '' };
   }
 }
 

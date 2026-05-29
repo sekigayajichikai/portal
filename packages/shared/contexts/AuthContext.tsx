@@ -46,15 +46,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
    * コンポーネントマウント時にlocalStorageから認証状態を復元
    */
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:useEffect:init',message:'AuthProvider initializing',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
 
     const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:useEffect:localStorage',message:'Checking localStorage',data:{storedAuth:storedAuth,willSetAuthenticated:storedAuth==='true'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
 
     if (storedAuth === 'true') {
       setIsAuthenticated(true);
@@ -71,46 +64,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
    * @returns {boolean} ログイン成功ならtrue、失敗ならfalse
    */
   const login = (password: string): boolean => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:entry',message:'Login function called',data:{inputPassword:password,inputPasswordLength:password.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
 
     // 環境変数からパスワードを取得
     const correctPassword =
       (import.meta as any).env?.VITE_APP_PASSWORD ||
       (typeof process !== 'undefined' && process.env?.VITE_APP_PASSWORD);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:envCheck',message:'Environment variable check',data:{correctPassword:correctPassword,correctPasswordLength:correctPassword?.length,hasCorrectPassword:!!correctPassword,importMetaEnv:(import.meta as any).env,viteAppPasswordDirect:(import.meta as any).env?.VITE_APP_PASSWORD},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-
     if (!correctPassword) {
       console.error('VITE_APP_PASSWORD が設定されていません');
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:noPassword',message:'No password configured',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       return false;
     }
 
     // パスワードが一致するかチェック
     const isMatch = password === correctPassword;
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:comparison',message:'Password comparison',data:{inputPassword:password,correctPassword:correctPassword,isMatch:isMatch,inputTrimmed:password.trim(),correctTrimmed:correctPassword.trim(),inputLength:password.length,correctLength:correctPassword.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
 
     if (isMatch) {
       setIsAuthenticated(true);
       localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:success',message:'Login successful',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       return true;
     }
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:login:failure',message:'Login failed',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
 
     return false;
   };

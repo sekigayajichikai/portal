@@ -9,7 +9,6 @@
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
   MEMBERS = 'MEMBERS',
-  CIRCULAR_BOARD = 'CIRCULAR_BOARD',
   FEES = 'FEES',
   LIFESTYLE = 'LIFESTYLE', // Bus & Garbage
   PUBLIC_CONTENT = 'PUBLIC_CONTENT', // Extracted events
@@ -19,4 +18,4 @@ export enum AppView {
 /**
  * タブタイプ（住民用アプリのナビゲーション）
  */
-export type TabType = 'home' | 'garbage' | 'bus' | 'calendar' | 'radio' | 'dashboard' | 'circulars';
+export type TabType = 'home' | 'garbage' | 'bus' | 'calendar' | 'radio' | 'dashboard';

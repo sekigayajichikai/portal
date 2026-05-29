@@ -10,7 +10,6 @@ interface BottomNavProps {
 const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, isSimpleMode }) => {
   const navItems = [
     { id: 'home', icon: '🏠', label: 'ホーム' },
-    { id: 'circulars', icon: '📱', label: '回覧板' },
     { id: 'garbage', icon: '🗑️', label: 'ゴミ' },
     { id: 'bus', icon: '🚌', label: 'バス' },
     { id: 'calendar', icon: '📅', label: '予定' },
@@ -30,9 +29,6 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, isSimple
         <button
           key={item.id}
           onClick={() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BottomNav.tsx:30',message:'Tab clicked',data:{clickedTab:item.id,previousTab:activeTab},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
             setActiveTab(item.id as TabType);
           }}
           className={`flex flex-col items-center justify-center px-3 transition-all duration-300 rounded-xl

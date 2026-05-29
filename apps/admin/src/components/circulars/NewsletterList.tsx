@@ -119,20 +119,11 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
    * ダイジェスト音声をアップロード
    */
   const handleDigestAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:entry',message:'Function entry',data:{hasFiles:!!e.target.files,filesLength:e.target.files?.length,hasSelectedNewsletter:!!selectedNewsletter,selectedNewsletterId:selectedNewsletter?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     const file = e.target.files?.[0];
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:afterFileGet',message:'After file extraction',data:{hasFile:!!file,fileName:file?.name,fileSize:file?.size,fileType:file?.type},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     if (!file || !selectedNewsletter) return;
 
     // ファイルサイズチェック（50MB以下）
     if (file.size > 50 * 1024 * 1024) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:fileSizeError',message:'File size too large',data:{fileSize:file.size,maxSize:50*1024*1024},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       alert('ファイルサイズが大きすぎます（50MB以下にしてください）');
       e.target.value = ''; // input要素をリセット
       return;
@@ -146,9 +137,6 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     );
 
     if (!confirmed) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:userCancelled',message:'User cancelled upload',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       e.target.value = ''; // input要素をリセット
       return;
     }
@@ -158,19 +146,10 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
     try {
       console.log('📤 ダイジェスト音声をアップロード中...', file.name);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:beforeUpload',message:'Before uploadDigestAudio',data:{fileName:file.name,fileSize:file.size},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
 
       // 1. 音声ファイルをアップロード
       const result = await uploadDigestAudio(file);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:afterUpload',message:'After uploadDigestAudio',data:{resultUrl:result.url,resultPath:result.path,resultFilename:result.filename},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       console.log('✅ アップロード完了:', result.url);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:beforeUpdateNewsletter',message:'Before updateNewsletterDigestAudio',data:{newsletterId:selectedNewsletter.id,audioUrl:result.url,audioFilename:result.filename},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
 
       // 2. Newsletterテーブルを更新
       await updateNewsletterDigestAudio(
@@ -178,32 +157,20 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
         result.url,
         result.filename
       );
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:afterUpdateNewsletter',message:'After updateNewsletterDigestAudio',data:{success:true},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       console.log('✅ Newsletter更新完了');
 
       // 3. 画面を更新
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:beforeLoadNewsletters',message:'Before loadNewsletters',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       await loadNewsletters();
       
       // 選択中のNewsletterを再取得
       const updatedNewsletters = await getNewsletters();
       const updatedNewsletter = updatedNewsletters.find(n => n.id === selectedNewsletter.id);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:afterRefresh',message:'After refresh',data:{foundNewsletter:!!updatedNewsletter,digestAudioUrl:updatedNewsletter?.digest_audio_url},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       if (updatedNewsletter) {
         setSelectedNewsletter(updatedNewsletter as Newsletter);
       }
 
       alert('ダイジェスト音声をアップロードしました');
     } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:handleDigestAudioUpload:error',message:'Upload error caught',data:{errorMessage:error.message,errorStack:error.stack},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'ALL'})}).catch(()=>{});
-      // #endregion
       console.error('❌ アップロードエラー:', error);
       setUploadError(error.message);
       alert('アップロードに失敗しました: ' + error.message);
@@ -265,10 +232,6 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   const handleGenerateRadio = async () => {
     if (!selectedNewsletter) return;
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:112',message:'handleGenerateRadio entry',data:{newsletterId:selectedNewsletter.id,newsletterTitle:selectedNewsletter.title,articlesCount:articles.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'ALL'})}).catch(()=>{});
-    // #endregion
-
     const confirmed = confirm(
       `「${selectedNewsletter.title}」のラジオ番組を生成しますか？\n\n` +
       `記事数: ${articles.length}件\n` +
@@ -278,10 +241,6 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
     if (!confirmed) return;
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:128',message:'User confirmed, starting generation',data:{confirmed:true},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'ALL'})}).catch(()=>{});
-    // #endregion
-
     setIsGeneratingRadio(true);
     setRadioProgress({
       status: 'generating',
@@ -290,9 +249,6 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     });
 
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:140',message:'About to call generateRadioProgram',data:{newsletterId:selectedNewsletter.id,organizationId:selectedNewsletter.organization_id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'ALL'})}).catch(()=>{});
-      // #endregion
 
       const radioProgram = await generateRadioProgram(
         {
@@ -315,9 +271,6 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
         `記事数: ${radioProgram.article_count}件`
       );
     } catch (error: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'NewsletterList.tsx:158',message:'Error in handleGenerateRadio',data:{errorMessage:error.message,errorStack:error.stack,errorType:error.constructor.name},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'ALL'})}).catch(()=>{});
-      // #endregion
 
       console.error('❌ ラジオ番組生成エラー:', error);
       alert(`ラジオ番組の生成に失敗しました\n\nエラー: ${error.message}`);

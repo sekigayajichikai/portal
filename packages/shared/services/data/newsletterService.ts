@@ -82,7 +82,9 @@ export async function saveNewsletter(
  * @returns Newsletter配列（article_countプロパティ付き）
  * @throws Supabase未接続またはデータベースエラー
  */
-export async function getNewsletters(): Promise<
+export async function getNewsletters(
+  statusFilter?: 'draft' | 'published' | 'archived'
+): Promise<
   Array<Newsletter & { article_count: number }>
 > {
   const supabase = getSupabaseClient();
@@ -90,15 +92,20 @@ export async function getNewsletters(): Promise<
     throw new Error('Supabase未接続です。環境変数を確認してください。');
   }
 
-  console.log('📋 Newsletter一覧を取得中...');
+  console.log('📋 Newsletter一覧を取得中...', statusFilter ? `(status: ${statusFilter})` : '');
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('newsletters')
     .select(`
       *,
       articles(count)
-    `)
-    .order('created_at', { ascending: false });
+    `);
+
+  if (statusFilter) {
+    query = query.eq('status', statusFilter);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) {
     console.error('❌ Newsletter取得エラー:', error);
@@ -120,10 +127,12 @@ export async function getNewsletters(): Promise<
       title: item.title,
       issue_date: item.issue_date,
       source_pdf_url: item.source_pdf_url,
+      source_pdf_urls: item.source_pdf_urls || [],
       status: item.status,
       created_by: item.created_by,
       created_at: item.created_at,
       published_at: item.published_at,
+      parent_id: item.parent_id || null,
       digest_audio_url: item.digest_audio_url,
       digest_audio_filename: item.digest_audio_filename,
       article_count: count ?? 0,
@@ -432,21 +441,12 @@ export async function updateNewsletterDigestAudio(
   audioUrl: string,
   audioFilename: string
 ): Promise<Newsletter> {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'newsletterService.ts:updateNewsletterDigestAudio:entry',message:'Function entry',data:{newsletterId:newsletterId,audioUrl:audioUrl,audioFilename:audioFilename},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
   const supabase = getSupabaseClient();
   if (!supabase) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'newsletterService.ts:updateNewsletterDigestAudio:noSupabase',message:'Supabase not connected',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     throw new Error('Supabase未接続です。環境変数を確認してください。');
   }
 
   console.log('📝 Newsletterのダイジェスト音声情報を更新中... ID:', newsletterId);
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'newsletterService.ts:updateNewsletterDigestAudio:beforeUpdate',message:'Before DB update',data:{newsletterId:newsletterId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
 
   const { data, error } = await supabase
     .from('newsletters')
@@ -457,9 +457,6 @@ export async function updateNewsletterDigestAudio(
     .eq('id', newsletterId)
     .select()
     .single();
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'newsletterService.ts:updateNewsletterDigestAudio:afterUpdate',message:'After DB update',data:{hasData:!!data,hasError:!!error,errorMessage:error?.message,dataDigestAudioUrl:data?.digest_audio_url},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
 
   if (error) {
     console.error('❌ Newsletter音声情報更新エラー:', error);
@@ -513,4 +510,354 @@ export async function deleteNewsletterDigestAudio(
   console.log('✅ Newsletter音声情報削除完了:', newsletterId);
 
   return data;
+}
+
+/**
+ * NewsletterのソースPDF URLを更新
+ *
+ * @param newsletterId - 更新するNewsletterのUUID
+ * @param pdfUrl - ソースPDFの公開URL
+ * @returns 更新後のNewsletterデータ
+ */
+export async function updateNewsletterSourcePdf(
+  newsletterId: string,
+  pdfUrl: string
+): Promise<Newsletter> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  console.log('📝 NewsletterのソースPDF URLを更新中... ID:', newsletterId);
+
+  const { data, error } = await supabase
+    .from('newsletters')
+    .update({ source_pdf_url: pdfUrl })
+    .eq('id', newsletterId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ Newsletter PDF URL更新エラー:', error);
+    throw error;
+  }
+
+  console.log('✅ Newsletter PDF URL更新完了:', newsletterId);
+
+  return data;
+}
+
+/**
+ * NewsletterにPDF URLを追加（複数PDF対応）
+ *
+ * source_pdf_urls配列にURLを追加し、source_pdf_urlも最初のものを維持します。
+ *
+ * @param newsletterId - NewsletterのUUID
+ * @param pdfUrl - 追加するPDFのURL
+ * @returns 更新後のNewsletterデータ
+ */
+export async function addPdfUrlToNewsletter(
+  newsletterId: string,
+  pdfUrl: string,
+  label?: string,
+  publisher?: string,
+  pdfType?: 'source' | 'attachment',
+  thumbnailUrl?: string
+): Promise<Newsletter> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  // 現在のNewsletterを取得
+  const { data: current, error: fetchError } = await supabase
+    .from('newsletters')
+    .select('source_pdf_url, source_pdf_urls')
+    .eq('id', newsletterId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const existingEntries: any[] = current?.source_pdf_urls || [];
+  // 後方互換: 文字列配列の場合はオブジェクトに変換
+  const normalized = existingEntries.map((entry: any) =>
+    typeof entry === 'string' ? { url: entry, label: '' } : entry
+  );
+  normalized.push({ url: pdfUrl, label: label || '', publisher: publisher || '', type: pdfType || 'attachment', thumbnail: thumbnailUrl || '' });
+
+  const { data, error } = await supabase
+    .from('newsletters')
+    .update({
+      source_pdf_url: current?.source_pdf_url || pdfUrl,
+      source_pdf_urls: normalized,
+    })
+    .eq('id', newsletterId)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  console.log(`✅ PDF URL追加完了 (${normalized.length}件):`, newsletterId);
+  return data;
+}
+
+/**
+ * NewsletterのPDFラベルを更新
+ */
+export async function updatePdfLabel(
+  newsletterId: string,
+  pdfUrl: string,
+  newLabel: string,
+  newPublisher?: string
+): Promise<Newsletter> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続です。');
+
+  const { data: current, error: fetchError } = await supabase
+    .from('newsletters')
+    .select('source_pdf_urls')
+    .eq('id', newsletterId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const entries: any[] = current?.source_pdf_urls || [];
+  const updated = entries.map((e: any) => {
+    const url = typeof e === 'string' ? e : e.url;
+    if (url === pdfUrl) {
+      const existing = typeof e === 'string' ? {} : e;
+      return { ...existing, url, label: newLabel, ...(newPublisher !== undefined ? { publisher: newPublisher } : {}) };
+    }
+    return typeof e === 'string' ? { url: e, label: '' } : e;
+  });
+
+  const { data, error } = await supabase
+    .from('newsletters')
+    .update({ source_pdf_urls: updated })
+    .eq('id', newsletterId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * NewsletterからPDF URLを削除
+ */
+export async function removePdfUrlFromNewsletter(
+  newsletterId: string,
+  pdfUrl: string
+): Promise<Newsletter> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続です。');
+
+  const { data: current, error: fetchError } = await supabase
+    .from('newsletters')
+    .select('source_pdf_url, source_pdf_urls')
+    .eq('id', newsletterId)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const entries: any[] = current?.source_pdf_urls || [];
+  const filtered = entries.filter((e: any) => {
+    const url = typeof e === 'string' ? e : e.url;
+    return url !== pdfUrl;
+  });
+
+  const { data, error } = await supabase
+    .from('newsletters')
+    .update({ source_pdf_urls: filtered })
+    .eq('id', newsletterId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Newsletterを公開
+ *
+ * @param newsletterId - 公開するNewsletterのUUID
+ * @returns 更新後のNewsletterデータ
+ */
+export async function publishNewsletter(newsletterId: string): Promise<Newsletter> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  // まず公開対象のNewsletterを取得して parent_id を確認
+  const { data: target, error: fetchError } = await supabase
+    .from('newsletters')
+    .select('*')
+    .eq('id', newsletterId)
+    .single();
+
+  if (fetchError || !target) {
+    throw fetchError || new Error('Newsletter not found');
+  }
+
+  // parent_id がある場合、元の公開版を archived に変更（タイトルに旧版を付与）
+  if (target.parent_id) {
+    const { data: parent } = await supabase
+      .from('newsletters')
+      .select('title')
+      .eq('id', target.parent_id)
+      .single();
+    const archivedTitle = parent?.title && !parent.title.includes('(旧版)')
+      ? `${parent.title} (旧版)`
+      : parent?.title;
+    await supabase
+      .from('newsletters')
+      .update({ status: 'archived', title: archivedTitle })
+      .eq('id', target.parent_id);
+    console.log(`📦 元の公開版をアーカイブ: ${target.parent_id}`);
+  }
+
+  const { data, error } = await supabase
+    .from('newsletters')
+    .update({
+      status: 'published',
+      published_at: new Date().toISOString(),
+      parent_id: null, // 公開後はparent_idをクリア
+    })
+    .eq('id', newsletterId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ Newsletter公開エラー:', error);
+    throw error;
+  }
+
+  console.log('✅ Newsletter公開完了:', newsletterId);
+  return data;
+}
+
+/**
+ * Newsletterを非公開（下書きに戻す）
+ *
+ * @param newsletterId - 非公開にするNewsletterのUUID
+ * @returns 更新後のNewsletterデータ
+ */
+export async function unpublishNewsletter(newsletterId: string): Promise<Newsletter> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  const { data, error } = await supabase
+    .from('newsletters')
+    .update({
+      status: 'draft',
+      published_at: null,
+    })
+    .eq('id', newsletterId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('❌ Newsletter非公開エラー:', error);
+    throw error;
+  }
+
+  console.log('✅ Newsletter非公開完了:', newsletterId);
+  return data;
+}
+
+/**
+ * 公開済みNewsletterの下書きコピーを作成
+ *
+ * 公開版はそのまま残し、編集用の下書きコピーを作成します。
+ * 全記事もコピーされます。
+ *
+ * @param newsletterId - コピー元のNewsletter ID
+ * @returns コピーされたNewsletterと記事
+ */
+export async function duplicateNewsletterAsDraft(
+  newsletterId: string
+): Promise<{ newsletter: Newsletter; articles: Article[] }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  console.log('📋 Newsletter下書きコピーを作成中...', newsletterId);
+
+  // 元のNewsletterを取得
+  const { data: original, error: fetchError } = await supabase
+    .from('newsletters')
+    .select('*')
+    .eq('id', newsletterId)
+    .single();
+
+  if (fetchError || !original) {
+    throw fetchError || new Error('コピー元のNewsletterが見つかりません');
+  }
+
+  // Newsletterをコピー（新しいIDで、status: draft）
+  const { data: copiedNewsletter, error: copyError } = await supabase
+    .from('newsletters')
+    .insert({
+      organization_id: original.organization_id,
+      title: original.title,
+      issue_date: original.issue_date,
+      source_pdf_url: original.source_pdf_url,
+      source_pdf_urls: original.source_pdf_urls || [],
+      status: 'draft',
+      created_by: original.created_by,
+      published_at: null,
+      parent_id: newsletterId,
+      digest_audio_url: original.digest_audio_url,
+      digest_audio_filename: original.digest_audio_filename,
+    })
+    .select()
+    .single();
+
+  if (copyError || !copiedNewsletter) {
+    throw copyError || new Error('Newsletterコピーに失敗しました');
+  }
+
+  console.log('✅ Newsletterコピー完了:', copiedNewsletter.id);
+
+  // 元の記事を取得
+  const { data: originalArticles, error: articlesError } = await supabase
+    .from('articles')
+    .select('*')
+    .eq('newsletter_id', newsletterId)
+    .order('display_order', { ascending: true });
+
+  if (articlesError) {
+    throw articlesError;
+  }
+
+  let copiedArticles: Article[] = [];
+
+  if (originalArticles && originalArticles.length > 0) {
+    // 記事をコピー（新しいnewsletter_idで）
+    const articleCopies = originalArticles.map((article: any) => {
+      const { id, newsletter_id, created_at, updated_at, ...rest } = article;
+      return {
+        ...rest,
+        newsletter_id: copiedNewsletter.id,
+      };
+    });
+
+    const { data: inserted, error: insertError } = await supabase
+      .from('articles')
+      .insert(articleCopies)
+      .select();
+
+    if (insertError) {
+      throw insertError;
+    }
+
+    copiedArticles = inserted || [];
+    console.log(`✅ ${copiedArticles.length}件の記事をコピーしました`);
+  }
+
+  return { newsletter: copiedNewsletter, articles: copiedArticles };
 }

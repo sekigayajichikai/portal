@@ -36,10 +36,6 @@ export const PasswordLogin: React.FC = () => {
     setError('');
     setIsLoading(true);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PasswordLogin.tsx:handleSubmit:entry',message:'Form submitted',data:{passwordLength:password.length,passwordValue:password},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-
     // パスワードが空の場合
     if (!password.trim()) {
       setError('パスワードを入力してください');
@@ -49,10 +45,6 @@ export const PasswordLogin: React.FC = () => {
 
     // ログイン処理
     const success = login(password);
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PasswordLogin.tsx:handleSubmit:afterLogin',message:'Login attempt result',data:{success,passwordUsed:password},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
 
     if (!success) {
       setError('パスワードが正しくありません');

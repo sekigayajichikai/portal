@@ -21,6 +21,14 @@ export * from './services/supabaseClient.js';
 export * from './services/data/newsletterService.js';
 export * from './services/data/radioService.js';
 export * from './services/data/storageService.js';
+export * from './services/data/publisherService.js';
+export * from './services/data/eventCardService.js';
+export * from './services/data/likeService.js';
+
+// 画像関連サービス
+export * from './services/image/pendingImageService.js';
+// imageExtractionServiceはpdfjs-distに依存するため、動的importで使用すること
+// import { extractAllImagesFromPDF } from '@cc-saas/shared/services/image/imageExtractionService'
 
 // 定数・モックデータ
 export * from './constants/index.js';

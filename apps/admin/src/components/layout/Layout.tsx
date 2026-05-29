@@ -3,7 +3,7 @@ import { AppView } from '@cc-saas/shared';
 import {
   LayoutDashboard,
   Users,
-  FileText,
+
   CreditCard,
   Bus,
   Radio,
@@ -94,13 +94,6 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, child
             onClick={onChangeView}
           />
           <NavItem
-            view={AppView.CIRCULAR_BOARD}
-            current={currentView}
-            icon={FileText}
-            label="デジタル回覧板"
-            onClick={onChangeView}
-          />
-          <NavItem
             view={AppView.FEES}
             current={currentView}
             icon={CreditCard}
@@ -149,7 +142,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentView, onChangeView, child
           <h1 className="text-lg font-bold text-slate-700 hidden lg:block">
             {currentView === AppView.DASHBOARD && '全体サマリー'}
             {currentView === AppView.MEMBERS && '会員名簿管理'}
-            {currentView === AppView.CIRCULAR_BOARD && '回覧板管理'}
+
             {currentView === AppView.FEES && '会費・決済'}
             {currentView === AppView.LIFESTYLE && '生活インフラ情報'}
             {currentView === AppView.RADIO_STATION && 'AI ラジオ制作スタジオ'}

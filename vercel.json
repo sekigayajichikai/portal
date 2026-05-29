@@ -1,0 +1,9 @@
+{
+  "buildCommand": "cd apps/circulars && npm run build",
+  "outputDirectory": "apps/circulars/dist",
+  "installCommand": "npm install",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}

@@ -8,15 +8,18 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev:admin\" \"npm run dev:public\"",
+    "dev": "concurrently \"npm run dev:admin\" \"npm run dev:public\" \"npm run dev:circulars\"",
     "dev:admin": "cd apps/admin && vite",
     "dev:public": "cd apps/public && vite",
-    "build": "npm run build:admin && npm run build:public",
+    "dev:circulars": "cd apps/circulars && vite",
+    "build": "npm run build:admin && npm run build:public && npm run build:circulars",
     "build:admin": "cd apps/admin && vite build",
     "build:public": "cd apps/public && vite build",
-    "preview": "concurrently \"npm run preview:admin\" \"npm run preview:public\"",
+    "build:circulars": "cd apps/circulars && vite build",
+    "preview": "concurrently \"npm run preview:admin\" \"npm run preview:public\" \"npm run preview:circulars\"",
     "preview:admin": "cd apps/admin && vite preview",
     "preview:public": "cd apps/public && vite preview",
+    "preview:circulars": "cd apps/circulars && vite preview",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\"",
@@ -34,6 +37,7 @@
     "openai": "^6.16.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "react-image-crop": "^11.0.10",
     "recharts": "^3.6.0"
   },
   "devDependencies": {

@@ -136,7 +136,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await getNewsletters();
+        const data = await getNewsletters('published');
 
         setNewsletters(data);
 

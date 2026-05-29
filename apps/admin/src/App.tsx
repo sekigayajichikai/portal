@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { Dashboard } from '@/components/layout/Dashboard';
 import { MemberManagement } from '@/components/members/MemberManagement';
-import { CircularBoard } from '@/components/circulars/CircularBoard';
 import { FeeManagement } from '@/components/members/FeeManagement';
 import { LifestyleManager } from '@/components/lifestyle/LifestyleManager';
 import { RadioGenerator } from '@/components/radio/RadioGenerator';
@@ -30,8 +29,6 @@ function AppContent() {
         return <Dashboard />;
       case AppView.MEMBERS:
         return <MemberManagement />;
-      case AppView.CIRCULAR_BOARD:
-        return <CircularBoard onEventsExtracted={handleEventsExtracted} />;
       case AppView.FEES:
         return <FeeManagement />;
       case AppView.LIFESTYLE:

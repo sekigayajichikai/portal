@@ -33,3 +33,6 @@ export * from './admin.js';
 // 広報誌・記事関連
 export * from './newsletter.js';
 export * from './article.js';
+
+// 画像関連
+export * from './image.js';

@@ -180,9 +180,6 @@ export const generateRadioAudio = async (script: string): Promise<string> => {
   }
 
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:160',message:'generateRadioAudio ENTRY',data:{scriptLength:script.length,scriptPreview:script.substring(0,200),scriptHasSpecialChars:/[^\x00-\x7F]/.test(script),scriptHasSpeakerMarks:script.includes('A:') || script.includes('B:'),scriptHasDividers:script.includes('---')},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B'})}).catch(()=>{});
-    // #endregion
 
     // REST API経由でTTSリクエスト（マルチスピーカー対応）
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
@@ -214,10 +211,6 @@ export const generateRadioAudio = async (script: string): Promise<string> => {
       }
     };
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:191',message:'TTS REQUEST PAYLOAD',data:{apiUrl:apiUrl.substring(0,100)+'...',requestBodyKeys:Object.keys(requestBody),hasSystemInstruction:!!requestBody.systemInstruction,contentsLength:requestBody.contents.length,generationConfigKeys:Object.keys(requestBody.generationConfig)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C,D'})}).catch(()=>{});
-    // #endregion
-
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -226,23 +219,12 @@ export const generateRadioAudio = async (script: string): Promise<string> => {
       body: JSON.stringify(requestBody),
     });
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:206',message:'TTS API RESPONSE STATUS',data:{responseOk:response.ok,responseStatus:response.status,responseStatusText:response.statusText,responseHeaders:Object.fromEntries(response.headers.entries())},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D,E'})}).catch(()=>{});
-    // #endregion
-
     if (!response.ok) {
       const errorText = await response.text();
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:214',message:'TTS API ERROR RESPONSE',data:{errorStatus:response.status,errorText:errorText,errorTextLength:errorText.length,errorParsed:(() => { try { return JSON.parse(errorText); } catch { return null; }})()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'ALL'})}).catch(()=>{});
-      // #endregion
       throw new Error(`TTS API Error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'geminiService.ts:225',message:'TTS API SUCCESS RESPONSE',data:{hasData:!!data,dataKeys:data ? Object.keys(data) : [],hasCandidates:!!data?.candidates,candidatesCount:data?.candidates?.length || 0},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'ALL'})}).catch(()=>{});
-    // #endregion
 
     console.log('🎤 TTS REST API Response:', data);
 

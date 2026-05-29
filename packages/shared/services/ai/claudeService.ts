@@ -22,15 +22,8 @@ function getClaudeClient(): Anthropic | null {
     (import.meta as any).env?.VITE_ANTHROPIC_API_KEY ||
     (import.meta as any).env?.ANTHROPIC_API_KEY;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:getClaudeClient',message:'Claudeクライアント取得',data:{hasApiKey:!!apiKey,apiKeyLength:apiKey?.length,apiKeyPrefix:apiKey?.substring(0,10),processEnvExists:typeof process !== 'undefined',hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
-
   if (!apiKey) {
     console.warn('Claude APIキーが設定されていません。モックデータを使用します。');
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:getClaudeClient:nokey',message:'APIキーなし',data:{hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
     return null;
   }
 
@@ -56,15 +49,8 @@ export async function extractArticlesFromPDF(
 ): Promise<ExtractionResult> {
   const client = getClaudeClient();
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:start',message:'Claude抽出開始',data:{hasClient:!!client,pdfSize:pdfBase64.length,hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-  // #endregion
-
   if (!client) {
     // APIキーがない場合はモックデータを返す
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:mock',message:'モックデータ返却',data:{reason:'clientなし',hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
     return mockExtractArticles();
   }
 
@@ -73,14 +59,10 @@ export async function extractArticlesFromPDF(
   // プロンプト生成
   const prompt = generateExtractionPrompt(categories);
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:before-api-call',message:'Claude API呼び出し直前',data:{model:'claude-sonnet-4-20250514',max_tokens:8000,promptLength:prompt.length,pdfSize:pdfBase64.length,hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-  // #endregion
-
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 8000,
+      max_tokens: 16000,
       messages: [
         {
           role: 'user',
@@ -102,28 +84,14 @@ export async function extractArticlesFromPDF(
       ],
     });
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:after-api-call',message:'Claude API呼び出し成功',data:{responseId:response.id,model:response.model,stopReason:response.stop_reason,contentLength:response.content?.length,usage:response.usage,hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
-
     // レスポンスからテキストを抽出
     const textContent = response.content.find((c) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:no-text-content',message:'テキストレスポンスが見つからない',data:{contentTypes:response.content.map(c=>c.type),hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H6'})}).catch(()=>{});
-      // #endregion
       throw new Error('テキストレスポンスが見つかりません');
     }
 
     // JSONを抽出して解析
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:before-parse',message:'JSON解析開始',data:{textLength:textContent.text.length,textPreview:textContent.text.substring(0,200),hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H6'})}).catch(()=>{});
-    // #endregion
     const articles = parseArticlesFromResponse(textContent.text);
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:success',message:'記事抽出完了',data:{articleCount:articles.length,processingTime:Date.now()-startTime,hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
 
     return {
       articles,
@@ -131,9 +99,6 @@ export async function extractArticlesFromPDF(
     };
   } catch (error: any) {
     console.error('Claude API エラー:', error);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/39fced81-7f2b-4fe6-9a93-36e9412f9849',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'claudeService.ts:extractArticlesFromPDF:error',message:'Claude APIエラー',data:{errorType:error?.constructor?.name,errorMessage:error?.message,errorStatus:error?.status,errorCode:error?.error?.type,errorDetail:error?.error?.message,errorStack:error?.stack?.substring(0,500),hostname:typeof window !== 'undefined' ? window.location.hostname : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
-    // #endregion
     throw error;
   }
 }
@@ -150,6 +115,10 @@ function generateExtractionPrompt(categories: Category[]): string {
   return `
 あなたは自治会の広報誌を分析する専門家です。
 以下の広報誌から記事を抽出し、構造化してください。
+
+【最重要】PDFに含まれる全ての記事・お知らせ・イベント・予定を漏れなく抽出してください。
+特に予定表やスケジュール一覧は、各項目を個別の記事として抽出してください。
+1つも省略しないでください。
 
 【抽出ルール】
 1. 記事の区切り判断基準：
@@ -170,20 +139,26 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
 - local-info: 地域からのお知らせ（※このPDFは自治会公式なので使用しない）
 
 **priority**:
-- high: 締切あり、要対応、全会員が必ず確認すべき情報
-  例：施設休館、ゴミ収集変更、重要イベント、アンケート締切
-- medium: 確認推奨のお知らせ、イベント告知
-  例：コンサート、講座、一般的なイベント
-- low: 参考情報、読み物、報告
-  例：会議報告、募金結果、サークル活動
+- high: 全会員が必ず確認すべき重要情報のみ
+  例：総会、自治会費、施設休館、ゴミ収集変更、防犯・防災の緊急情報
+  ※ 単にイベントに締切があるだけではhighにしない
+- medium: 一般的なイベント告知、お知らせ
+  例：清掃活動、納涼大会、講座、募集
+- low: 参考情報、読み物、報告、サービス案内
+  例：会議報告、サークル活動、庖丁とぎ、図書紹介、俳句
 
-**deadline**: 締切日があれば YYYY-MM-DD 形式（なければnull）
+**control_date**: この記事に関連する日付があれば YYYY-MM-DD 形式（開催日、締切日、期間開始日など。なければnull）
+
+**event_date**: categoryが"event"の場合、開催日を YYYY-MM-DD 形式で（なければnull）
+**event_time**: categoryが"event"の場合、時間帯（例: "10:00-12:00"、"13時～"。なければnull）
+**event_location**: categoryが"event"の場合、開催場所（例: "関ヶ谷自治会館"、"奥座公園"。なければnull）
 
 **4段階要約**:
 - headline: 5文字以内（例：どんど焼き、会館休館）
 - brief: 15文字程度（例：1/10どんど焼き開催）
 - summary: 40文字程度（いつ・どこで・何を が全部入る）
 - content: 記事の本文全体をMarkdown形式で記述
+  ※ タイトル（title）と同じ文言は本文の冒頭に含めないこと。タイトルは別フィールドで表示されるため、本文では内容の説明から始めてください。
   ※ Markdown記法の指示：
   - 見出しは ## または ### を使用
   - 箇条書きは - または 1. を使用
@@ -205,12 +180,12 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
   ## 参加方法
   事前申込不要。当日直接会場へお越しください。
 
-**tags**: 関連キーワード3-5個（配列）
+**tags**: 以下に該当する場合のみ ["募集"] を付与（該当しなければ空配列）
+- 人の募集（隊員募集、参加者募集、ボランティア募集など）
+- モノの募集（寄贈のお願い、提供のお願い、本の寄付など）
+- 「募集」「大募集」「寄贈」などのキーワードが本文に含まれる場合は積極的に付与する
 
-**visibility**:
-- public: 地域全体に公開してOKな情報
-- members-only: 会員限定（デフォルト）
-- board-only: 役員のみ
+**visibility**: 常に "public"
 
 **source**: この記事の出典（例：関ヶ谷だより、会報ふれあい）
 
@@ -221,6 +196,12 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
 **合同会議議事録**:
 - 重要な決定事項は個別記事として抽出
 - 議事録全文は1つの記事として、attachmentsにPDFリンク
+
+**予定表・スケジュール一覧**:
+- 日付+タイトルだけが並ぶ予定一覧（例：4月○○、5月△△、6月□□...）は、個別記事に分解しない
+- 1つの記事「今後の予定」としてまとめ、contentに一覧表形式（Markdown）で全項目を記載する
+- PDFの右側カラム・サイドバーに掲載されている予定表も必ず抽出する（スキップ厳禁）
+- ただし、日付+説明文が付いている本格的なイベント告知は個別記事として抽出する
 
 **文化欄（俳句・図書など）**:
 - category: "culture"
@@ -237,12 +218,15 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
       "category": "event",
       "article_type": "official",
       "priority": "high",
-      "deadline": "2026-01-10",
+      "control_date": "2026-01-10",
+      "event_date": "2026-01-10",
+      "event_time": "11:00-12:00",
+      "event_location": "奥座公園",
       "headline": "どんど焼き",
       "brief": "1/10どんど焼き開催",
       "summary": "1月10日（土）11時～奥座公園でどんど焼き。お焚き上げ、豚汁振る舞い、餅つき体験",
       "content": "...",
-      "tags": ["正月", "イベント", "奥座公園"],
+      "tags": [],
       "visibility": "public",
       "source": "関ヶ谷だより",
       "attachments": []
@@ -491,7 +475,7 @@ function parseBriefArticleFromResponse(
     category: parsed.category || 'announcement',
     article_type: 'local-info', // 簡易モードは地域のお知らせ
     priority: parsed.priority || 'medium',
-    deadline: null,
+    control_date: null,
     headline: parsed.title?.substring(0, 5) || 'お知らせ',
     brief: parsed.brief || 'PDFをご覧ください',
     summary: parsed.brief || 'PDFをご覧ください',
@@ -520,7 +504,7 @@ function mockExtractBriefArticle(filename: string): ExtractionResult {
     category: 'announcement',
     article_type: 'local-info', // 簡易モードは地域のお知らせ
     priority: 'medium',
-    deadline: null,
+    control_date: null,
     headline: 'お知らせ',
     brief: 'PDFをご覧ください',
     summary: 'PDFをご覧ください',
@@ -540,6 +524,96 @@ function mockExtractBriefArticle(filename: string): ExtractionResult {
 }
 
 /**
+ * 切り抜き画像から1つの記事を抽出
+ */
+export async function extractArticleFromImage(
+  imageBase64: string | string[],
+  categories: Category[]
+): Promise<{
+  title: string;
+  summary: string;
+  content: string;
+  category: string;
+  priority: string;
+  event_date: string | null;
+  event_time: string | null;
+  event_location: string | null;
+  tags: string[];
+}> {
+  const client = getClaudeClient();
+  if (!client) throw new Error('Claude APIが設定されていません');
+
+  const categoryList = categories.map(c => `- ${c.id}: ${c.label}`).join('\n');
+
+  const prompt = `
+この画像は自治会の広報紙の一部を切り抜いたものです。
+この部分から記事を1つ抽出し、以下のJSON形式で返してください。
+
+{
+  "title": "記事タイトル（20文字以内）",
+  "summary": "要約（40文字程度。いつ・どこで・何をが入る）",
+  "content": "本文全体をMarkdown形式で。タイトルと同じ文言は冒頭に含めない。見出しは##、箇条書きは-、重要情報は**太字**",
+  "category": "カテゴリID",
+  "priority": "high/medium/low",
+  "event_date": "イベントの場合 YYYY-MM-DD（なければnull）",
+  "event_time": "時間帯（例: 10:00-12:00、なければnull）",
+  "event_location": "場所（なければnull）",
+  "tags": []
+}
+
+カテゴリ:
+${categoryList}
+
+priority:
+- high: 総会、会費、休館、防犯防災の緊急情報のみ
+- medium: 一般的なイベント、お知らせ
+- low: 報告、コラム、サービス案内
+
+tags: 人やモノの募集がある場合のみ ["募集"]
+
+予定表のような一覧形式の場合は、「今後の予定」というタイトルで1つの記事にまとめ、contentに表形式で全項目を記載してください。
+
+必ずJSON形式のみで出力。前後の説明文は不要です。
+`;
+
+  const images = Array.isArray(imageBase64) ? imageBase64 : [imageBase64];
+  const imageContents = images.map(data => ({
+    type: 'image' as const,
+    source: { type: 'base64' as const, media_type: 'image/png' as const, data },
+  }));
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 4000,
+    messages: [{
+      role: 'user',
+      content: [...imageContents, { type: 'text' as const, text: prompt }],
+    }],
+  });
+
+  const text = response.content
+    .filter(b => b.type === 'text')
+    .map(b => (b as any).text)
+    .join('\n');
+
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('AIからJSON応答を取得できませんでした');
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  return {
+    title: parsed.title || 'お知らせ',
+    summary: parsed.summary || '',
+    content: parsed.content || '',
+    category: parsed.category || 'notice',
+    priority: parsed.priority || 'medium',
+    event_date: parsed.event_date || null,
+    event_time: parsed.event_time || null,
+    event_location: parsed.event_location || null,
+    tags: parsed.tags || [],
+  };
+}
+
+/**
  * PDFからメタデータ（タイトル、号数）を抽出
  *
  * Claude APIを使用してPDFの先頭部分を解析し、
@@ -549,37 +623,53 @@ function mockExtractBriefArticle(filename: string): ExtractionResult {
  * @returns タイトルと号数の提案
  */
 export async function extractPDFMetadata(
-  pdfBase64: string
+  pdfBase64: string,
+  publisherNames?: string[]
 ): Promise<{
   suggestedTitle: string;
   suggestedIssueNumber: string;
+  suggestedPublisher: string;
 }> {
   const client = getClaudeClient();
   if (!client) {
     // フォールバック: ファイル名から推測
     return {
-      suggestedTitle: '広報誌',
+      suggestedTitle: '',
       suggestedIssueNumber: '',
+      suggestedPublisher: '',
     };
   }
 
+  const publisherList = publisherNames && publisherNames.length > 0
+    ? `\n【登録済みの発行元一覧】\n${publisherNames.join('、')}\n上記から最も近いものを選んでください。該当がなければ空文字にしてください。\n`
+    : '';
+
   const prompt = `
-このPDFの先頭部分から以下の情報を抽出してください。
+このPDFから以下の情報を抽出してください。
 
 【抽出項目】
-1. タイトル: 広報誌の名称（例: 関ヶ谷だより、会報ふれあい）
-2. 号数: 第○号、○○年○月号など
+1. タイトル: この文書を最もよく表す名前
+2. 号数: 第○号、○○年○月号など（あれば）
+3. 発行元: この文書を発行した団体・組織名
+${publisherList}
+【文書タイプ別の判断基準】
+
+■ 定期刊行物（だより、会報、ニュースなど）の場合:
+→ 固有名称を返す（例: 「福祉よこはま」「関ヶ谷だより」「防災ニュース金沢」）
+
+■ 単発のお知らせ・通知・チラシの場合:
+→ 文書の見出し・タイトルをそのまま返す（例: 「自治会費の集金と納入について」「防犯パトロールのお願い」「公園清掃のご案内」）
 
 【出力形式】
-JSON形式で出力してください：
 {
   "title": "タイトル",
-  "issueNumber": "号数"
+  "issueNumber": "号数（なければ空文字）",
+  "publisher": "発行元（登録済み一覧から選択、なければ空文字）"
 }
 
-【注意事項】
-- タイトルが見つからない場合は "広報誌" と出力
-- 号数が見つからない場合は空文字列 "" と出力
+【禁止事項】
+- 「広報誌」「お知らせ」「チラシ」「ニュースレター」「文書」のような一般名称だけを返さないでください
+- 必ず内容を特定できる具体的な名前にしてください
 - 必ずJSON形式で出力すること
 `;
 
@@ -625,8 +715,9 @@ JSON形式で出力してください：
     if (!jsonMatch) {
       console.warn('⚠️ JSONが見つかりませんでした。レスポンス全文:', text);
       return {
-        suggestedTitle: '広報誌',
+        suggestedTitle: '',
         suggestedIssueNumber: '',
+        suggestedPublisher: '',
       };
     }
 
@@ -636,8 +727,9 @@ JSON形式で出力してください：
     console.log('🔍 パースされたメタデータ:', metadata);
 
     const result = {
-      suggestedTitle: metadata.title || '広報誌',
+      suggestedTitle: metadata.title || '',
       suggestedIssueNumber: metadata.issueNumber || '',
+      suggestedPublisher: metadata.publisher || '',
     };
 
     console.log('✅ 最終的に返す値:', result);
@@ -646,8 +738,9 @@ JSON形式で出力してください：
   } catch (error) {
     console.error('メタデータ抽出エラー:', error);
     return {
-      suggestedTitle: '広報誌',
+      suggestedTitle: '',
       suggestedIssueNumber: '',
+      suggestedPublisher: '',
     };
   }
 }

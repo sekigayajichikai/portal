@@ -450,10 +450,11 @@ export const MOCK_ARTICLES: Article[] = [
  * モックカテゴリ設定
  */
 export const MOCK_CATEGORIES: Category[] = [
-  { id: 'event', label: 'イベント', icon: '🎉', color: 'blue' },
-  { id: 'notice', label: 'お知らせ', icon: '📢', color: 'yellow' },
-  { id: 'meeting', label: '会議', icon: '📋', color: 'gray' },
-  { id: 'culture', label: '文化', icon: '📚', color: 'purple' },
-  { id: 'report', label: '報告', icon: '📊', color: 'green' },
-  { id: 'local-info', label: '地域のお知らせ', icon: '🏘️', color: 'light-green' },
+  { id: 'event', label: '行事', icon: '🎉', color: 'blue' },
+  { id: 'admin', label: '運営', icon: '📋', color: 'gray' },
+  { id: 'safety', label: '防犯・防災', icon: '🛡️', color: 'red' },
+  { id: 'culture', label: '文化・教養', icon: '📚', color: 'purple' },
+  { id: 'column', label: 'コラム・読み物', icon: '💡', color: 'cyan' },
+  { id: 'facility', label: '施設', icon: '🏠', color: 'orange' },
+  { id: 'info', label: 'お知らせ', icon: '📢', color: 'yellow' },
 ];
