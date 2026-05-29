@@ -73,16 +73,45 @@ marked.setOptions({
   gfm: true,
 });
 
-/** Markdown→HTML変換 */
-function markdownToHtml(md: string): string {
-  if (!md) return '';
-  return marked.parse(md, { async: false }) as string;
+/**
+ * Markdownテーブルをプレースホルダーに置換して保護する。
+ * Tiptapはテーブルを理解できないため、読み込み時に壊れてしまう。
+ * テーブル部分を退避し、保存時に復元する。
+ */
+const TABLE_REGEX = /((?:^|\n)\|.+\|[ \t]*\n\|[\s\-:|]+\|[ \t]*\n(?:\|.+\|[ \t]*\n?)+)/g;
+const TABLE_PLACEHOLDER_PREFIX = '@@TABLE_';
+
+let _savedTables: string[] = [];
+
+function extractTables(md: string): { cleaned: string; tables: string[] } {
+  const tables: string[] = [];
+  const cleaned = md.replace(TABLE_REGEX, (match) => {
+    const idx = tables.length;
+    tables.push(match.trim());
+    return `\n\n${TABLE_PLACEHOLDER_PREFIX}${idx}@@\n\n`;
+  });
+  return { cleaned, tables };
 }
 
-/** HTML→Markdown変換 */
+function restoreTables(md: string, tables: string[]): string {
+  return md.replace(new RegExp(`${TABLE_PLACEHOLDER_PREFIX}(\\d+)@@`, 'g'), (_, idx) => {
+    return tables[Number(idx)] || '';
+  });
+}
+
+/** Markdown→HTML変換（テーブルを保護してプレースホルダーに置換） */
+function markdownToHtml(md: string): string {
+  if (!md) return '';
+  const { cleaned, tables } = extractTables(md);
+  _savedTables = tables;
+  return marked.parse(cleaned, { async: false }) as string;
+}
+
+/** HTML→Markdown変換（プレースホルダーをテーブルに復元） */
 function htmlToMarkdown(html: string): string {
   if (!html || html === '<p></p>') return '';
-  return turndown.turndown(html);
+  const md = turndown.turndown(html);
+  return restoreTables(md, _savedTables);
 }
 
 interface RichTextEditorProps {
