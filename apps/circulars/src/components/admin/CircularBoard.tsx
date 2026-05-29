@@ -498,8 +498,37 @@ export const CircularBoard: React.FC = () => {
         setPendingNewArticles(newArticles);
         setShowDuplicateDialog(true);
       } else {
-        // 重複なし、そのまま追加
-        setAccumulatedArticles(prev => [...prev, ...newArticles]);
+        // 重複なし — 編集モード(Newsletter既存)なら即座にDBに保存
+        if (isEditMode && editingNewsletterId) {
+          console.log('💾 抽出した記事をSupabaseに自動保存中...');
+          const articlesToSave = newArticles.map((article) => ({
+            organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
+            title: article.title,
+            category: article.category,
+            article_type: article.article_type,
+            priority: article.priority,
+            control_date: article.control_date,
+            headline: article.headline,
+            brief: article.brief,
+            summary: article.summary,
+            content: article.content,
+            tags: article.tags,
+            visibility: article.visibility,
+            source: article.source,
+            attachments: article.attachments,
+            thumbnail_url: article.thumbnail_url,
+            display_order: null,
+            is_pinned: article.is_pinned,
+          }));
+          const savedArticles = await addArticlesToNewsletter(editingNewsletterId, articlesToSave);
+          console.log(`✅ ${savedArticles.length}件の記事をSupabaseに保存しました`);
+
+          // 保存済み記事（DB上のID付き）をローカル状態に追加
+          setAccumulatedArticles(prev => [...prev, ...savedArticles]);
+        } else {
+          // 新規作成モード：ローカル状態にのみ追加
+          setAccumulatedArticles(prev => [...prev, ...newArticles]);
+        }
 
         // 選択をクリア
         setSelectedPDF(null);
@@ -513,7 +542,8 @@ export const CircularBoard: React.FC = () => {
 
         alert(
           `${message}\n` +
-          `処理時間: ${(processingTime / 1000).toFixed(1)}秒`
+          `処理時間: ${(processingTime / 1000).toFixed(1)}秒` +
+          (isEditMode ? '\n\nSupabaseに保存済みです。' : '')
         );
       }
     } catch (error) {
