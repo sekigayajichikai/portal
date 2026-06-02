@@ -426,15 +426,6 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
               <FileText size={24} />
               関ヶ谷自治会 電子回覧板
             </h1>
-            <p className={`text-sm mt-1 ${isSimpleMode ? 'text-slate-600' : 'text-white/80'}`}>
-              自治会の回覧板をスマホやパソコンでご覧いただけます。
-            </p>
-            {selectedNewsletter && (
-              <div className={`text-sm mt-2 space-y-0.5 ${isSimpleMode ? 'text-slate-500' : 'text-white/75'}`}>
-                <p>「関ヶ谷だより」と「会報ふれあい」の内容は記事形式で掲載しています。</p>
-                <p>その他の配布物はPDFでそのままご覧いただけます。</p>
-              </div>
-            )}
           </div>
           {/* 文字サイズ切替 */}
           <div className={`flex items-center gap-1 rounded-lg p-1 shrink-0 ${isSimpleMode ? 'bg-white/80' : 'bg-white/20'}`}>
@@ -454,6 +445,15 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
           </div>
         </div>
       </div>
+
+      {/* 説明文 */}
+      {selectedNewsletter && (
+        <div className="text-sm text-slate-600 space-y-0.5 px-1">
+          <p>自治会の回覧板をスマホやパソコンでご覧いただけます。</p>
+          <p>「関ヶ谷だより」と「会報ふれあい」の内容は記事形式で掲載しています。</p>
+          <p>その他の配布物はPDFでそのままご覧いただけます。</p>
+        </div>
+      )}
 
       {/* エラー */}
       {error && (
