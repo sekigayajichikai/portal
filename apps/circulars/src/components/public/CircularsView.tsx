@@ -575,7 +575,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
                 <span className="font-medium text-slate-500">記事をPDF版で読む（{sourcePdfs.length}件）</span>
                 <div className="h-px flex-1 bg-slate-200" />
               </div>
-              <p className="text-xs text-slate-400 text-center mt-1">
+              <p className="text-sm text-slate-400 text-center mt-1">
                 タップするとPDFが開きます
               </p>
               <div className={`grid gap-4 ${fontSize === 'large' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
@@ -603,7 +603,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
                 <span className="font-medium text-slate-500">回覧板PDF（{attachmentPdfs.length}件）</span>
                 <div className="h-px flex-1 bg-slate-200" />
               </div>
-              <p className="text-xs text-slate-400 text-center mt-1">
+              <p className="text-sm text-slate-400 text-center mt-1">
                 タップするとPDFが開きます
               </p>
               <div className={`grid gap-4 ${fontSize === 'large' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
