@@ -611,6 +611,9 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                 </h2>
                 <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-300 to-slate-300" />
               </div>
+              <p className="text-xs text-slate-400 text-center -mt-4 mb-4">
+                タップするとPDFが開きます
+              </p>
 
               {/* PDFリンク一覧 */}
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
@@ -908,9 +911,12 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode }) => {
                 return true;
               }).length > 0 && (
                 <div>
-                  <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                  <p className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-2">
                     <FileText size={16} />
                     元の回覧板を見る
+                  </p>
+                  <p className="text-xs text-slate-400 mb-2">
+                    タップするとPDFが開きます
                   </p>
                   <div className="space-y-2">
                     {selectedArticle.attachments
