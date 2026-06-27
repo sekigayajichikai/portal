@@ -61,7 +61,7 @@ export async function extractArticlesFromPDF(
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 16000,
       messages: [
         {
@@ -157,7 +157,8 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
 - headline: 5文字以内（例：どんど焼き、会館休館）
 - brief: 15文字程度（例：1/10どんど焼き開催）
 - summary: 40文字程度（いつ・どこで・何を が全部入る）
-- content: 記事の本文全体をMarkdown形式で記述
+- content: PDFの原文を一言一句そのまま転記してください（Markdown形式）
+  ※ 文言の書き換え・要約・省略・補足は一切しないでください。原文に忠実に転記することが最優先です。
   ※ タイトル（title）と同じ文言は本文の冒頭に含めないこと。タイトルは別フィールドで表示されるため、本文では内容の説明から始めてください。
   ※ Markdown記法の指示：
   - 見出しは ## または ### を使用
@@ -165,20 +166,6 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
   - 段落は空行で区切る
   - 日時や場所などの重要情報は **太字** で強調
   - 改行を適切に保持
-
-  【出力例】
-  ## イベント概要
-  日時: **1月10日（土）10:00-12:00**
-  場所: **関ヶ谷公民館**
-
-  ## 内容
-  新春の伝統行事「どんど焼き」を開催します。
-
-  - お正月飾りやお札をお持ちください
-  - ぜんざいの無料提供あり
-
-  ## 参加方法
-  事前申込不要。当日直接会場へお越しください。
 
 **tags**: 以下に該当する場合のみ ["募集"] を付与（該当しなければ空配列）
 - 人の募集（隊員募集、参加者募集、ボランティア募集など）
@@ -248,6 +235,71 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
  * @param responseText - Claude APIからのレスポンステキスト
  * @returns 記事データの配列
  */
+function repairJsonString(jsonStr: string): string {
+  const result: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < jsonStr.length; i++) {
+    const char = jsonStr[i];
+
+    if (escaped) {
+      if (!'"\\/bfnrtu'.includes(char)) {
+        // 不正なエスケープシーケンス → バックスラッシュをエスケープ
+        result.push('\\');
+      }
+      result.push(char);
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\' && inString) {
+      escaped = true;
+      result.push(char);
+      continue;
+    }
+
+    if (char === '"') {
+      if (!inString) {
+        inString = true;
+        result.push(char);
+      } else {
+        // 文字列終端かどうかを後続文字で判定
+        const rest = jsonStr.substring(i + 1).trimStart();
+        const nextChar = rest[0];
+        if (
+          nextChar === undefined ||
+          nextChar === ',' ||
+          nextChar === '}' ||
+          nextChar === ']' ||
+          nextChar === ':'
+        ) {
+          // 文字列の終端
+          inString = false;
+          result.push(char);
+        } else {
+          // 文字列内のエスケープされていないダブルクォート
+          result.push('\\"');
+        }
+      }
+      continue;
+    }
+
+    // 文字列内のリテラル改行・タブをエスケープ
+    if (inString) {
+      if (char === '\n') { result.push('\\n'); continue; }
+      if (char === '\r') { continue; }
+      if (char === '\t') { result.push('\\t'); continue; }
+      // 制御文字を除去
+      if (char.charCodeAt(0) < 0x20) { continue; }
+    }
+
+    result.push(char);
+  }
+
+  return result.join('');
+}
+
 function parseArticlesFromResponse(
   responseText: string
 ): Omit<Article, 'id' | 'newsletter_id' | 'organization_id' | 'created_at' | 'updated_at'>[] {
@@ -260,7 +312,23 @@ function parseArticlesFromResponse(
   }
 
   const jsonText = jsonMatch[1] || jsonMatch[0];
-  const parsed = JSON.parse(jsonText);
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (_firstError) {
+    // 文字単位でJSONを修復（エスケープされていないクォート、改行、制御文字を修正）
+    const repaired = repairJsonString(jsonText)
+      // 末尾カンマの修正
+      .replace(/,\s*([}\]])/g, '$1');
+
+    try {
+      parsed = JSON.parse(repaired);
+    } catch (secondError) {
+      console.error('JSON修復失敗。レスポンス先頭4000文字:', jsonText.substring(0, 4000));
+      throw new Error(`JSONパースエラー: ${(secondError as Error).message}`);
+    }
+  }
 
   if (!parsed.articles || !Array.isArray(parsed.articles)) {
     throw new Error('記事配列が見つかりません');
@@ -359,7 +427,7 @@ export async function extractBriefArticleFromPDF(
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1000, // 簡易版なので少なめ
       messages: [
         {
@@ -571,7 +639,7 @@ export async function extractArticleFromImage(
 {
   "title": "記事タイトル（20文字以内）",
   "summary": "要約（40文字程度。いつ・どこで・何をが入る）",
-  "content": "本文全体をMarkdown形式で。タイトルと同じ文言は冒頭に含めない。見出しは##、箇条書きは-、重要情報は**太字**",
+  "content": "原文を一言一句そのまま転記（Markdown形式）。書き換え・要約・省略禁止。タイトルと同じ文言は冒頭に含めない。見出しは##、箇条書きは-、重要情報は**太字**",
   "category": "カテゴリID",
   "priority": "high/medium/low",
   "event_date": "イベントの場合 YYYY-MM-DD（なければnull）",
@@ -602,7 +670,7 @@ tags: 人やモノの募集がある場合のみ ["募集"]
   }));
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     max_tokens: 4000,
     messages: [{
       role: 'user',
@@ -696,7 +764,7 @@ ${publisherList}
     const startTime = Date.now();
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 500, // メタデータのみなので少なく
       messages: [
         {
@@ -839,7 +907,7 @@ export async function extractBusScheduleFromPDF(
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4000,
       messages: [
         {

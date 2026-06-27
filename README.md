@@ -22,7 +22,8 @@ View your app in AI Studio: https://ai.studio/apps/drive/1v9cidGk07_zJ_tvrPOd3uc
 ```
 CC-SaaS/
 ├── apps/
-│   ├── admin/          # 管理者用アプリケーション
+│   ├── admin/          # 管理者用アプリケーション（Community Connect 全機能）
+│   ├── circulars/      # デジタル回覧板専用アプリケーション（回覧板機能のみ）
 │   └── public/         # 一般ユーザー向けアプリケーション
 └── packages/
     └── shared/         # 共有ライブラリ（型定義、サービスなど）
@@ -159,11 +160,14 @@ npm run check-env
 ### 4. アプリケーションの起動
 
 ```bash
-# 両方のアプリを同時に起動
+# 全アプリを同時に起動
 npm run dev
 
-# 管理者アプリのみ起動
+# 管理者アプリのみ起動（Community Connect: ポート3000）
 npm run dev:admin
+
+# デジタル回覧板アプリのみ起動（回覧板専用: ポート5175）
+npm run dev:circulars
 
 # 一般ユーザーアプリのみ起動
 npm run dev:public
@@ -239,6 +243,16 @@ Vercelは `main` ブランチへのプッシュを自動検知し、自動的に
 - **Netlify**: Vercelと同様の手順でデプロイ可能
 - **Cloudflare Pages**: 高速なエッジ配信が可能
 - **その他**: Viteアプリをホスティングできる任意のサービス
+
+## 📄 AI記事抽出のプロンプト方針
+
+PDFからの記事自動抽出では、以下の方針でAIプロンプトを設計しています。
+
+- **本文（content）**: PDFの原文を一言一句そのまま転記する。書き換え・要約・省略・補足は一切しない
+- **タイトル・見出し（title, headline）**: AIが記事の区切りを判断し、適切に切り出す
+- **要約（brief, summary）**: AIが簡潔に生成する（本文とは別フィールド）
+
+対象プロンプトの所在: `packages/shared/services/ai/claudeService.ts`, `openRouterService.ts`
 
 ## 📻 ラジオ回覧板機能
 

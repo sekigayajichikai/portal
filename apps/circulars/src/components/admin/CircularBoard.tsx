@@ -546,9 +546,10 @@ export const CircularBoard: React.FC = () => {
           (isEditMode ? '\n\nSupabaseに保存済みです。' : '')
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('記事抽出エラー:', error);
-      alert('記事抽出に失敗しました');
+      const detail = error?.message || error?.toString() || '不明なエラー';
+      alert(`記事抽出に失敗しました\n\n${detail}`);
     } finally {
       setIsProcessingPDF(false);
     }

@@ -46,7 +46,7 @@ function getModelName(): string {
   const model =
     (typeof process !== 'undefined' && process.env?.OPENROUTER_MODEL) ||
     (import.meta as any).env?.VITE_OPENROUTER_MODEL ||
-    'anthropic/claude-sonnet-4-20250514';
+    'anthropic/claude-sonnet-4-6';
 
   return model;
 }
@@ -181,27 +181,14 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
 - headline: 5文字以内（例：どんど焼き、会館休館）
 - brief: 15文字程度（例：1/10どんど焼き開催）
 - summary: 40文字程度（いつ・どこで・何を が全部入る）
-- content: 記事の本文全体をMarkdown形式で記述
+- content: PDFの原文を一言一句そのまま転記してください（Markdown形式）
+  ※ 文言の書き換え・要約・省略・補足は一切しないでください。原文に忠実に転記することが最優先です。
   ※ Markdown記法の指示：
   - 見出しは ## または ### を使用
   - 箇条書きは - または 1. を使用
   - 段落は空行で区切る
   - 日時や場所などの重要情報は **太字** で強調
   - 改行を適切に保持
-
-  【出力例】
-  ## イベント概要
-  日時: **1月10日（土）10:00-12:00**
-  場所: **関ヶ谷公民館**
-
-  ## 内容
-  新春の伝統行事「どんど焼き」を開催します。
-
-  - お正月飾りやお札をお持ちください
-  - ぜんざいの無料提供あり
-
-  ## 参加方法
-  事前申込不要。当日直接会場へお越しください。
 
 **tags**: 関連キーワード3-5個（配列）
 
