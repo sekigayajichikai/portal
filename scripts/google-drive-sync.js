@@ -16,24 +16,42 @@
  * 1. https://script.google.com にアクセス
  * 2. 「新しいプロジェクト」を作成
  * 3. このコードを貼り付け
- * 4. 下の「設定値」を自分の環境に合わせて変更
+ * 4. 「プロジェクトの設定」→「スクリプト プロパティ」に以下を追加:
+ *    - DRIVE_FOLDER_ID: Google DriveのフォルダID（URLの最後の部分）
+ *    - SUPABASE_URL: https://xxxx.supabase.co
+ *    - SUPABASE_ANON_KEY: Supabaseのanonキー
+ *    - STORAGE_BUCKET: newsletters（省略可、デフォルト newsletters）
  * 5. 「実行」→「testConnection」で接続テスト
  * 6. 「実行」→「syncDrivePdfs」で手動同期
  * 7. 「トリガー」→「トリガーを追加」→ syncDrivePdfs を5分おきに自動実行
+ *
+ * 【セキュリティ】接続情報はコードに直書きせず、スクリプト プロパティで管理する。
  */
 
-// ====== 設定値 ======
-const CONFIG = {
-  // Google DriveのフォルダID（URLの最後の部分）
-  DRIVE_FOLDER_ID: '1-gMwA75RfpMfxuKiPZmxhOhjK8OFq-H_',
+// ====== 設定値（スクリプト プロパティから読み込み） ======
+function getConfig() {
+  const props = PropertiesService.getScriptProperties();
+  const config = {
+    DRIVE_FOLDER_ID: props.getProperty('DRIVE_FOLDER_ID'),
+    SUPABASE_URL: props.getProperty('SUPABASE_URL'),
+    SUPABASE_ANON_KEY: props.getProperty('SUPABASE_ANON_KEY'),
+    STORAGE_BUCKET: props.getProperty('STORAGE_BUCKET') || 'newsletters',
+  };
 
-  // Supabase設定
-  SUPABASE_URL: 'https://ktxofualnuisijissvif.supabase.co',
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt0eG9mdWFsbnVpc2lqaXNzdmlmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4Mzk0NjQsImV4cCI6MjA4NDQxNTQ2NH0.8Yp2DLP0TRP-7-rOVaBGCbJg09LZn13g2IwfevsxYRk',
+  const missing = ['DRIVE_FOLDER_ID', 'SUPABASE_URL', 'SUPABASE_ANON_KEY'].filter(
+    (key) => !config[key]
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `スクリプト プロパティが未設定です: ${missing.join(', ')}\n` +
+        '「プロジェクトの設定」→「スクリプト プロパティ」で設定してください。'
+    );
+  }
 
-  // Storageバケット名
-  STORAGE_BUCKET: 'newsletters',
-};
+  return config;
+}
+
+const CONFIG = getConfig();
 // ====================
 
 /**

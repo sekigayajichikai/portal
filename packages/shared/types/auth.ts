@@ -16,7 +16,7 @@
  */
 export interface AuthContextType {
   isAuthenticated: boolean;
-  login: (password: string) => boolean;
+  login: (password: string) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
 }

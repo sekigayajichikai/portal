@@ -2,16 +2,23 @@
  * 認証コンテキスト
  *
  * アプリケーション全体で認証状態を管理するためのReact Contextを提供します。
- * localStorageを使用してログイン状態を永続化します。
+ *
+ * 認証方式:
+ * - 本番: Supabase Edge Function（app-login）でパスワードをサーバー側照合し、
+ *   発行されたアプリトークンをlocalStorageに保存します。
+ *   （パスワードはクライアントバンドルに含まれません）
+ * - 開発: VITE_APP_PASSWORD が設定されていればローカル照合にフォールバックします。
  *
  * @module contexts/AuthContext
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { AuthContextType } from '../types/auth.js';
+import { getSupabaseClient } from '../services/supabaseClient.js';
+import { AUTH_TOKEN_STORAGE_KEY } from '../services/ai/aiProxyClient.js';
 
 /**
- * localStorage に保存する認証状態のキー
+ * 旧方式（開発用フォールバック）のlocalStorageキー
  */
 const AUTH_STORAGE_KEY = 'cc-saas-auth';
 
@@ -27,6 +34,17 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  */
 interface AuthProviderProps {
   children: ReactNode;
+}
+
+/**
+ * 開発モードのローカルパスワードを取得（本番ビルドでは常にundefined）
+ */
+function getDevPassword(): string | undefined {
+  const env = (import.meta as any).env;
+  if (env?.DEV) {
+    return env?.VITE_APP_PASSWORD;
+  }
+  return undefined;
 }
 
 /**
@@ -46,10 +64,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
    * コンポーネントマウント時にlocalStorageから認証状態を復元
    */
   useEffect(() => {
+    const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+    const legacyAuth = localStorage.getItem(AUTH_STORAGE_KEY);
 
-    const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
-
-    if (storedAuth === 'true') {
+    if (token) {
+      // サーバー発行トークンあり
+      setIsAuthenticated(true);
+    } else if (legacyAuth === 'true' && getDevPassword()) {
+      // 開発モードのローカル認証のみ旧フラグを許可
       setIsAuthenticated(true);
     }
     setIsLoading(false);
@@ -58,33 +80,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   /**
    * ログイン処理
    *
-   * 入力されたパスワードを環境変数と照合し、一致すればログイン状態にします。
+   * 開発モードではローカル照合、本番ではEdge Function（app-login）で
+   * サーバー側照合を行い、アプリトークンを保存します。
    *
    * @param {string} password - 入力されたパスワード
-   * @returns {boolean} ログイン成功ならtrue、失敗ならfalse
+   * @returns {Promise<boolean>} ログイン成功ならtrue、失敗ならfalse
    */
-  const login = (password: string): boolean => {
-
-    // 環境変数からパスワードを取得
-    const correctPassword =
-      (import.meta as any).env?.VITE_APP_PASSWORD ||
-      (typeof process !== 'undefined' && process.env?.VITE_APP_PASSWORD);
-
-    if (!correctPassword) {
-      console.error('VITE_APP_PASSWORD が設定されていません');
+  const login = async (password: string): Promise<boolean> => {
+    // 開発モード: ローカル照合（本番バンドルにはパスワードは含まれない）
+    const devPassword = getDevPassword();
+    if (devPassword) {
+      if (password === devPassword) {
+        setIsAuthenticated(true);
+        localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+        return true;
+      }
       return false;
     }
 
-    // パスワードが一致するかチェック
-    const isMatch = password === correctPassword;
-
-    if (isMatch) {
-      setIsAuthenticated(true);
-      localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-      return true;
+    // 本番: サーバー側でパスワード照合
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.error('Supabaseが未設定のため、ログインできません');
+      return false;
     }
 
-    return false;
+    try {
+      const { data, error } = await supabase.functions.invoke('app-login', {
+        body: { password },
+      });
+
+      if (error || !data?.token) {
+        return false;
+      }
+
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, data.token);
+      setIsAuthenticated(true);
+      return true;
+    } catch (e) {
+      console.error('ログイン処理でエラーが発生しました:', e);
+      return false;
+    }
   };
 
   /**
@@ -95,6 +131,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = (): void => {
     setIsAuthenticated(false);
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
   };
 
   const value: AuthContextType = {

@@ -152,6 +152,8 @@ export default [
       '**/.vite/**',
       'eslint.config.js',
       'scripts/**',
+      // Deno（Edge Functions）ランタイムのためNode向けlintの対象外
+      'supabase/functions/**',
     ],
   },
 ];

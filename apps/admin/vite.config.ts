@@ -22,23 +22,19 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react()],
     define: {
-      // Gemini AI
-      'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY),
-      // AI Provider Selection
+      // 【セキュリティ】APIキー・パスワードはバンドルに含めない。
+      // 開発時（npm run dev:admin）は各サービスが import.meta.env.VITE_* を
+      // 直接参照するため、ローカルのAI機能（PDF抽出・ラジオ生成）はそのまま動作する。
+      // このアプリを公開デプロイする場合は ai-proxy / app-login 経由になる。
+
+      // AI Provider Selection（非シークレット）
       'process.env.AI_PROVIDER': JSON.stringify(env.VITE_AI_PROVIDER),
-      // OpenRouter
-      'process.env.OPENROUTER_API_KEY': JSON.stringify(env.VITE_OPENROUTER_API_KEY),
       'process.env.OPENROUTER_MODEL': JSON.stringify(env.VITE_OPENROUTER_MODEL),
-      // Anthropic Claude
-      'process.env.ANTHROPIC_API_KEY': JSON.stringify(env.VITE_ANTHROPIC_API_KEY),
-      // Supabase
+      // Supabase（anonキーは公開前提の値）
       'process.env.SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
       'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
-      // Stripe
+      // Stripe（publishableキーは公開前提の値）
       'process.env.STRIPE_PUBLISHABLE_KEY': JSON.stringify(env.VITE_STRIPE_PUBLISHABLE_KEY),
-      // App Password
-      'process.env.VITE_APP_PASSWORD': JSON.stringify(env.VITE_APP_PASSWORD),
     },
     resolve: {
       alias: {

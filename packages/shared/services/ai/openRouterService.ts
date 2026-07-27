@@ -9,38 +9,70 @@
 import OpenAI from 'openai';
 import type { Article, Category, ExtractionResult } from '../../types/index.js';
 import { MOCK_ARTICLES } from '../../constants/mockData.js';
+import { invokeAIProxy, isAIProxyAvailable } from './aiProxyClient.js';
 
 /**
- * OpenRouterクライアントを取得
- * APIキーは環境変数から取得します。
+ * Chat Completions APIのレスポンス（SDK・プロキシ共通の最小形）
  */
-function getOpenRouterClient(): OpenAI | null {
-  // Viteの環境変数または通常の環境変数から取得
-  const apiKey =
-    (typeof process !== 'undefined' && process.env?.OPENROUTER_API_KEY) ||
-    (import.meta as any).env?.VITE_OPENROUTER_API_KEY ||
-    (import.meta as any).env?.OPENROUTER_API_KEY;
+type ChatCompletionResponse = {
+  choices: Array<{ message?: { content?: string | null } }>;
+};
 
-  if (!apiKey) {
-    console.warn('OpenRouter APIキーが設定されていません。モックデータを使用します。');
-    return null;
+/**
+ * ローカルで直接利用可能なAPIキーを取得
+ *
+ * - Node環境（サーバー・バッチ）: process.env.OPENROUTER_API_KEY
+ * - ブラウザ: 開発モード（DEV）のみ VITE_OPENROUTER_API_KEY を許可
+ *   （本番バンドルへのキー混入を防ぐため、本番ビルドでは常にプロキシを使用）
+ */
+function getLocalApiKey(): string | undefined {
+  const nodeKey = typeof process !== 'undefined' && process.env?.OPENROUTER_API_KEY;
+  if (nodeKey) return nodeKey;
+
+  const env = (import.meta as any).env;
+  if (env?.DEV) {
+    return env?.VITE_OPENROUTER_API_KEY || env?.OPENROUTER_API_KEY;
   }
+  return undefined;
+}
 
-  return new OpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
-    apiKey: apiKey,
-    dangerouslyAllowBrowser: true,
-    defaultHeaders: {
-      'HTTP-Referer':
-        typeof window !== 'undefined' ? window.location.origin : 'https://cc-saas.app',
-      'X-Title': 'CC-SaaS Digital Circular Board',
-    },
-  });
+/**
+ * OpenRouterが利用可能か（ローカルキー or プロキシ）
+ */
+function hasOpenRouterAccess(): boolean {
+  return !!getLocalApiKey() || isAIProxyAvailable();
+}
+
+/**
+ * OpenRouter Chat Completions APIを呼び出す
+ *
+ * ローカルキーがあればSDKで直接、なければEdge Function（ai-proxy）経由で呼び出します。
+ */
+async function callOpenRouterAPI(body: {
+  model: string;
+  max_tokens: number;
+  messages: unknown[];
+}): Promise<ChatCompletionResponse> {
+  const apiKey = getLocalApiKey();
+  if (apiKey) {
+    const client = new OpenAI({
+      baseURL: 'https://openrouter.ai/api/v1',
+      apiKey,
+      dangerouslyAllowBrowser: true, // 開発モードのブラウザでのみ使用される
+      defaultHeaders: {
+        'HTTP-Referer':
+          typeof window !== 'undefined' ? window.location.origin : 'https://cc-saas.app',
+        'X-Title': 'CC-SaaS Digital Circular Board',
+      },
+    });
+    return (await client.chat.completions.create(body as any)) as unknown as ChatCompletionResponse;
+  }
+  return invokeAIProxy<ChatCompletionResponse>('openrouter', body);
 }
 
 /**
  * 使用するモデルを取得
- * 環境変数で指定可能、デフォルトはClaude Sonnet 4
+ * 環境変数で指定可能、デフォルトはClaude Sonnet 4.6
  */
 function getModelName(): string {
   const model =
@@ -68,10 +100,8 @@ export async function extractArticlesFromPDF(
   pdfBase64: string,
   categories: Category[]
 ): Promise<ExtractionResult> {
-  const client = getOpenRouterClient();
-
-  if (!client) {
-    // APIキーがない場合はモックデータを返す
+  if (!hasOpenRouterAccess()) {
+    // AIにアクセスできない場合はモックデータを返す
     return mockExtractArticles();
   }
 
@@ -84,7 +114,7 @@ export async function extractArticlesFromPDF(
   try {
     // OpenRouterでは、画像としてPDFを送信する方法を試す
     // PDFページを画像として処理する（OpenRouterの制限による）
-    const response = await client.chat.completions.create({
+    const response = await callOpenRouterAPI({
       model: modelName,
       max_tokens: 8000,
       messages: [

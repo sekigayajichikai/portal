@@ -31,7 +31,7 @@ export const PasswordLogin: React.FC = () => {
    *
    * @param {FormEvent<HTMLFormElement>} e - フォームイベント
    */
-  const handleSubmit = (e: FormEvent<HTMLFormElement>): void => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
@@ -43,8 +43,8 @@ export const PasswordLogin: React.FC = () => {
       return;
     }
 
-    // ログイン処理
-    const success = login(password);
+    // ログイン処理（サーバー側照合のため非同期）
+    const success = await login(password);
 
     if (!success) {
       setError('パスワードが正しくありません');

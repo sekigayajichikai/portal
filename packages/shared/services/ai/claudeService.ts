@@ -10,34 +10,76 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { Article, Category, ExtractionResult } from '../../types/index.js';
 import type { BusScheduleExtractionResult, BusSchedule } from '../../types/index.js';
 import { MOCK_ARTICLES } from '../../constants/mockData.js';
+import { invokeAIProxy, isAIProxyAvailable } from './aiProxyClient.js';
 
 /**
- * Claude APIクライアントを取得
- * APIキーは環境変数から取得します。
+ * 使用するClaudeモデルID（全呼び出しで共通）
  */
-function getClaudeClient(): Anthropic | null {
-  // Viteの環境変数または通常の環境変数から取得
-  const apiKey =
-    (typeof process !== 'undefined' && process.env?.ANTHROPIC_API_KEY) ||
-    (import.meta as any).env?.VITE_ANTHROPIC_API_KEY ||
-    (import.meta as any).env?.ANTHROPIC_API_KEY;
+export const CLAUDE_MODEL = 'claude-sonnet-4-6';
 
-  if (!apiKey) {
-    console.warn('Claude APIキーが設定されていません。モックデータを使用します。');
-    return null;
+/**
+ * Claude Messages APIのリクエストボディ
+ */
+type ClaudeMessageBody = {
+  model: string;
+  max_tokens: number;
+  messages: Array<{ role: string; content: unknown }>;
+};
+
+/**
+ * Claude Messages APIのレスポンス（SDK・プロキシ共通の最小形）
+ */
+type ClaudeResponse = {
+  content: Array<{ type: string; text?: string }>;
+};
+
+/**
+ * ローカルで直接利用可能なAPIキーを取得
+ *
+ * - Node環境（サーバー・バッチ）: process.env.ANTHROPIC_API_KEY
+ * - ブラウザ: 開発モード（DEV）のみ VITE_ANTHROPIC_API_KEY を許可
+ *   （本番バンドルへのキー混入を防ぐため、本番ビルドでは常にプロキシを使用）
+ */
+function getLocalApiKey(): string | undefined {
+  const nodeKey = typeof process !== 'undefined' && process.env?.ANTHROPIC_API_KEY;
+  if (nodeKey) return nodeKey;
+
+  const env = (import.meta as any).env;
+  if (env?.DEV) {
+    return env?.VITE_ANTHROPIC_API_KEY || env?.ANTHROPIC_API_KEY;
   }
+  return undefined;
+}
 
-  return new Anthropic({
-    apiKey,
-    dangerouslyAllowBrowser: true, // ブラウザ環境で使用
-  });
+/**
+ * Claude APIが利用可能か（ローカルキー or プロキシ）
+ */
+function hasClaudeAccess(): boolean {
+  return !!getLocalApiKey() || isAIProxyAvailable();
+}
+
+/**
+ * Claude Messages APIを呼び出す
+ *
+ * ローカルキーがあればSDKで直接、なければEdge Function（ai-proxy）経由で呼び出します。
+ */
+async function callClaudeAPI(body: ClaudeMessageBody): Promise<ClaudeResponse> {
+  const apiKey = getLocalApiKey();
+  if (apiKey) {
+    const client = new Anthropic({
+      apiKey,
+      dangerouslyAllowBrowser: true, // 開発モードのブラウザでのみ使用される
+    });
+    return (await client.messages.create(body as any)) as unknown as ClaudeResponse;
+  }
+  return invokeAIProxy<ClaudeResponse>('anthropic', body);
 }
 
 /**
  * PDFから記事を抽出
  *
- * Claude Sonnet 4.5を使用してPDFを解析し、記事を構造化して抽出します。
- * APIキーが未設定の場合は、モックデータを返します。
+ * Claude（CLAUDE_MODEL）を使用してPDFを解析し、記事を構造化して抽出します。
+ * ローカルキーもプロキシもない場合は、モックデータを返します。
  *
  * @param pdfBase64 - Base64エンコードされたPDFデータ
  * @param categories - 組織のカテゴリ設定
@@ -47,10 +89,8 @@ export async function extractArticlesFromPDF(
   pdfBase64: string,
   categories: Category[]
 ): Promise<ExtractionResult> {
-  const client = getClaudeClient();
-
-  if (!client) {
-    // APIキーがない場合はモックデータを返す
+  if (!hasClaudeAccess()) {
+    // AIにアクセスできない場合はモックデータを返す
     return mockExtractArticles();
   }
 
@@ -60,8 +100,8 @@ export async function extractArticlesFromPDF(
   const prompt = generateExtractionPrompt(categories);
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const response = await callClaudeAPI({
+      model: CLAUDE_MODEL,
       max_tokens: 16000,
       messages: [
         {
@@ -86,7 +126,7 @@ export async function extractArticlesFromPDF(
 
     // レスポンスからテキストを抽出
     const textContent = response.content.find((c) => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
+    if (!textContent || textContent.type !== 'text' || !textContent.text) {
       throw new Error('テキストレスポンスが見つかりません');
     }
 
@@ -413,10 +453,8 @@ export async function extractBriefArticleFromPDF(
   pdfUrl: string,
   pdfFilename: string
 ): Promise<ExtractionResult> {
-  const client = getClaudeClient();
-
-  if (!client) {
-    // APIキーがない場合はモックデータを返す
+  if (!hasClaudeAccess()) {
+    // AIにアクセスできない場合はモックデータを返す
     return mockExtractBriefArticle(pdfFilename);
   }
 
@@ -426,8 +464,8 @@ export async function extractBriefArticleFromPDF(
   const prompt = generateBriefExtractionPrompt(categories, pdfFilename);
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const response = await callClaudeAPI({
+      model: CLAUDE_MODEL,
       max_tokens: 1000, // 簡易版なので少なめ
       messages: [
         {
@@ -452,7 +490,7 @@ export async function extractBriefArticleFromPDF(
 
     // レスポンスからテキストを抽出
     const textContent = response.content.find((c) => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
+    if (!textContent || textContent.type !== 'text' || !textContent.text) {
       throw new Error('テキストレスポンスが見つかりません');
     }
 
@@ -627,8 +665,7 @@ export async function extractArticleFromImage(
   event_location: string | null;
   tags: string[];
 }> {
-  const client = getClaudeClient();
-  if (!client) throw new Error('Claude APIが設定されていません');
+  if (!hasClaudeAccess()) throw new Error('Claude APIが設定されていません');
 
   const categoryList = categories.map(c => `- ${c.id}: ${c.label}`).join('\n');
 
@@ -669,8 +706,8 @@ tags: 人やモノの募集がある場合のみ ["募集"]
     source: { type: 'base64' as const, media_type: 'image/png' as const, data },
   }));
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+  const response = await callClaudeAPI({
+    model: CLAUDE_MODEL,
     max_tokens: 4000,
     messages: [{
       role: 'user',
@@ -717,8 +754,7 @@ export async function extractPDFMetadata(
   suggestedIssueNumber: string;
   suggestedPublisher: string;
 }> {
-  const client = getClaudeClient();
-  if (!client) {
+  if (!hasClaudeAccess()) {
     // フォールバック: ファイル名から推測
     return {
       suggestedTitle: '',
@@ -763,8 +799,8 @@ ${publisherList}
   try {
     const startTime = Date.now();
 
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const response = await callClaudeAPI({
+      model: CLAUDE_MODEL,
       max_tokens: 500, // メタデータのみなので少なく
       messages: [
         {
@@ -835,7 +871,7 @@ ${publisherList}
 /**
  * PDFからバス時刻表を抽出
  *
- * Claude Sonnet 4.5を使用してバス時刻表PDFを解析し、
+ * Claude（CLAUDE_MODEL）を使用してバス時刻表PDFを解析し、
  * 路線名、バス停名、時刻を構造化して抽出します。
  *
  * @param pdfBase64 - Base64エンコードされたPDFデータ
@@ -844,10 +880,8 @@ ${publisherList}
 export async function extractBusScheduleFromPDF(
   pdfBase64: string
 ): Promise<BusScheduleExtractionResult> {
-  const client = getClaudeClient();
-
-  if (!client) {
-    // APIキーがない場合はモックデータを返す
+  if (!hasClaudeAccess()) {
+    // AIにアクセスできない場合はモックデータを返す
     return mockExtractBusSchedule();
   }
 
@@ -906,8 +940,8 @@ export async function extractBusScheduleFromPDF(
 - JSON以外の説明文は不要です。JSONのみを返してください`;
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const response = await callClaudeAPI({
+      model: CLAUDE_MODEL,
       max_tokens: 4000,
       messages: [
         {
@@ -932,7 +966,7 @@ export async function extractBusScheduleFromPDF(
 
     // レスポンスからテキストを抽出
     const textContent = response.content.find((c) => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
+    if (!textContent || textContent.type !== 'text' || !textContent.text) {
       throw new Error('テキストレスポンスが見つかりません');
     }
 
@@ -1047,4 +1081,150 @@ function mockExtractBusSchedule(): BusScheduleExtractionResult {
     ],
     processingTime: 100,
   };
+}
+
+/**
+ * イベント候補
+ *
+ * 記事群からAIが抽出した、カレンダー登録候補のイベント情報です。
+ * article_index で抽出元の記事（入力配列の添字）を指します。
+ */
+export interface EventCandidate {
+  /** 抽出元記事の添字（入力配列基準。特定できない場合はnull） */
+  article_index: number | null;
+  /** イベント名（20文字以内） */
+  title: string;
+  /** 開催日 YYYY-MM-DD */
+  event_date: string;
+  /** 時間帯（例: "10:00-12:00"。不明ならnull） */
+  event_time: string | null;
+  /** 開催場所（不明ならnull） */
+  event_location: string | null;
+  /** 抽出元記事に日時・場所以上の詳細情報（持ち物・申込方法・費用・内容説明など）があるか */
+  has_details: boolean;
+}
+
+/**
+ * 記事群からイベント候補を抽出
+ *
+ * 抽出済み記事のテキストを入力として、カレンダーに登録すべき
+ * 日付付きイベントの候補を洗い出します。1記事から複数イベントも抽出します。
+ * 結果は人が確認・修正してから登録する前提の「候補」です。
+ *
+ * @param articles - 対象記事（title/content と既存のevent_*フィールドを利用）
+ * @param referenceDate - 年の補完に使う基準日（回覧板の発行日など） YYYY-MM-DD
+ * @returns イベント候補のリスト
+ */
+export async function extractEventCandidates(
+  articles: Pick<Article, 'title' | 'content' | 'event_date' | 'event_time' | 'event_location'>[],
+  referenceDate: string
+): Promise<EventCandidate[]> {
+  if (!hasClaudeAccess()) {
+    throw new Error('AI機能が利用できません（APIキー/プロキシ未設定）');
+  }
+  if (articles.length === 0) return [];
+
+  // 記事本文は長すぎる場合に切り詰める（日時情報は冒頭に書かれることが多い）
+  const articleList = articles
+    .map((a, i) => {
+      const meta = [
+        a.event_date ? `開催日: ${a.event_date}` : null,
+        a.event_time ? `時間: ${a.event_time}` : null,
+        a.event_location ? `場所: ${a.event_location}` : null,
+      ].filter(Boolean).join(' / ');
+      const content = (a.content || '').slice(0, 2000);
+      return `### 記事${i}: ${a.title}\n${meta ? meta + '\n' : ''}${content}`;
+    })
+    .join('\n\n');
+
+  const prompt = `
+あなたは自治会の回覧板からカレンダー予定を整理する担当者です。
+以下の記事一覧から、地域カレンダーに登録すべき「日付が確定しているイベント・予定・締切」を全て抽出してください。
+
+【基準日】この回覧板の発行日は ${referenceDate} です。年が書かれていない日付は、この基準日以降で最も近い日付として解釈してください。
+
+【抽出ルール】
+- 開催日が特定できるものだけを抽出する（「毎週」「随時」「未定」は除外）
+- 1つの記事に複数の日程がある場合は、それぞれ別のイベントとして抽出する
+- 同じイベントが複数記事に載っている場合は1件にまとめ、最も詳しい記事の番号を article_index にする
+- 申込締切など、参加者が忘れると困る日付も「〆切」を含むタイトルで抽出してよい
+- 過去の報告記事（開催済みイベントの報告）は除外する
+
+【has_details の判定】抽出元記事に「日時・場所以外の実質的な詳細情報」（持ち物、申込方法、費用、対象者、内容の説明など）が書かれていれば true、行事予定表のように日付・場所の羅列だけなら false とする。読者が記事を開いたとき、カードに書いてある以上の情報が得られるかどうかで判断すること。
+
+【出力形式】以下のJSONのみを出力してください:
+\`\`\`json
+{
+  "events": [
+    {
+      "article_index": 0,
+      "title": "イベント名（20文字以内）",
+      "event_date": "YYYY-MM-DD",
+      "event_time": "10:00-12:00（終了時刻が不明なら \\"10:00\\" のように開始のみ。時刻自体が不明なら null）",
+      "event_location": "開催場所 または null",
+      "has_details": true
+    }
+  ]
+}
+\`\`\`
+該当がなければ {"events": []} を出力してください。
+
+【記事一覧】
+${articleList}
+`;
+
+  const response = await callClaudeAPI({
+    model: CLAUDE_MODEL,
+    max_tokens: 4000,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const textContent = response.content.find((c) => c.type === 'text');
+  if (!textContent?.text) {
+    throw new Error('テキストレスポンスが見つかりません');
+  }
+
+  return parseEventCandidatesFromResponse(textContent.text, articles.length);
+}
+
+/**
+ * イベント候補レスポンスの解析
+ */
+function parseEventCandidatesFromResponse(
+  responseText: string,
+  articleCount: number
+): EventCandidate[] {
+  const jsonMatch =
+    responseText.match(/```json\s*([\s\S]*?)\s*```/) || responseText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('JSONレスポンスが見つかりません');
+  }
+  const jsonText = jsonMatch[1] || jsonMatch[0];
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    parsed = JSON.parse(repairJsonString(jsonText).replace(/,\s*([}\]])/g, '$1'));
+  }
+
+  if (!Array.isArray(parsed?.events)) {
+    throw new Error('イベント配列が見つかりません');
+  }
+
+  return parsed.events
+    .filter((e: any) => typeof e?.title === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e?.event_date))
+    .map((e: any): EventCandidate => ({
+      article_index:
+        typeof e.article_index === 'number' && e.article_index >= 0 && e.article_index < articleCount
+          ? e.article_index
+          : null,
+      title: String(e.title).trim().slice(0, 30),
+      event_date: e.event_date,
+      event_time: typeof e.event_time === 'string' && e.event_time.trim() ? e.event_time.trim() : null,
+      event_location:
+        typeof e.event_location === 'string' && e.event_location.trim() ? e.event_location.trim() : null,
+      // 判定が返ってこない場合はtrue（リンクあり）に倒し、人の確認に委ねる
+      has_details: e.has_details !== false,
+    }));
 }

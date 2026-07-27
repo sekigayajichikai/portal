@@ -9,6 +9,7 @@
 import type { Category, ExtractionResult, BusScheduleExtractionResult } from '../../types/index.js';
 import * as claudeService from './claudeService.js';
 import * as openRouterService from './openRouterService.js';
+import { isAIProxyAvailable } from './aiProxyClient.js';
 
 /**
  * 使用するAIプロバイダーのタイプ
@@ -31,23 +32,31 @@ function getAIProvider(): AIProvider {
 }
 
 /**
- * 利用可能なAPIキーを確認
+ * 利用可能なAIアクセス手段を確認
+ *
+ * ローカルのAPIキー（Node環境 or 開発モードのブラウザ）に加えて、
+ * Supabase Edge Function（ai-proxy）経由のアクセスも「利用可能」とみなします。
  */
 function checkAvailableProviders(): {
   hasAnthropic: boolean;
   hasOpenRouter: boolean;
 } {
+  const env = (import.meta as any).env;
+
   const anthropicKey =
     (typeof process !== 'undefined' && process.env?.ANTHROPIC_API_KEY) ||
-    (import.meta as any).env?.VITE_ANTHROPIC_API_KEY;
+    (env?.DEV && env?.VITE_ANTHROPIC_API_KEY);
 
   const openRouterKey =
     (typeof process !== 'undefined' && process.env?.OPENROUTER_API_KEY) ||
-    (import.meta as any).env?.VITE_OPENROUTER_API_KEY;
+    (env?.DEV && env?.VITE_OPENROUTER_API_KEY);
+
+  // 本番ブラウザではプロキシ経由でアクセスする（キーはサーバー側のみ）
+  const hasProxy = isAIProxyAvailable();
 
   return {
-    hasAnthropic: !!anthropicKey,
-    hasOpenRouter: !!openRouterKey,
+    hasAnthropic: !!anthropicKey || hasProxy,
+    hasOpenRouter: !!openRouterKey || hasProxy,
   };
 }
 
