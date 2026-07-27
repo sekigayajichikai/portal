@@ -1,24 +1,28 @@
 # TODO - CC-SaaS (まちポータル)
 
-> 最終更新: 2026-07-07(全体点検により全面改訂)
+> 最終更新: 2026-07-28(セキュリティ改修の本番反映を反映)
 > 実運用中の機能: デジタル回覧板作成 / スケジュール関連(LINE名簿は本リポジトリ外)
 
 ---
 
 ## 🚨 緊急(セキュリティ)
 
-### AI APIキーのクライアント露出
-- [ ] Gemini / Claude / OpenRouter のAPIキーがビルドJSに埋め込まれている
-  - 該当: `apps/*/vite.config.ts` の `define`、`claudeService.ts:31` / `openRouterService.ts:31` の `dangerouslyAllowBrowser: true`、`geminiService.ts:185` のURLクエリキー
-- [ ] AI呼び出しをサーバーサイド(Vercel Functions / Supabase Edge Functions)経由に移行
-- [ ] 露出済みキーのローテーション(Gemini / Anthropic / OpenRouter 全て再発行)
+### 露出済みAPIキーのローテーション【残作業】
+旧キーは公開バンドルから抽出可能だったため、再発行または削除が必要。
+- [ ] Anthropic: [console.anthropic.com](https://console.anthropic.com) で新キー発行 → `npx supabase secrets set ANTHROPIC_API_KEY=...` で再設定 → `.env.development.local` も更新 → 旧キー失効
+- [ ] Gemini: ラジオ生成機能(台本+音声)でのみ使用。使い続けるなら Google AI Studio で再発行して同様に再設定、使わないなら旧キーの削除だけでもよい
+- [ ] OpenRouter: 現在未使用なら旧キーの失効のみ
 
-### パスワード認証が実質無効
-- [ ] `AuthContext.tsx:66-83` のクライアント側パスワード比較を廃止
-- [ ] Supabase Auth などの実認証へ移行(短期対応: サーバーサイド検証)
+### AI APIキーのクライアント露出 → 対応済み(2026-07-27)
+- [x] AI呼び出しを Supabase Edge Function(`ai-proxy`)経由に移行(デプロイ・シークレット設定・E2E確認済み)
+- [x] vite.config の define からシークレット注入を削除。本番バンドルにキー混入なしを検査済み
+
+### パスワード認証が実質無効 → 短期対応済み(2026-07-27)
+- [x] クライアント側パスワード比較を廃止し、Edge Function(`app-login`)でサーバー側照合+トークン発行に移行
+- [ ] Supabase Auth などの実認証へ移行(中期)
 
 ### その他セキュリティ
-- [ ] `scripts/google-drive-sync.js:31-32` のハードコード資格情報を GAS Script Properties へ移動
+- [x] `scripts/google-drive-sync.js` のハードコード資格情報を GAS Script Properties へ移動(GAS側への反映は要確認)
 - [ ] ストレージRLSの anon 全開放(`storage-setup-dev.sql` / `production-migrations.sql`)を authenticated 限定に
 - [ ] 本文テーブル(newsletters / articles / event_cards 等)への RLS 適用
 
