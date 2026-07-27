@@ -29,6 +29,20 @@ export async function getEventCards(newsletterId: string): Promise<EventCard[]> 
   return data || [];
 }
 
+/** 複数の号のイベントカードをまとめて取得（日付の近い順、日付未定は末尾） */
+export async function getEventCardsForNewsletters(newsletterIds: string[]): Promise<EventCard[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続');
+  if (newsletterIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('event_cards')
+    .select('*')
+    .in('newsletter_id', newsletterIds)
+    .order('event_date', { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function addEventCard(card: Omit<EventCard, 'id' | 'created_at'>): Promise<EventCard> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase未接続');

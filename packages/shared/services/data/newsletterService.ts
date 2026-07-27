@@ -178,6 +178,33 @@ export async function getArticlesByNewsletterId(
 }
 
 /**
+ * 記事をID指定で1件取得
+ *
+ * @param articleId - ArticleのUUID
+ * @returns 記事（存在しない場合はnull）
+ * @throws Supabase未接続またはデータベースエラー
+ */
+export async function getArticleById(articleId: string): Promise<Article | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+
+  const { data, error } = await supabase
+    .from('articles')
+    .select('*')
+    .eq('id', articleId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('❌ 記事取得エラー:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+/**
  * 既存のNewsletterに新しい記事を追加
  *
  * 既に保存されているNewsletterに対して、追加のPDFから抽出した記事を追加します。

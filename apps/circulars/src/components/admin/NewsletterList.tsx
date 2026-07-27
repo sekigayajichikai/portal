@@ -5,10 +5,11 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getEventCards, addEventCard, deleteEventCard, type EventCard } from '@cc-saas/shared';
+import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getEventCards, addEventCard, updateEventCard, deleteEventCard, type EventCard } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
-import { FileText, Calendar, ChevronRight, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus } from 'lucide-react';
+import { FileText, Calendar, ChevronRight, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles } from 'lucide-react';
 import { ArticleList } from './ArticleList';
+import { EventCandidateDialog } from './EventCandidateDialog';
 import { ImageCropPage } from './ImageCropPage';
 import { ArticleCropPage } from './ArticleCropPage';
 import CircularsView from '../public/CircularsView';
@@ -47,6 +48,16 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   // プレビュー
   const [showPreview, setShowPreview] = useState(false);
   const [eventCards, setEventCards] = useState<EventCard[]>([]);
+  const [showEventExtract, setShowEventExtract] = useState(false);
+  /** インライン編集中のイベントカード（nullなら非編集） */
+  const [editingCard, setEditingCard] = useState<{
+    id: string;
+    title: string;
+    event_date: string;
+    event_time: string;
+    event_location: string;
+  } | null>(null);
+  const [isSavingCard, setIsSavingCard] = useState(false);
   const [showArticleCrop, setShowArticleCrop] = useState(false);
 
   // 発行元リスト
@@ -508,7 +519,16 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
               🗓️ 今後のイベント ({eventCards.length}件)
             </h3>
-            {selectedNewsletter.status === 'draft' && (
+            {/* イベントカードは予定情報のメンテナンスなので公開後も編集可能 */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowEventExtract(true)}
+                disabled={articles.length === 0}
+                className="text-sm text-primary-600 hover:text-primary-800 font-medium flex items-center gap-1 disabled:opacity-40"
+                title="記事からイベント候補をAIで抽出します"
+              >
+                <Sparkles size={16} /> AIで抽出
+              </button>
               <button
                 onClick={async () => {
                   const title = prompt('イベント名を入力');
@@ -534,14 +554,92 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               >
                 <Plus size={16} /> 追加
               </button>
-            )}
+            </div>
           </div>
+          {showEventExtract && selectedNewsletter && (
+            <EventCandidateDialog
+              newsletter={selectedNewsletter}
+              articles={articles}
+              existingCards={eventCards}
+              onRegistered={async () => {
+                try {
+                  const cards = await getEventCards(selectedNewsletter.id);
+                  setEventCards(cards);
+                } catch { /* 再取得失敗時は既存表示を維持 */ }
+              }}
+              onClose={() => setShowEventExtract(false)}
+            />
+          )}
           {eventCards.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-4">イベントカードがありません</p>
           ) : (
             <div className="space-y-2">
               {eventCards.map((card) => {
                 const linkedArticle = articles.find(a => a.id === card.linked_article_id);
+                if (editingCard?.id === card.id) {
+                  return (
+                    <div key={card.id} className="p-3 bg-primary-50/50 border border-primary-300 rounded-lg space-y-1.5">
+                      <div className="flex gap-2">
+                        <input
+                          type="date"
+                          value={editingCard.event_date}
+                          onChange={(e) => setEditingCard({ ...editingCard, event_date: e.target.value })}
+                          className="text-sm border border-slate-300 rounded px-2 py-1 w-36"
+                        />
+                        <input
+                          type="text"
+                          value={editingCard.event_time}
+                          placeholder="時間（例: 10:00-12:00）"
+                          onChange={(e) => setEditingCard({ ...editingCard, event_time: e.target.value })}
+                          className="text-sm border border-slate-300 rounded px-2 py-1 flex-1 min-w-0"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={editingCard.title}
+                        onChange={(e) => setEditingCard({ ...editingCard, title: e.target.value })}
+                        className="text-sm font-medium border border-slate-300 rounded px-2 py-1 w-full"
+                      />
+                      <input
+                        type="text"
+                        value={editingCard.event_location}
+                        placeholder="場所（例: 自治会館）"
+                        onChange={(e) => setEditingCard({ ...editingCard, event_location: e.target.value })}
+                        className="text-sm border border-slate-300 rounded px-2 py-1 w-full"
+                      />
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          onClick={() => setEditingCard(null)}
+                          className="px-3 py-1 text-xs text-slate-600 hover:bg-slate-100 rounded"
+                        >
+                          キャンセル
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!editingCard.title.trim()) return;
+                            setIsSavingCard(true);
+                            try {
+                              await updateEventCard(card.id, {
+                                title: editingCard.title.trim(),
+                                event_date: editingCard.event_date || null,
+                                event_time: editingCard.event_time.trim() || null,
+                                event_location: editingCard.event_location.trim() || null,
+                              });
+                              const cards = await getEventCards(selectedNewsletter.id);
+                              setEventCards(cards);
+                              setEditingCard(null);
+                            } catch { alert('保存に失敗しました'); }
+                            finally { setIsSavingCard(false); }
+                          }}
+                          disabled={isSavingCard || !editingCard.title.trim()}
+                          className="px-3 py-1 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded disabled:opacity-40"
+                        >
+                          {isSavingCard ? '保存中...' : '保存'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <div key={card.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg group">
                     <div className="flex-1 min-w-0">
@@ -552,8 +650,22 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                       <p className="text-sm font-medium text-slate-800 truncate">{card.title}</p>
                       {card.event_location && <p className="text-xs text-slate-400">📍 {card.event_location}</p>}
                       {linkedArticle ? (
-                        <p className="text-xs text-primary-600 mt-0.5">🔗 {linkedArticle.title}</p>
-                      ) : selectedNewsletter.status === 'draft' ? (
+                        <p className="text-xs text-primary-600 mt-0.5 flex items-center gap-2">
+                          <span className="truncate">🔗 {linkedArticle.title}</span>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`「${card.title}」の記事リンクを解除しますか？\n読者側の「詳しく読む」表示が消えます`)) return;
+                              await updateEventCard(card.id, { linked_article_id: null });
+                              const cards = await getEventCards(selectedNewsletter.id);
+                              setEventCards(cards);
+                            }}
+                            className="text-slate-400 hover:text-red-500 shrink-0"
+                            title="記事リンクを解除"
+                          >
+                            解除
+                          </button>
+                        </p>
+                      ) : (
                         <button
                           onClick={async () => {
                             const articleTitles = articles.map((a, i) => `${i + 1}. ${a.title}`).join('\n');
@@ -561,7 +673,6 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                             if (input === null) return;
                             const num = parseInt(input);
                             if (num >= 1 && num <= articles.length) {
-                              const { updateEventCard } = await import('@cc-saas/shared');
                               await updateEventCard(card.id, { linked_article_id: articles[num - 1].id });
                               const cards = await getEventCards(selectedNewsletter.id);
                               setEventCards(cards);
@@ -571,9 +682,22 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         >
                           ＋ 記事をリンク
                         </button>
-                      ) : null}
+                      )}
                     </div>
-                    {selectedNewsletter.status === 'draft' && (
+                    <div className="flex items-center shrink-0">
+                      <button
+                        onClick={() => setEditingCard({
+                          id: card.id,
+                          title: card.title,
+                          event_date: card.event_date || '',
+                          event_time: card.event_time || '',
+                          event_location: card.event_location || '',
+                        })}
+                        className="p-1.5 text-slate-400 hover:text-primary-600 opacity-0 group-hover:opacity-100 transition"
+                        title="編集"
+                      >
+                        <Edit size={14} />
+                      </button>
                       <button
                         onClick={async () => {
                           if (!confirm(`「${card.title}」を削除しますか？`)) return;
@@ -581,11 +705,12 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                           const cards = await getEventCards(selectedNewsletter.id);
                           setEventCards(cards);
                         }}
-                        className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition shrink-0"
+                        className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
+                        title="削除"
                       >
                         <Trash2 size={14} />
                       </button>
-                    )}
+                    </div>
                   </div>
                 );
               })}

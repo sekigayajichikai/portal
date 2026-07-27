@@ -7,8 +7,8 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Newsletter, Article, getNewsletters, getArticlesByNewsletterId, getPublishers, getEventCards, toggleLike, getLikeCounts, getMyLikes, type Publisher, type EventCard } from '@cc-saas/shared';
-import { FileText, AlertCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Newsletter, Article, getNewsletters, getArticlesByNewsletterId, getArticleById, getPublishers, getEventCardsForNewsletters, toggleLike, getLikeCounts, getMyLikes, type Publisher, type EventCard } from '@cc-saas/shared';
+import { FileText, AlertCircle, ChevronDown, ChevronUp, ChevronRight, Loader2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -202,25 +202,60 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
   const officialArticles = articles.filter(a => a.article_type === 'official');
   const localInfoArticles = articles.filter(a => a.article_type === 'local-info');
 
-  // イベントカード（DBから取得）
+  // イベントカード（公開済みの全号から横断取得）
   const [eventCards, setEventCards] = useState<EventCard[]>([]);
 
   useEffect(() => {
-    if (!selectedNewsletterId) return;
-    getEventCards(selectedNewsletterId).then(cards => {
+    if (newsletters.length === 0) return;
+    // プレビュー時は「公開済みの号＋プレビュー中の号」、通常時は取得済みの全号（＝公開済み）
+    const targetIds = previewNewsletterId
+      ? newsletters.filter(n => n.status === 'published' || n.id === previewNewsletterId).map(n => n.id)
+      : newsletters.map(n => n.id);
+    getEventCardsForNewsletters(targetIds).then(cards => {
       const now = new Date();
       now.setHours(0, 0, 0, 0);
-      // 過ぎていないイベントのみ表示
+      // 過ぎていないイベントのみ、今日から近い順に表示（日付未定は末尾）
       const upcoming = cards.filter(c => {
         if (!c.event_date) return true; // 日付未定は表示
         return new Date(c.event_date) >= now;
       });
+      upcoming.sort((a, b) => {
+        if (!a.event_date && !b.event_date) return 0;
+        if (!a.event_date) return 1;
+        if (!b.event_date) return -1;
+        return a.event_date.localeCompare(b.event_date);
+      });
       setEventCards(upcoming);
     }).catch(() => setEventCards([]));
-  }, [selectedNewsletterId]);
+  }, [newsletters, previewNewsletterId]);
 
   const [carouselIndex, setCarouselIndex] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
+
+  // イベントカードから開く記事モーダル
+  const [eventArticleModal, setEventArticleModal] = useState<{ article: Article; issueTitle: string | null } | null>(null);
+  const [isLoadingEventArticle, setIsLoadingEventArticle] = useState(false);
+
+  const openEventArticle = async (card: EventCard) => {
+    if (!card.linked_article_id) return;
+    const issueTitle = card.newsletter_id !== selectedNewsletterId
+      ? newsletters.find(n => n.id === card.newsletter_id)?.title || null
+      : null;
+    // 表示中の号の記事なら取得済みデータを使う
+    const local = articles.find(a => a.id === card.linked_article_id);
+    if (local) {
+      setEventArticleModal({ article: local, issueTitle });
+      return;
+    }
+    setIsLoadingEventArticle(true);
+    try {
+      const article = await getArticleById(card.linked_article_id);
+      if (article && (article.visibility === 'public' || article.visibility === 'members-only')) {
+        setEventArticleModal({ article, issueTitle });
+      }
+    } catch { /* 取得失敗時はモーダルを開かない */ }
+    finally { setIsLoadingEventArticle(false); }
+  };
 
   const [collapsingId, setCollapsingId] = useState<string | null>(null);
 
@@ -250,13 +285,6 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
     } catch { }
   };
 
-  const scrollToArticle = (articleId: string) => {
-    setExpandedArticles(prev => new Set(prev).add(articleId));
-    setTimeout(() => {
-      const el = document.getElementById(`article-${articleId}`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 100);
-  };
 
   /** タイムラインカード */
   const renderArticleCard = (article: Article) => {
@@ -510,11 +538,15 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
                   const d = card.event_date ? new Date(card.event_date) : null;
                   const dayLabel = d ? `${d.getMonth() + 1}/${d.getDate()}` : '';
                   const dayOfWeek = d ? ['日','月','火','水','木','金','土'][d.getDay()] : '';
+                  const isOtherIssue = card.newsletter_id !== selectedNewsletterId;
+                  const issueTitle = isOtherIssue
+                    ? newsletters.find(n => n.id === card.newsletter_id)?.title
+                    : null;
 
                   return (
                     <button
                       key={`ev-${card.id}`}
-                      onClick={() => { if (card.linked_article_id) scrollToArticle(card.linked_article_id); }}
+                      onClick={() => openEventArticle(card)}
                       className={`shrink-0 w-52 rounded-xl border-2 p-4 text-left transition-all snap-center ${
                         idx === carouselIndex
                           ? 'border-blue-500 bg-blue-50 shadow-md scale-[1.02]'
@@ -531,6 +563,14 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
                       <p className="font-medium text-slate-800 line-clamp-2">{card.title}</p>
                       {card.event_location && (
                         <p className="text-[0.8em] text-slate-400 mt-1 truncate">📍 {card.event_location}</p>
+                      )}
+                      {issueTitle && (
+                        <p className="text-[0.75em] text-slate-400 mt-1 truncate">📰 {issueTitle}</p>
+                      )}
+                      {card.linked_article_id && (
+                        <p className="text-[0.8em] text-blue-600 font-medium mt-2 flex items-center gap-0.5">
+                          詳しく読む <ChevronRight size={13} />
+                        </p>
                       )}
                     </button>
                   );
@@ -634,6 +674,93 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
       )}
 
       {/* ライトボックス（タップ拡大） */}
+      {/* イベントカード記事モーダル */}
+      {isLoadingEventArticle && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center">
+          <Loader2 size={32} className="animate-spin text-white" />
+        </div>
+      )}
+      {eventArticleModal && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => setEventArticleModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* ヘッダー */}
+            <div className="flex items-start justify-between gap-3 p-4 border-b border-slate-200">
+              <div className="min-w-0">
+                {eventArticleModal.issueTitle && (
+                  <p className="text-[0.8em] text-slate-400 mb-0.5">📰 {eventArticleModal.issueTitle} より</p>
+                )}
+                <h3 className="font-bold text-slate-800 text-[1.1em]">{eventArticleModal.article.title}</h3>
+              </div>
+              <button
+                onClick={() => setEventArticleModal(null)}
+                className="shrink-0 p-1.5 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+                aria-label="閉じる"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            {/* 本文 */}
+            <div className="p-5 overflow-y-auto">
+              {(() => {
+                const article = eventArticleModal.article;
+                const thumbUrl = article.thumbnail_url || article.attachments?.find((a: any) => a.type === 'image')?.url;
+                const images = article.attachments?.filter((a: any) => a.type === 'image') || [];
+                const pdfs = article.attachments?.filter((a: any) => a.type === 'pdf') || [];
+                return (
+                  <>
+                    {thumbUrl && (
+                      <div className="mb-4 rounded-lg overflow-hidden bg-slate-100 cursor-pointer" onClick={() => setLightboxUrl(thumbUrl)}>
+                        <img src={thumbUrl} alt="" className="w-full h-auto max-h-64 object-contain" />
+                        <p className="text-center text-xs text-slate-400 py-1">タップで拡大</p>
+                      </div>
+                    )}
+                    <div className="prose-compact max-w-none text-slate-700">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                        {getDisplayContent(article)}
+                      </ReactMarkdown>
+                    </div>
+                    {images.length > 1 && (
+                      <div className="flex gap-2 flex-wrap mt-3">
+                        {images.filter((img: any) => img.url !== thumbUrl).map((img: any, i: number) => (
+                          <button key={i} onClick={() => setLightboxUrl(img.url)} className="block rounded-lg overflow-hidden border border-slate-200">
+                            <img src={img.url} alt="" className="w-32 h-auto" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {pdfs.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {pdfs.map((att: any, i: number) => (
+                          <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-[0.85em] hover:bg-blue-100 transition">
+                            📄 PDF: {att.label || '添付資料'}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            {/* フッター */}
+            <div className="p-3 border-t border-slate-200">
+              <button
+                onClick={() => setEventArticleModal(null)}
+                className="w-full py-2.5 rounded-xl bg-slate-100 text-slate-700 font-medium hover:bg-slate-200 transition"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {lightboxUrl && (
         <div
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-2"

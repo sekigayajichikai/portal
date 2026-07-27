@@ -1,113 +1,108 @@
 # TODO - CC-SaaS (まちポータル)
 
-> 最終更新: 2026-05-05
+> 最終更新: 2026-07-07(全体点検により全面改訂)
+> 実運用中の機能: デジタル回覧板作成 / スケジュール関連(LINE名簿は本リポジトリ外)
 
 ---
 
-## 現在進行中
+## 🚨 緊急(セキュリティ)
 
-### apps/circulars 統合アプリ
-- [ ] admin + public を1つのアプリに統合完了させる
-- [ ] ルートベースのロール分離（/admin vs /）の動作確認
-- [ ] Vercelデプロイ設定の最終確認
+### AI APIキーのクライアント露出
+- [ ] Gemini / Claude / OpenRouter のAPIキーがビルドJSに埋め込まれている
+  - 該当: `apps/*/vite.config.ts` の `define`、`claudeService.ts:31` / `openRouterService.ts:31` の `dangerouslyAllowBrowser: true`、`geminiService.ts:185` のURLクエリキー
+- [ ] AI呼び出しをサーバーサイド(Vercel Functions / Supabase Edge Functions)経由に移行
+- [ ] 露出済みキーのローテーション(Gemini / Anthropic / OpenRouter 全て再発行)
 
-### 新サービスの実装
-- [ ] `publisherService.ts` — 発行元マスターデータ管理の完成
-- [ ] `eventCardService.ts` — イベントカード管理の完成
-- [ ] `likeService.ts` — デバイスベースのいいね機能の完成
+### パスワード認証が実質無効
+- [ ] `AuthContext.tsx:66-83` のクライアント側パスワード比較を廃止
+- [ ] Supabase Auth などの実認証へ移行(短期対応: サーバーサイド検証)
+
+### その他セキュリティ
+- [ ] `scripts/google-drive-sync.js:31-32` のハードコード資格情報を GAS Script Properties へ移動
+- [ ] ストレージRLSの anon 全開放(`storage-setup-dev.sql` / `production-migrations.sql`)を authenticated 限定に
+- [ ] 本文テーブル(newsletters / articles / event_cards 等)への RLS 適用
 
 ---
 
-## 短期 TODO（優先度高）
+## 優先度高(実運用中機能のバグ)
 
-### イベントカルーセルの条件改善
-- [ ] 「今後のイベント」表示条件が厳しすぎる問題の修正
-- [ ] `category === 'event'` のみ対象 → 条件緩和
-- [ ] `event_date`/`control_date` 未設定の記事への対応
+### 日付処理のタイムゾーン混在
+- [ ] `CircularsView.tsx:211-216, 510-512` — UTCパース(`new Date("YYYY-MM-DD")`)とローカル時刻比較の混在。JST以外の環境で1日ズレる
+- [ ] 日付未設定のイベントカードが永久に表示され続ける問題(同:215)
 
-### 本文の改行問題
-- [ ] remarkBreaksプラグインによる改行バラバラ問題の解決
-- [ ] AI生成パターンやコピペの改行が全て `<br>` になる問題
-- [ ] 保存時の改行正規化 or remarkBreaks除去の判断
+### 記事⇔イベントカードの自動連携(新機能の土台)
+- [ ] AI抽出済みの `event_date/event_time/event_location` から event_cards を自動生成し `linked_article_id` をセット
+- [ ] カルーセルカードのタップで記事へジャンプ
+- [ ] `NewsletterList.tsx:513-531` の `prompt()` ベタ入力UIをフォーム(記事選択+日付ピッカー)に置換
 
-### Google Drive連携
-- [ ] Google Apps Scriptのデプロイ
-- [ ] トリガー設定（サブフォルダ監視 → Newsletter自動登録）
-- [ ] 動作テスト
+### 本文の改行問題(未解決・継続)
+- [ ] remarkBreaks による改行バラバラ問題(`CircularsView.tsx:331,356` 等)
+- [ ] 保存時の改行正規化 or remarkBreaks 除去の判断
+
+---
+
+## 新機能(2026-07-07 相談分)
+
+### 週次ラジオ(紙媒体に依存しないラジオ生成)
+- [ ] `radio_programs.newsletter_id` を NULL 許容に + `program_type`('monthly'/'weekly')追加
+- [ ] `generateWeeklyRadioProgram`: 過去7日の記事 + 今後7〜14日のイベントを素材に週次台本を生成
+- [ ] 管理画面に「今週のラジオを生成」ボタン(素材プレビュー付き)
+- [ ] 将来: cron自動化(要サーバーサイドTTS化 — 現在 `radioService.ts:308` が `window.AudioContext` 依存)
+
+### スケジュール→記事リンク(メディア価値向上)
+- [ ] 上記「記事⇔イベントカードの自動連携」で実現(依存関係)
+- [ ] 台本生成時に記事⇔イベントの相互参照を活かす
 
 ---
 
 ## 中期 TODO
 
-### 記事編集のMarkdown対応改善
-- [ ] 方向性決定: WYSIWYG vs Markdownツールバー
-- [ ] エディタコンポーネントの実装
-- [ ] プレビュー機能
+### コード品質
+- [ ] AIモデルID(`claude-sonnet-4-6`、6箇所ベタ書き)の定数化 — `claudeService.ts:64,430,673,767,910` / `openRouterService.ts:49`
+- [ ] JSON修復ロジック(`repairJsonString`)の未適用箇所への展開 — `claudeService.ts:557,689,813,973` / `openRouterService.ts:260`
+- [ ] 古いコメント修正(`claudeService.ts:39,838` の "Sonnet 4.5" 表記)
+- [ ] `updateArticleOrders`(`newsletterService.ts:350-383`)の逐次UPDATE → upsert一括化
+- [ ] サービス層の常駐 console.log の整理
 
-### PDFサムネイルのサーバーサイド生成
-- [ ] Supabase Edge FunctionでPDF→画像変換を実装
-- [ ] JBIG2形式のスキャンPDF対応
-- [ ] 自動サムネイル生成パイプライン構築
+### レガシー整理(apps/admin・apps/public)
+- [ ] apps/admin は circulars と大幅乖離(直近のバグ修正が入っていない)— 廃止判断
+- [ ] apps/public のカレンダー(`EventCalendarView.tsx`)は31日固定のハリボテ — 廃止 or 作り直し判断
+- [ ] レガシーイベント実装(`PublicEvent` 型、`geminiService.ts:73` の `extractEventsFromText`、`MOCK_EVENTS`)の削除
+- [ ] `control_date` の期限切れロジック(仕様のみで未実装)を実装するか仕様を削除
 
-### 自治会ホームページ（トップページ）
-- [ ] バックナンバー一覧
-- [ ] カレンダー表示
-- [ ] 連絡先・自治会紹介
-- [ ] 横浜市市民協働推進センターのデザイン参考
+### インフラ・構成
+- [ ] デプロイ設定の整理: ルート `vercel.json`(circulars専用)と各appの vercel.json の不整合解消
+- [ ] SPAリライトの修正(ルート: `destination: "/"` → `/index.html`)
+- [ ] node_modules の hoisting(workspaces が効いていない)と依存宣言の一本化
+- [ ] `.gitattributes` 設定(LF/CRLF警告)
 
-### カラーパレット統一
-- [ ] sekigayajichikai.com との色統一検討
-- [ ] 横浜市サイト（スカイブルー+グレー+赤アクセント）参考
-- [ ] Tailwind設定への反映
-
----
-
-## 長期 TODO（将来構想）
-
-### デジタル入稿 → 広報紙PDF自動生成
-- [ ] 管理画面で記事を直接入力するフォーム
-- [ ] react-pdf + AIレイアウト判定でPDF自動生成
-- [ ] テンプレート（1段/2段/3段組み）の用意
-- [ ] 記事数・画像有無に応じた最適レイアウト選択
-- [ ] 電子回覧板と紙面の同時生成
-
-### 認証・セキュリティ強化
-- [ ] 共有パスワード → ユーザー認証への移行
-- [ ] RLS（Row Level Security）ポリシーの完全適用
-- [ ] マルチ組織対応の実装
-
-### テスト・品質
-- [ ] ユニットテストの追加（Vitest）
-- [ ] E2Eテスト導入（Playwright）
-- [ ] エラーハンドリングUI（ユーザー向けエラー表示）
-
-### 追加機能
-- [ ] メール/LINE通知
-- [ ] アナリティクスダッシュボード
-- [ ] 高度な検索・フィルタリングUI
-- [ ] Stripe決済連携（会費管理）
+### 従来からの中期項目
+- [ ] 記事編集のMarkdown対応改善(WYSIWYG vs ツールバー)
+- [ ] PDFサムネイルのサーバーサイド生成
+- [ ] 自治会ホームページ(トップページ)
+- [ ] カラーパレット統一
 
 ---
 
-## 技術的負債
+## 長期 TODO(将来構想)
 
-- [ ] デバッグ用ログエンドポイント（7242/ingest）の除去
-- [ ] 非推奨の型エイリアス整理
-- [ ] git LF/CRLF警告の解消（`.gitattributes` 設定）
-- [ ] `node_modules` が各appに散在 → hoisting検討
+- [ ] デジタル入稿 → 広報紙PDF自動生成
+- [ ] LINE連携(通知・リッチメニュー — 現在LINE関連コードは本リポジトリに無し)
+- [ ] マルチ組織対応
+- [ ] ユニットテスト(Vitest)/ E2E(Playwright)
+- [ ] メール通知、アナリティクス、Stripe決済
 
 ---
 
-## 完了済み
+## 完了済み(2026-07-07 点検で確認)
 
-- [x] PDF → 記事抽出パイプライン（Claude AI）
+- [x] PDF → 記事抽出パイプライン(Claude AI)
 - [x] 記事編集・並び替え・重複検出
-- [x] ラジオ回覧板（Gemini TTS）
+- [x] ラジオ回覧板(月次・Gemini TTS)
 - [x] バスダイヤ + ゴミカレンダー
-- [x] イベントカード管理（event_cardsテーブル移行）
-- [x] マルチPDF対応
-- [x] 画像アップロード・クロップ・割り当て
-- [x] モバイルレスポンシブUI
-- [x] フォルダ構造リファクタリング（機能別整理）
-- [x] ダイジェスト音声機能
-- [x] オーディオプレーヤーのインライン化
+- [x] イベントカード管理(event_cardsテーブル、CRUD完成)
+- [x] マルチPDF対応、画像アップロード・クロップ・割り当て
+- [x] モバイルレスポンシブUI、ダイジェスト音声、インラインプレーヤー
+- [x] デバッグ用ログエンドポイント(7242/ingest)の除去(commit f69059a で削除済み)
+- [x] AIモデルID更新(claude-sonnet-4-6 — 有効なIDであることを確認済み)
+- [x] Google Drive連携スクリプト作成(GASデプロイは未実施)
