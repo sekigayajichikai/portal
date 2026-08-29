@@ -14,7 +14,11 @@ interface PDFMetadataDialogProps {
   fileName: string;
   suggestedTitle: string;
   suggestedIssueNumber: string;
-  onConfirm: (title: string, issueNumber: string) => void;
+  /** AIが推測した発行元（登録済み一覧に該当がなければ空文字） */
+  suggestedPublisher: string;
+  /** 発行元マスターの選択肢 */
+  publisherOptions: string[];
+  onConfirm: (title: string, issueNumber: string, publisher: string) => void;
   onCancel: () => void;
 }
 
@@ -23,38 +27,35 @@ export const PDFMetadataDialog: React.FC<PDFMetadataDialogProps> = ({
   fileName,
   suggestedTitle,
   suggestedIssueNumber,
+  suggestedPublisher,
+  publisherOptions,
   onConfirm,
   onCancel,
 }) => {
-  console.log('🔍 PDFMetadataDialog: 受け取ったprops:', {
-    isOpen,
-    fileName,
-    suggestedTitle,
-    suggestedIssueNumber,
-  });
-
   const [title, setTitle] = useState(suggestedTitle);
   const [issueNumber, setIssueNumber] = useState(suggestedIssueNumber);
+  const [publisher, setPublisher] = useState(suggestedPublisher);
 
   // 提案が変わったら反映
   useEffect(() => {
-    console.log('🔍 PDFMetadataDialog: useEffect実行。新しい提案値:', {
-      suggestedTitle,
-      suggestedIssueNumber,
-    });
     setTitle(suggestedTitle);
     setIssueNumber(suggestedIssueNumber);
-    console.log('🔍 PDFMetadataDialog: state更新後:', { title: suggestedTitle, issueNumber: suggestedIssueNumber });
-  }, [suggestedTitle, suggestedIssueNumber]);
+    setPublisher(suggestedPublisher);
+  }, [suggestedTitle, suggestedIssueNumber, suggestedPublisher]);
 
   if (!isOpen) return null;
+
+  // AIの提案が登録済み一覧にない場合も選択肢として表示する
+  const options = suggestedPublisher && !publisherOptions.includes(suggestedPublisher)
+    ? [suggestedPublisher, ...publisherOptions]
+    : publisherOptions;
 
   const handleConfirm = () => {
     if (!title) {
       showError('タイトルを入力してください');
       return;
     }
-    onConfirm(title, issueNumber);
+    onConfirm(title, issueNumber, publisher);
   };
 
   return (
@@ -105,6 +106,26 @@ export const PDFMetadataDialog: React.FC<PDFMetadataDialogProps> = ({
               className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               placeholder="例: 第123号、2025年1月号"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+              <Sparkles size={16} className="text-purple-600" />
+              発行元（AI提案）
+            </label>
+            <select
+              value={publisher}
+              onChange={(e) => setPublisher(e.target.value)}
+              className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
+            >
+              <option value="">（あとで設定する）</option>
+              {options.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500 mt-1">
+              選択肢は管理画面右上の「設定」から追加・編集できます
+            </p>
           </div>
         </div>
 

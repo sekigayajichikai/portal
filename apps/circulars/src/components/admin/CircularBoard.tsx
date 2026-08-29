@@ -94,7 +94,10 @@ export const CircularBoard: React.FC = () => {
   const [suggestedMetadata, setSuggestedMetadata] = useState({
     suggestedTitle: '',
     suggestedIssueNumber: '',
+    suggestedPublisher: '',
   });
+  /** 発行元マスターの選択肢（メタデータダイアログ用） */
+  const [publisherOptions, setPublisherOptions] = useState<string[]>([]);
   const [pendingPDFBase64, setPendingPDFBase64] = useState<string | null>(null);
   const [isMetadataLoading, setIsMetadataLoading] = useState(false);
 
@@ -371,9 +374,17 @@ export const CircularBoard: React.FC = () => {
       const pdfBase64 = await convertPDFToBase64(selectedPDF);
       setPendingPDFBase64(pdfBase64);
 
-      // AIでメタデータ提案
-      setProcessingStage('AIがタイトルと号数を読み取っています…');
-      const metadata = await extractPDFMetadata(pdfBase64);
+      // AIでメタデータ提案（登録済みの発行元一覧を渡して発行元も推測させる）
+      setProcessingStage('AIがタイトルと発行元を読み取っています…');
+      let publisherNames: string[] = [];
+      try {
+        const { getPublisherNames } = await import('@cc-saas/shared');
+        publisherNames = await getPublisherNames();
+      } catch (e) {
+        console.warn('⚠️ 発行元一覧の取得をスキップ:', e);
+      }
+      setPublisherOptions(publisherNames);
+      const metadata = await extractPDFMetadata(pdfBase64, publisherNames);
       console.log('🔍 CircularBoard: AIから取得したメタデータ:', metadata);
 
       setSuggestedMetadata(metadata);
@@ -397,7 +408,8 @@ export const CircularBoard: React.FC = () => {
    */
   const handleConfirmMetadataAndExtractArticles = async (
     title: string,
-    issueNumber: string
+    issueNumber: string,
+    publisher: string
   ) => {
     if (!currentNewsletter || !selectedPDF || !pendingPDFBase64) {
       return;
@@ -425,7 +437,7 @@ export const CircularBoard: React.FC = () => {
         const pdfType = extractionMode === 'detailed' ? 'source' : 'attachment';
         let thumbUrl = '';
         try { thumbUrl = await generatePdfThumbnail(selectedPDF); } catch (e) { console.warn('⚠️ サムネイル生成スキップ:', e); }
-        await addPdfUrlToNewsletter(currentNewsletter.id, uploadResult.url, pdfLabel, undefined, pdfType as any, thumbUrl);
+        await addPdfUrlToNewsletter(currentNewsletter.id, uploadResult.url, pdfLabel, publisher || undefined, pdfType as any, thumbUrl);
         console.log('✅ Newsletter PDF URL 追加完了');
       } catch (pdfUrlError) {
         console.warn('⚠️ PDF URL追加をスキップ:', pdfUrlError);
@@ -1377,6 +1389,8 @@ export const CircularBoard: React.FC = () => {
         fileName={selectedPDF?.name || ''}
         suggestedTitle={suggestedMetadata.suggestedTitle}
         suggestedIssueNumber={suggestedMetadata.suggestedIssueNumber}
+        suggestedPublisher={suggestedMetadata.suggestedPublisher}
+        publisherOptions={publisherOptions}
         onConfirm={handleConfirmMetadataAndExtractArticles}
         onCancel={handleCancelMetadata}
       />
