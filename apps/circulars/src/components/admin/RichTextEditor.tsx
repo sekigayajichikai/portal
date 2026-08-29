@@ -5,6 +5,7 @@
  * 内部的にはMarkdown形式で入出力する（保存時の互換性を維持）。
  */
 
+import { appPrompt } from '@/components/ui/feedback';
 import React, { useCallback, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -189,13 +190,17 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   }, [value, editor]);
 
   /** リンク挿入 */
-  const handleLink = useCallback(() => {
+  const handleLink = useCallback(async () => {
     if (!editor) return;
     if (editor.isActive('link')) {
       editor.chain().focus().unsetLink().run();
       return;
     }
-    const url = window.prompt('URLを入力してください:');
+    const url = await appPrompt({
+      title: 'リンク先のURLを入力',
+      placeholder: 'https://…',
+      confirmLabel: 'リンクを挿入',
+    });
     if (url) {
       editor.chain().focus().setLink({ href: url }).run();
     }

@@ -36,9 +36,27 @@ export interface ConfirmOptions {
   danger?: boolean;
 }
 
+export interface PromptOptions {
+  /** ダイアログの見出し（例: 発行元を入力） */
+  title: string;
+  /** 補足説明 */
+  message?: string;
+  /** 入力欄のプレースホルダー */
+  placeholder?: string;
+  /** 初期値 */
+  defaultValue?: string;
+  /** 決定ボタンのラベル。既定は「OK」 */
+  confirmLabel?: string;
+  /** 複数行入力にする場合 true */
+  multiline?: boolean;
+  /** 選択肢（あればタップで選べるリストを表示し、自由入力欄も併設） */
+  choices?: string[];
+}
+
 let toastSeq = 0;
 let pushToastImpl: ((toast: ToastItem) => void) | null = null;
 let openConfirmImpl: ((options: ConfirmOptions, resolve: (ok: boolean) => void) => void) | null = null;
+let openPromptImpl: ((options: PromptOptions, resolve: (value: string | null) => void) => void) | null = null;
 
 /** 通知を表示する（type省略時は緑の成功通知） */
 export function showToast(message: string, type: ToastType = 'success'): void {
@@ -66,6 +84,22 @@ export function appConfirm(options: ConfirmOptions): Promise<boolean> {
     } else {
       // FeedbackHost未マウント時の保険
       resolve(window.confirm(options.title));
+    }
+  });
+}
+
+/**
+ * アプリ内入力ダイアログを表示する（ブラウザ標準 prompt() の代替）
+ *
+ * @returns 入力された文字列。キャンセル時は null
+ */
+export function appPrompt(options: PromptOptions): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (openPromptImpl) {
+      openPromptImpl(options, resolve);
+    } else {
+      // FeedbackHost未マウント時の保険
+      resolve(window.prompt(options.title, options.defaultValue ?? ''));
     }
   });
 }
@@ -131,6 +165,11 @@ export const FeedbackHost: React.FC = () => {
     options: ConfirmOptions;
     resolve: (ok: boolean) => void;
   } | null>(null);
+  const [promptState, setPromptState] = useState<{
+    options: PromptOptions;
+    resolve: (value: string | null) => void;
+  } | null>(null);
+  const [promptValue, setPromptValue] = useState('');
 
   useEffect(() => {
     pushToastImpl = (toast) => {
@@ -141,15 +180,25 @@ export const FeedbackHost: React.FC = () => {
       }, ttl);
     };
     openConfirmImpl = (options, resolve) => setConfirmState({ options, resolve });
+    openPromptImpl = (options, resolve) => {
+      setPromptValue(options.defaultValue ?? '');
+      setPromptState({ options, resolve });
+    };
     return () => {
       pushToastImpl = null;
       openConfirmImpl = null;
+      openPromptImpl = null;
     };
   }, []);
 
   const closeConfirm = (ok: boolean) => {
     confirmState?.resolve(ok);
     setConfirmState(null);
+  };
+
+  const closePrompt = (value: string | null) => {
+    promptState?.resolve(value);
+    setPromptState(null);
   };
 
   return (
@@ -173,6 +222,77 @@ export const FeedbackHost: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* 入力ダイアログ */}
+      {promptState && (
+        <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-slate-800">{promptState.options.title}</h3>
+            {promptState.options.message && (
+              <p className="mt-2 text-sm text-slate-600 whitespace-pre-line">
+                {promptState.options.message}
+              </p>
+            )}
+
+            {/* 選択肢（タップで即決定） */}
+            {promptState.options.choices && promptState.options.choices.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {promptState.options.choices.map((choice) => (
+                  <button
+                    key={choice}
+                    onClick={() => closePrompt(choice)}
+                    className={`px-3 py-2 rounded-lg border text-sm font-medium transition ${
+                      choice === promptValue
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {choice}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {promptState.options.multiline ? (
+              <textarea
+                autoFocus
+                value={promptValue}
+                onChange={(e) => setPromptValue(e.target.value)}
+                placeholder={promptState.options.placeholder}
+                rows={3}
+                className="mt-4 w-full border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            ) : (
+              <input
+                autoFocus
+                type="text"
+                value={promptValue}
+                onChange={(e) => setPromptValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') closePrompt(promptValue);
+                }}
+                placeholder={promptState.options.placeholder || (promptState.options.choices?.length ? '上から選ぶか、ここに入力' : undefined)}
+                className="mt-4 w-full border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            )}
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => closePrompt(null)}
+                className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => closePrompt(promptValue)}
+                className="flex-1 px-4 py-3 rounded-xl font-bold text-white bg-primary-600 hover:bg-primary-700 transition"
+              >
+                {promptState.options.confirmLabel || 'OK'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 確認ダイアログ */}
       {confirmState && (

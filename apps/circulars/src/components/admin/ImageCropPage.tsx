@@ -6,6 +6,7 @@
  * ズーム対応、複数切り抜き、新規記事作成、連続作業対応。
  */
 
+import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -129,7 +130,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
       if (!response.ok) throw new Error(`PDF取得エラー: ${response.status}`);
       const arrayBuffer = await response.arrayBuffer();
       console.log('📄 ArrayBuffer取得完了:', arrayBuffer.byteLength, 'bytes');
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, ...PDFJS_DOC_OPTIONS });
       const doc = await loadingTask.promise;
       setPdfDoc(doc);
       setTotalPages(doc.numPages);

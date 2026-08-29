@@ -5,6 +5,7 @@
  * IntersectionObserverで遅延読み込み。
  */
 
+import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useState, useEffect, useRef } from 'react';
 import { FileText } from 'lucide-react';
 
@@ -73,7 +74,7 @@ export const PdfThumbnail: React.FC<PdfThumbnailProps> = ({ url, className }) =>
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const arrayBuffer = await response.arrayBuffer();
-        const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const doc = await pdfjsLib.getDocument({ data: arrayBuffer, ...PDFJS_DOC_OPTIONS }).promise;
         const page = await doc.getPage(1);
 
         const scale = 1.0; // 軽量化のためscale下げる

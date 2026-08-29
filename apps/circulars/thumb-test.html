@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>サムネイル描画テスト</title>
+<style>
+  body { font-family: sans-serif; padding: 16px; background: #f8fafc; }
+  .case { margin-bottom: 24px; padding: 12px; background: white; border-radius: 8px; border: 1px solid #e2e8f0; }
+  .verdict { font-size: 18px; font-weight: bold; }
+  .ok { color: #16a34a; }
+  .ng { color: #dc2626; }
+  canvas { max-width: 240px; border: 1px solid #cbd5e1; background: #fff; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>サムネイル描画テスト</h1>
+<p id="status">準備中…</p>
+<div id="results"></div>
+<script type="module">
+import * as pdfjsLib from 'pdfjs-dist';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+const PDF_URL = new URLSearchParams(location.search).get('pdf')
+  || 'https://ubxkjjyxzuvevbdwrpct.supabase.co/storage/v1/object/public/newsletters/2026/08/-20267-2026082026.7-1788000637021.pdf';
+
+const CMAP = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/cmaps/';
+const WASM = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/wasm/';
+
+function measure(canvas) {
+  const ctx = canvas.getContext('2d');
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  let nonWhite = 0;
+  for (let i = 0; i < img.length; i += 4) {
+    const transparent = img[i + 3] < 50;
+    const whiteish = img[i] >= 245 && img[i + 1] >= 245 && img[i + 2] >= 245;
+    if (!transparent && !whiteish) nonWhite++;
+  }
+  return (nonWhite / (canvas.width * canvas.height)) * 100;
+}
+
+async function runCase(name, { useWasm, passCanvas, preContext }) {
+  const buf = await (await fetch(PDF_URL)).arrayBuffer();
+  const opts = { data: buf, cMapUrl: CMAP, cMapPacked: true, useSystemFonts: true };
+  if (useWasm) opts.wasmUrl = WASM;
+  const doc = await pdfjsLib.getDocument(opts).promise;
+  const page = await doc.getPage(1);
+  const viewport = page.getViewport({ scale: 0.5 });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  let renderParams = { viewport };
+  if (preContext) {
+    const ctx = canvas.getContext('2d');
+    renderParams.canvasContext = ctx;
+  }
+  if (passCanvas) renderParams.canvas = canvas;
+  await page.render(renderParams).promise;
+  const ratio = measure(canvas);
+  doc.destroy();
+
+  const div = document.createElement('div');
+  div.className = 'case';
+  const ok = ratio > 1;
+  div.innerHTML = `<div class="verdict ${ok ? 'ok' : 'ng'}">${ok ? '✅ 描画OK' : '⬜ 真っ白'} — ${name}（白以外 ${ratio.toFixed(1)}%）</div>`;
+  div.appendChild(canvas);
+  document.getElementById('results').appendChild(div);
+  return ratio;
+}
+
+const status = document.getElementById('status');
+try {
+  status.textContent = 'テスト実行中…（数十秒かかります）';
+  await runCase('A: 現行の呼び方（canvasContext+canvas・WASMなし）', { useWasm: false, passCanvas: true, preContext: true });
+  await runCase('B: 修正版（canvasContext+canvas・WASMあり）', { useWasm: true, passCanvas: true, preContext: true });
+  await runCase('C: canvasContextのみ・WASMなし', { useWasm: false, passCanvas: false, preContext: true });
+  status.textContent = 'テスト完了。結果をClaudeに伝えてください（A/B/Cそれぞれ ✅か⬜か）';
+} catch (e) {
+  status.textContent = 'エラー: ' + e.message;
+  console.error(e);
+}
+</script>
+</body>
+</html>

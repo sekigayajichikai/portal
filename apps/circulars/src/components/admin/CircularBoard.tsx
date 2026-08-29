@@ -21,6 +21,7 @@ import { uploadPDF, uploadImage } from '@cc-saas/shared/services/data/storageSer
 import { MOCK_CIRCULARS, MOCK_CATEGORIES, MOCK_ARTICLES } from '@cc-saas/shared/constants';
 import { Sparkles, Loader2, Calendar, FileText, Upload, Trash2, Save, Check, ChevronRight, Edit3, ArrowLeft, X } from 'lucide-react';
 import { showToast, showError, appConfirm, ProcessingIndicator } from '@/components/ui/feedback';
+import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import { ArticleList } from './ArticleList';
 import { PDFMetadataDialog } from './PDFMetadataDialog';
 import { NewsletterList } from './NewsletterList';
@@ -35,9 +36,7 @@ async function generatePdfThumbnail(pdfFile: File): Promise<string> {
   const arrayBuffer = await pdfFile.arrayBuffer();
   const doc = await pdfjsLib.getDocument({
     data: arrayBuffer,
-    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/cmaps/',
-    cMapPacked: true,
-    useSystemFonts: true,
+    ...PDFJS_DOC_OPTIONS,
   }).promise;
   const page = await doc.getPage(1);
   const scale = 2.0;
@@ -46,10 +45,13 @@ async function generatePdfThumbnail(pdfFile: File): Promise<string> {
   canvas.width = viewport.width;
   canvas.height = viewport.height;
   const ctx = canvas.getContext('2d')!;
+  // JPEG保存のため下地を白で塗る（透過部分が黒くなるのを防ぐ）
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
 
   const blob = await new Promise<Blob>((resolve) => {
-    canvas.toBlob((b) => resolve(b!), 'image/png', 0.9);
+    canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.9);
   });
   doc.destroy();
 

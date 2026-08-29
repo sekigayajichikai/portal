@@ -6,6 +6,7 @@
  * - 画像モード: 切り抜き画像を既存記事に紐付け
  */
 
+import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -95,9 +96,7 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
       const buf = await res.arrayBuffer();
       const doc = await pdfjsLib.getDocument({
         data: buf,
-        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/cmaps/',
-        cMapPacked: true,
-        useSystemFonts: true,
+        ...PDFJS_DOC_OPTIONS,
       }).promise;
       setPdfDoc(doc);
       setTotalPages(doc.numPages);

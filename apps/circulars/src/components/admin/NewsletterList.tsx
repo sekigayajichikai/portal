@@ -4,17 +4,18 @@
  * 保存された電子回覧板の一覧を表示し、選択すると記事を表示します。
  */
 
+import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useEffect, useState } from 'react';
 import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getEventCards, addEventCard, updateEventCard, deleteEventCard, requestReview, cancelReview, type EventCard } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
-import { FileText, Calendar, ChevronRight, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles, ClipboardCheck, CheckCircle2, MessageSquareWarning } from 'lucide-react';
+import { FileText, Calendar, ChevronRight, ChevronUp, ChevronDown, GripVertical, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles, ClipboardCheck, CheckCircle2, MessageSquareWarning } from 'lucide-react';
 import { ArticleList } from './ArticleList';
 import { EventCandidateDialog } from './EventCandidateDialog';
 import { ImageCropPage } from './ImageCropPage';
 import { ArticleCropPage } from './ArticleCropPage';
 import CircularsView from '../public/CircularsView';
 import { MOCK_CATEGORIES } from '@cc-saas/shared/constants';
-import { showToast, showError, appConfirm, ProcessingIndicator } from '@/components/ui/feedback';
+import { showToast, showError, appConfirm, appPrompt, ProcessingIndicator } from '@/components/ui/feedback';
 
 /**
  * NewsletterListコンポーネントのProps
@@ -156,6 +157,39 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     }
   };
 
+  /** ドラッグ中のPDFの位置（nullなら非ドラッグ） */
+  const [dragPdfIndex, setDragPdfIndex] = useState<number | null>(null);
+
+  /**
+   * PDFの表示順を移動して保存
+   *
+   * 先にローカル状態へ反映してから裏でDBに保存する
+   * （1回ごとに全再取得すると遅くて「効いていない」ように見えるため）
+   */
+  const movePdfEntry = async (from: number, to: number) => {
+    if (!selectedNewsletter || from === to) return;
+    const entries: any[] = [...(selectedNewsletter.source_pdf_urls || [])];
+    if (from < 0 || from >= entries.length || to < 0 || to >= entries.length) return;
+    const [moved] = entries.splice(from, 1);
+    entries.splice(to, 0, moved);
+
+    setSelectedNewsletter({ ...selectedNewsletter, source_pdf_urls: entries } as any);
+    setNewsletters((prev) =>
+      prev.map((n) => (n.id === selectedNewsletter.id ? { ...n, source_pdf_urls: entries } : n))
+    );
+
+    try {
+      const { getSupabaseClient } = await import('@cc-saas/shared/services/supabaseClient');
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        await supabase.from('newsletters').update({ source_pdf_urls: entries }).eq('id', selectedNewsletter.id);
+      }
+    } catch (error) {
+      console.error('PDF並べ替え保存エラー:', error);
+      showError('並べ替えを保存できませんでした。時間をおいてもう一度お試しください。');
+    }
+  };
+
   /**
    * 一覧に戻る
    */
@@ -290,7 +324,11 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             {selectedNewsletter.status === 'draft' && (
               <button
                 onClick={async () => {
-                  const title = prompt('記事のタイトルを入力してください');
+                  const title = await appPrompt({
+                    title: '記事のタイトルを入力',
+                    placeholder: '例: 秋祭りのお知らせ',
+                    confirmLabel: '追加する',
+                  });
                   if (!title?.trim()) return;
                   setIsAddingArticle(true);
                   try {
@@ -662,11 +700,30 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               </button>
               <button
                 onClick={async () => {
-                  const title = prompt('イベント名を入力');
+                  const title = await appPrompt({
+                    title: 'イベント名を入力',
+                    placeholder: '例: 秋祭り',
+                    confirmLabel: '次へ',
+                  });
                   if (!title?.trim()) return;
-                  const date = prompt('日付（例: 2026-05-09）');
-                  const time = prompt('時間（例: 10:00-12:00、なければ空欄）');
-                  const location = prompt('場所（例: 自治会館、なければ空欄）');
+                  const date = await appPrompt({
+                    title: '開催日を入力',
+                    message: '例: 2026-05-09（未定なら空欄のままOK）',
+                    confirmLabel: '次へ',
+                  });
+                  if (date === null) return;
+                  const time = await appPrompt({
+                    title: '時間を入力',
+                    message: '例: 10:00-12:00（未定なら空欄のままOK）',
+                    confirmLabel: '次へ',
+                  });
+                  if (time === null) return;
+                  const location = await appPrompt({
+                    title: '場所を入力',
+                    message: '例: 自治会館（未定なら空欄のままOK）',
+                    confirmLabel: '追加する',
+                  });
+                  if (location === null) return;
                   try {
                     await addEventCard({
                       newsletter_id: selectedNewsletter.id,
@@ -803,8 +860,13 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                       ) : (
                         <button
                           onClick={async () => {
-                            const articleTitles = articles.map((a, i) => `${i + 1}. ${a.title}`).join('\n');
-                            const input = prompt(`リンクする記事の番号を入力\n\n${articleTitles}\n\n（リンクしない場合は空欄）`);
+                            const choices = articles.map((a, i) => `${i + 1}. ${a.title}`);
+                            const input = await appPrompt({
+                              title: 'リンクする記事を選択',
+                              message: 'タップして選んでください',
+                              choices,
+                              confirmLabel: 'リンクする',
+                            });
                             if (input === null) return;
                             const num = parseInt(input);
                             if (num >= 1 && num <= articles.length) {
@@ -947,17 +1009,18 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                           const buf = await res.arrayBuffer();
                           const doc = await pdfjsLib.getDocument({
                             data: buf,
-                            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/cmaps/',
-                            cMapPacked: true,
-                            useSystemFonts: true,
+                            ...PDFJS_DOC_OPTIONS,
                           }).promise;
                           const page = await doc.getPage(1);
                           const vp = page.getViewport({ scale: 2.0 });
                           const canvas = document.createElement('canvas');
                           canvas.width = vp.width; canvas.height = vp.height;
                           const ctx = canvas.getContext('2d')!;
+                          // JPEG保存のため下地を白で塗る（透過部分が黒くなるのを防ぐ）
+                          ctx.fillStyle = '#ffffff';
+                          ctx.fillRect(0, 0, canvas.width, canvas.height);
                           await page.render({ canvasContext: ctx, viewport: vp, canvas } as any).promise;
-                          const blob = await new Promise<Blob>(r => canvas.toBlob(b => r(b!), 'image/png', 0.9));
+                          const blob = await new Promise<Blob>(r => canvas.toBlob(b => r(b!), 'image/jpeg', 0.9));
                           doc.destroy();
                           const thumbFile = new File([blob], `thumb-${Date.now()}.jpg`, { type: 'image/jpeg' });
                           const result = await uploadImage(thumbFile);
@@ -1035,9 +1098,26 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     <p className="text-xs font-medium text-green-600 pt-3 mt-2 border-t border-slate-100">📋 回覧板PDF ({attachPdfs.length}件)</p>
                   )}
                   <div
-                    className="flex items-center justify-between p-3 bg-slate-50 rounded-lg group"
+                    draggable={selectedNewsletter.status === 'draft'}
+                    onDragStart={() => setDragPdfIndex(i)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragPdfIndex !== null) movePdfEntry(dragPdfIndex, i);
+                      setDragPdfIndex(null);
+                    }}
+                    onDragEnd={() => setDragPdfIndex(null)}
+                    className={`flex items-center justify-between p-3 bg-slate-50 rounded-lg group transition ${
+                      dragPdfIndex === i ? 'opacity-50 ring-2 ring-primary-300' : ''
+                    }`}
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {selectedNewsletter.status === 'draft' && (
+                        <GripVertical
+                          size={16}
+                          className="text-slate-300 cursor-grab shrink-0"
+                          aria-label="ドラッグで並べ替え"
+                        />
+                      )}
                       <a href={pdf.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
                         {pdf.thumbnail && pdf.thumbnail !== 'failed' ? (
                           <img src={pdf.thumbnail} alt="" className="w-10 h-14 object-cover rounded border border-slate-200" />
@@ -1050,9 +1130,13 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                           className={`text-sm font-medium truncate ${
                             selectedNewsletter.status === 'draft' ? 'text-slate-700 cursor-pointer hover:text-blue-600' : 'text-slate-700'
                           }`}
-                          onClick={() => {
+                          onClick={async () => {
                             if (selectedNewsletter.status !== 'draft') return;
-                            const newLabel = prompt('ラベルを編集', pdf.label || pdf.filename);
+                            const newLabel = await appPrompt({
+                              title: 'PDFの表示名を編集',
+                              defaultValue: pdf.label || pdf.filename,
+                              confirmLabel: '保存する',
+                            });
                             if (newLabel === null || newLabel === pdf.label) return;
                             updatePdfLabel(selectedNewsletter.id, pdf.url, newLabel).then((updated) => {
                               setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
@@ -1067,13 +1151,16 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                           className={`text-xs truncate ${
                             selectedNewsletter.status === 'draft' ? 'text-slate-400 cursor-pointer hover:text-blue-500' : 'text-slate-400'
                           }`}
-                          onClick={() => {
+                          onClick={async () => {
                             if (selectedNewsletter.status !== 'draft') return;
-                            const presetList = publisherPresets.map((p, i) => `${i + 1}. ${p}`).join('\n');
-                            const input = prompt(`発行元を選択または入力\n\n${presetList}\n\n番号を入力するか、自由に入力してください`, pdf.publisher);
-                            if (input === null) return;
-                            const num = parseInt(input);
-                            const newPublisher = (num >= 1 && num <= publisherPresets.length) ? publisherPresets[num - 1] : input;
+                            const newPublisher = await appPrompt({
+                              title: '発行元を選択',
+                              message: 'タップして選ぶか、下の欄に入力してください',
+                              choices: publisherPresets,
+                              defaultValue: pdf.publisher,
+                              confirmLabel: '保存する',
+                            });
+                            if (newPublisher === null) return;
                             updatePdfLabel(selectedNewsletter.id, pdf.url, pdf.label, newPublisher).then((updated) => {
                               setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
                               setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
@@ -1149,47 +1236,25 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     </div>
                     {selectedNewsletter.status === 'draft' && (
                       <div className="flex items-center gap-1 ml-2 shrink-0">
-                        {/* 上下入替 */}
-                        <div className="flex flex-col">
+                        {/* 上下入替（ドラッグでも移動可能） */}
+                        <div className="flex flex-col gap-1">
                           <button
-                            onClick={async () => {
-                              if (i === 0) return;
-                              try {
-                                const { getSupabaseClient } = await import('@cc-saas/shared/services/supabaseClient');
-                                const entries: any[] = [...(selectedNewsletter.source_pdf_urls || [])];
-                                [entries[i - 1], entries[i]] = [entries[i], entries[i - 1]];
-                                const supabase = getSupabaseClient();
-                                if (supabase) await supabase.from('newsletters').update({ source_pdf_urls: entries }).eq('id', selectedNewsletter.id);
-                                const freshList = await getNewsletters();
-                                setNewsletters(freshList);
-                                const updated = freshList.find(n => n.id === selectedNewsletter.id);
-                                if (updated) setSelectedNewsletter(updated as any);
-                              } catch { }
-                            }}
+                            onClick={() => movePdfEntry(i, i - 1)}
                             disabled={i === 0}
-                            className="p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-20 transition"
+                            className="flex items-center gap-0.5 px-2 py-1 text-xs border border-slate-300 bg-white rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 transition"
+                            title="1つ上へ移動"
                           >
-                            <ChevronRight size={14} className="rotate-[-90deg]" />
+                            <ChevronUp size={14} />
+                            上へ
                           </button>
                           <button
-                            onClick={async () => {
-                              if (i >= pdfEntries.length - 1) return;
-                              try {
-                                const { getSupabaseClient } = await import('@cc-saas/shared/services/supabaseClient');
-                                const entries: any[] = [...(selectedNewsletter.source_pdf_urls || [])];
-                                [entries[i], entries[i + 1]] = [entries[i + 1], entries[i]];
-                                const supabase = getSupabaseClient();
-                                if (supabase) await supabase.from('newsletters').update({ source_pdf_urls: entries }).eq('id', selectedNewsletter.id);
-                                const freshList = await getNewsletters();
-                                setNewsletters(freshList);
-                                const updated = freshList.find(n => n.id === selectedNewsletter.id);
-                                if (updated) setSelectedNewsletter(updated as any);
-                              } catch { }
-                            }}
+                            onClick={() => movePdfEntry(i, i + 1)}
                             disabled={i >= pdfEntries.length - 1}
-                            className="p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-20 transition"
+                            className="flex items-center gap-0.5 px-2 py-1 text-xs border border-slate-300 bg-white rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 transition"
+                            title="1つ下へ移動"
                           >
-                            <ChevronRight size={14} className="rotate-90" />
+                            <ChevronDown size={14} />
+                            下へ
                           </button>
                         </div>
                         {/* 削除 */}
