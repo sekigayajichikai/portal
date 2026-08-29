@@ -20,6 +20,7 @@ import { extractArticlesFromPDF, extractBriefArticleFromPDF, convertPDFToBase64,
 import { uploadPDF, uploadImage } from '@cc-saas/shared/services/data/storageService';
 import { MOCK_CIRCULARS, MOCK_CATEGORIES, MOCK_ARTICLES } from '@cc-saas/shared/constants';
 import { Sparkles, Loader2, Calendar, FileText, Upload, Trash2, Save, Check, ChevronRight, Edit3, ArrowLeft, X } from 'lucide-react';
+import { showToast, showError, appConfirm, ProcessingIndicator } from '@/components/ui/feedback';
 import { ArticleList } from './ArticleList';
 import { PDFMetadataDialog } from './PDFMetadataDialog';
 import { NewsletterList } from './NewsletterList';
@@ -85,6 +86,8 @@ export const CircularBoard: React.FC = () => {
   const [accumulatedArticles, setAccumulatedArticles] = useState<Article[]>([]);
   const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
   const [isProcessingPDF, setIsProcessingPDF] = useState(false);
+  /** 作業中インジケーターに表示する現在の工程（nullなら非表示） */
+  const [processingStage, setProcessingStage] = useState<string | null>(null);
 
   // メタデータ入力ダイアログの状態
   const [showMetadataDialog, setShowMetadataDialog] = useState(false);
@@ -149,7 +152,7 @@ export const CircularBoard: React.FC = () => {
         );
 
         if (newArticles.length === 0) {
-          alert('追加する新規記事がありません');
+          showToast('追加する新規記事がありません', 'info');
           setIsSaving(false);
           return;
         }
@@ -183,9 +186,7 @@ export const CircularBoard: React.FC = () => {
         // 新規記事を追加
         const addedArticles = await addArticlesToNewsletter(editingNewsletterId, articlesToAdd);
 
-        alert(
-          `✅ 追加しました！\n\n新規記事: ${addedArticles.length}件\n\n「保存済み一覧」タブで確認できます。`
-        );
+        showToast(`新しい記事を${addedArticles.length}件追加しました。「保存済み一覧」タブで確認できます。`);
 
         // 状態をリセット
         setAccumulatedArticles([]);
@@ -202,13 +203,13 @@ export const CircularBoard: React.FC = () => {
       } else {
         // 新規作成モードでは来ないはず（作成時に即保存されるため）
         console.warn('⚠️ 編集モードではありません。Newsletter作成時に既に保存されているはずです。');
-        alert('このNewsletterは既に保存されています。\n\n「保存済み一覧」タブから編集モードで開いてください。');
+        showToast('この回覧板は保存済みです。「保存済み一覧」タブから編集モードで開いてください。', 'info');
         setIsSaving(false);
         return;
       }
     } catch (error: any) {
       console.error('❌ 保存エラー:', error);
-      alert(`保存に失敗しました\n\nエラー: ${error.message}\n\nSupabaseの接続設定を確認してください。`);
+      showError('保存できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsSaving(false);
     }
@@ -250,7 +251,7 @@ export const CircularBoard: React.FC = () => {
       }
     } catch (error) {
       console.error('イベント抽出エラー:', error);
-      alert('イベント抽出に失敗しました。');
+      showError('予定を読み取れませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsExtracting(false);
     }
@@ -264,7 +265,7 @@ export const CircularBoard: React.FC = () => {
     if (file && file.type === 'application/pdf') {
       setSelectedPDF(file);
     } else {
-      alert('PDFファイルを選択してください');
+      showError('PDFファイルを選択してください');
     }
   };
 
@@ -286,12 +287,7 @@ export const CircularBoard: React.FC = () => {
       );
 
       if (duplicateTitle) {
-        alert(
-          `エラー: 同じ名前の電子回覧板が既に存在します。\n\n` +
-          `既存: 「${duplicateTitle.title}」\n` +
-          `作成日: ${new Date(duplicateTitle.created_at).toLocaleDateString('ja-JP')}\n\n` +
-          `別の名前を指定してください。`
-        );
+        showError(`同じ名前の回覧板「${duplicateTitle.title}」がすでにあります。別の名前で作成してください。`);
         return;
       }
 
@@ -325,10 +321,10 @@ export const CircularBoard: React.FC = () => {
         setNewsletterTitle('');
       }
 
-      alert(`電子回覧板「${title}」を作成しました。\nSupabaseに保存済みです。PDFを追加してください。`);
+      showToast(`「${title}」を作成しました。続けてPDFを追加してください。`);
     } catch (error: any) {
       console.error('❌ Newsletter作成エラー:', error);
-      alert(`電子回覧板の作成に失敗しました\n\nエラー: ${error.message}\n\nSupabaseの接続設定を確認してください。`);
+      showError('回覧板を作成できませんでした。時間をおいてもう一度お試しください。');
     }
   };
 
@@ -346,7 +342,7 @@ export const CircularBoard: React.FC = () => {
   const handleCreateCustomNewsletter = async () => {
     const title = newsletterTitle.trim();
     if (!title) {
-      alert('タイトルを入力してください');
+      showError('タイトルを入力してください');
       return;
     }
     await createNewsletter(title);
@@ -357,17 +353,18 @@ export const CircularBoard: React.FC = () => {
    */
   const handlePDFSelectAndExtractMetadata = async () => {
     if (!currentNewsletter) {
-      alert('先に電子回覧板を作成してください');
+      showError('先に電子回覧板を作成してください');
       return;
     }
 
     if (!selectedPDF) {
-      alert('PDFファイルを選択してください');
+      showError('PDFファイルを選択してください');
       return;
     }
 
     setIsProcessingPDF(true);
     setIsMetadataLoading(true);
+    setProcessingStage('PDFを読み込んでいます…');
 
     try {
       // PDFをBase64に変換
@@ -375,6 +372,7 @@ export const CircularBoard: React.FC = () => {
       setPendingPDFBase64(pdfBase64);
 
       // AIでメタデータ提案
+      setProcessingStage('AIがタイトルと号数を読み取っています…');
       const metadata = await extractPDFMetadata(pdfBase64);
       console.log('🔍 CircularBoard: AIから取得したメタデータ:', metadata);
 
@@ -386,10 +384,11 @@ export const CircularBoard: React.FC = () => {
       setShowMetadataDialog(true);
     } catch (error) {
       console.error('メタデータ抽出エラー:', error);
-      alert('PDFの読み込みに失敗しました');
+      showError('PDFを読み込めませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsProcessingPDF(false);
       setIsMetadataLoading(false);
+      setProcessingStage(null);
     }
   };
 
@@ -406,6 +405,7 @@ export const CircularBoard: React.FC = () => {
 
     setShowMetadataDialog(false);
     setIsProcessingPDF(true);
+    setProcessingStage('PDFを保存しています…');
 
     try {
       let result;
@@ -434,6 +434,7 @@ export const CircularBoard: React.FC = () => {
       if (extractionMode === 'brief') {
         // 簡易モード：タイトル + 1行要約のみ
         console.log('📝 地域のお知らせ：簡単登録モード...');
+        setProcessingStage('AIがお知らせの内容を読み取っています…');
         result = await extractBriefArticleFromPDF(
           pendingPDFBase64,
           MOCK_CATEGORIES,
@@ -457,6 +458,7 @@ export const CircularBoard: React.FC = () => {
       } else {
         // 詳細モード：4段階要約で記事を抽出
         console.log('📝 自治会のお知らせ：記事を詳しく作成中...');
+        setProcessingStage('AIが記事を読み取ってまとめています…');
         result = await extractArticlesFromPDF(pendingPDFBase64, MOCK_CATEGORIES);
 
         // 記事にIDとsourceを付与 + 元PDFを添付
@@ -473,7 +475,7 @@ export const CircularBoard: React.FC = () => {
         }));
       }
 
-      const processingTime = result.processingTime;
+      console.log(`⏱️ 抽出処理時間: ${(result.processingTime / 1000).toFixed(1)}秒`);
 
       // 重複検出を実行
       const duplicates = findDuplicateArticles(newArticles, accumulatedArticles, 0.8);
@@ -500,6 +502,7 @@ export const CircularBoard: React.FC = () => {
       } else {
         // 重複なし — 編集モード(Newsletter既存)なら即座にDBに保存
         if (isEditMode && editingNewsletterId) {
+          setProcessingStage('記事を保存しています…');
           console.log('💾 抽出した記事をSupabaseに自動保存中...');
           const articlesToSave = newArticles.map((article) => ({
             organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
@@ -540,18 +543,14 @@ export const CircularBoard: React.FC = () => {
           ? `【${modeLabel}】\n${title}から${newArticles.length}件の記事を追加しました`
           : `【${modeLabel}】\n「${title}」を追加しました`;
 
-        alert(
-          `${message}\n` +
-          `処理時間: ${(processingTime / 1000).toFixed(1)}秒` +
-          (isEditMode ? '\n\nSupabaseに保存済みです。' : '')
-        );
+        showToast(message);
       }
     } catch (error: any) {
       console.error('記事抽出エラー:', error);
-      const detail = error?.message || error?.toString() || '不明なエラー';
-      alert(`記事抽出に失敗しました\n\n${detail}`);
+      showError('記事を抽出できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsProcessingPDF(false);
+      setProcessingStage(null);
     }
   };
 
@@ -570,7 +569,7 @@ export const CircularBoard: React.FC = () => {
    */
   const handleSaveArticles = (articles: Article[]) => {
     console.log('記事を保存:', articles);
-    alert(`${articles.length}件の記事を保存しました（Stage 1: ローカルのみ）`);
+    showToast(`${articles.length}件の記事を保存しました`);
     // 将来的にSupabaseに保存
   };
 
@@ -585,7 +584,7 @@ export const CircularBoard: React.FC = () => {
 
     console.log('📦 バルクインポート開始:', pdfFiles.length, '件', 'newsletter:', currentNewsletter?.id);
     if (!currentNewsletter || pdfFiles.length === 0) {
-      alert('PDFファイルが選択されていません');
+      showError('PDFファイルが選択されていません');
       return;
     }
 
@@ -639,7 +638,10 @@ export const CircularBoard: React.FC = () => {
     }
 
     setIsBulkImporting(false);
-    alert(`${successCount}/${pdfFiles.length}件のPDFをインポートしました`);
+    showToast(
+      `${successCount}/${pdfFiles.length}件のPDFを登録しました`,
+      successCount === pdfFiles.length ? 'success' : 'error'
+    );
 
     // 一覧に戻る
     if (isEditMode) {
@@ -656,9 +658,15 @@ export const CircularBoard: React.FC = () => {
   /**
    * 電子回覧板編集のリセット
    */
-  const handleResetNewsletter = () => {
+  const handleResetNewsletter = async () => {
     if (accumulatedArticles.length > 0) {
-      if (!confirm('編集中のデータがリセットされます。よろしいですか？')) {
+      const ok = await appConfirm({
+        title: '編集中の内容をリセットしますか？',
+        message: '追加した記事はすべて取り消されます。',
+        confirmLabel: 'リセットする',
+        danger: true,
+      });
+      if (!ok) {
         return;
       }
     }
@@ -678,7 +686,13 @@ export const CircularBoard: React.FC = () => {
     try {
       // 編集中のデータがある場合は確認
       if (currentNewsletter && accumulatedArticles.length > 0) {
-        if (!confirm('編集中のデータが失われます。よろしいですか？')) {
+        const ok = await appConfirm({
+          title: '編集中の内容を破棄して開きますか？',
+          message: '現在編集中の内容は失われます。',
+          confirmLabel: '破棄して開く',
+          danger: true,
+        });
+        if (!ok) {
           return;
         }
       }
@@ -704,21 +718,27 @@ export const CircularBoard: React.FC = () => {
       // PDFリストをリセット（新規追加のみ）
       setUploadedPDFs([]);
 
-      alert(`「${newsletter.title}」を編集モードで開きました。\n追加のPDFをアップロードできます。`);
+      showToast(`「${newsletter.title}」を編集モードで開きました。追加のPDFをアップロードできます。`);
     } catch (error: any) {
       console.error('❌ 編集モード開始エラー:', error);
-      alert(`編集モードの開始に失敗しました\n\nエラー: ${error.message}`);
+      showError('編集モードを開始できませんでした。時間をおいてもう一度お試しください。');
     }
   };
 
   /**
    * 登録済みPDFを削除
    */
-  const handleDeletePDF = (pdfId: string) => {
+  const handleDeletePDF = async (pdfId: string) => {
     const pdf = uploadedPDFs.find(p => p.pdfId === pdfId);
     if (!pdf) return;
 
-    if (!confirm(`「${pdf.title}」を削除しますか？\nこのPDFから抽出された記事も削除されます。`)) {
+    const ok = await appConfirm({
+      title: `「${pdf.title}」を削除しますか？`,
+      message: 'このPDFから抽出された記事も一緒に削除されます。',
+      confirmLabel: '削除する',
+      danger: true,
+    });
+    if (!ok) {
       return;
     }
 
@@ -729,7 +749,7 @@ export const CircularBoard: React.FC = () => {
     // PDFリストから削除
     setUploadedPDFs(prev => prev.filter(p => p.pdfId !== pdfId));
 
-    alert(`「${pdf.title}」とその記事を削除しました`);
+    showToast(`「${pdf.title}」とその記事を削除しました`);
   };
 
   /**
@@ -774,9 +794,7 @@ export const CircularBoard: React.FC = () => {
     setDetectedDuplicates([]);
 
     const addedCount = finalArticles.length - accumulatedArticles.length;
-    alert(
-      `処理完了\n\n追加された記事: ${addedCount}件\n合計: ${finalArticles.length}件の記事`
-    );
+    showToast(`記事を${addedCount}件追加しました（合計${finalArticles.length}件）`);
   };
 
   /**
@@ -794,7 +812,7 @@ export const CircularBoard: React.FC = () => {
     setPendingNewArticles([]);
     setDetectedDuplicates([]);
 
-    alert('重複チェックをスキップし、全ての記事を追加しました');
+    showToast('重複チェックをスキップし、すべての記事を追加しました', 'info');
   };
 
   /**
@@ -844,11 +862,11 @@ export const CircularBoard: React.FC = () => {
         return filtered;
       });
 
-      alert('記事を削除しました');
+      showToast('記事を削除しました');
       console.log('✅ handleArticleDelete完了');
     } catch (error: any) {
       console.error('❌ 記事削除エラー:', error);
-      alert(`記事の削除に失敗しました\n\nエラー: ${error.message}`);
+      showError('記事を削除できませんでした。時間をおいてもう一度お試しください。');
       throw error; // エラーを再スロー
     }
   };
@@ -864,12 +882,18 @@ export const CircularBoard: React.FC = () => {
       {isEditMode && editingNewsletterId && activeTab === 'pdf' && (
         <div className="flex items-center gap-2 text-sm text-slate-600 mb-3">
           <button
-            onClick={() => {
+            onClick={async () => {
               if (uploadedPDFs.length > 0) {
-                if (!confirm('追加したPDFの変更が破棄されます。よろしいですか？')) return;
+                const ok = await appConfirm({
+                  title: '編集をやめて一覧に戻りますか？',
+                  message: '追加したPDFの変更は破棄されます。',
+                  confirmLabel: '破棄して戻る',
+                  danger: true,
+                });
+                if (!ok) return;
               }
               setActiveTab('saved');
-              handleResetNewsletter();
+              await handleResetNewsletter();
             }}
             className="flex items-center gap-1 hover:text-primary-600 transition-colors"
           >
@@ -1256,18 +1280,25 @@ export const CircularBoard: React.FC = () => {
                       クリア
                     </button>
                     {isProcessingPDF ? (
-                      <button
-                        onClick={() => {
-                          setIsProcessingPDF(false);
-                          setIsMetadataLoading(false);
-                          setShowMetadataDialog(false);
-                          setPendingPDFBase64(null);
-                          setSelectedPDF(null);
-                        }}
-                        className="flex-1 px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium flex items-center justify-center gap-2"
-                      >
-                        キャンセル
-                      </button>
+                      <div className="flex-1 space-y-2">
+                        <ProcessingIndicator
+                          label={processingStage ?? '処理しています…'}
+                          sublabel="このままお待ちください。内容の量によって1〜3分ほどかかります。"
+                        />
+                        <button
+                          onClick={() => {
+                            setIsProcessingPDF(false);
+                            setIsMetadataLoading(false);
+                            setShowMetadataDialog(false);
+                            setPendingPDFBase64(null);
+                            setSelectedPDF(null);
+                            setProcessingStage(null);
+                          }}
+                          className="w-full px-4 py-2 border border-slate-300 text-slate-500 rounded-lg hover:bg-slate-50 text-sm transition"
+                        >
+                          中止する
+                        </button>
+                      </div>
                     ) : (
                       <button
                         onClick={handlePDFSelectAndExtractMetadata}

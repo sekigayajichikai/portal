@@ -5,15 +5,16 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getEventCards, addEventCard, updateEventCard, deleteEventCard, type EventCard } from '@cc-saas/shared';
+import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getEventCards, addEventCard, updateEventCard, deleteEventCard, requestReview, cancelReview, type EventCard } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
-import { FileText, Calendar, ChevronRight, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles } from 'lucide-react';
+import { FileText, Calendar, ChevronRight, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles, ClipboardCheck, CheckCircle2, MessageSquareWarning } from 'lucide-react';
 import { ArticleList } from './ArticleList';
 import { EventCandidateDialog } from './EventCandidateDialog';
 import { ImageCropPage } from './ImageCropPage';
 import { ArticleCropPage } from './ArticleCropPage';
 import CircularsView from '../public/CircularsView';
 import { MOCK_CATEGORIES } from '@cc-saas/shared/constants';
+import { showToast, showError, appConfirm, ProcessingIndicator } from '@/components/ui/feedback';
 
 /**
  * NewsletterListコンポーネントのProps
@@ -47,6 +48,9 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
   // プレビュー
   const [showPreview, setShowPreview] = useState(false);
+
+  // 担当者確認リンクのダイアログ（nullなら非表示）
+  const [reviewLinkUrl, setReviewLinkUrl] = useState<string | null>(null);
   const [eventCards, setEventCards] = useState<EventCard[]>([]);
   const [showEventExtract, setShowEventExtract] = useState(false);
   /** インライン編集中のイベントカード（nullなら非編集） */
@@ -59,6 +63,12 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   } | null>(null);
   const [isSavingCard, setIsSavingCard] = useState(false);
   const [showArticleCrop, setShowArticleCrop] = useState(false);
+  /** 記事の手動追加中（二重送信防止＋ボタン内スピナー表示） */
+  const [isAddingArticle, setIsAddingArticle] = useState(false);
+  /** 公開版から編集用コピーを作成中 */
+  const [isDuplicating, setIsDuplicating] = useState(false);
+  /** PDF関連の時間のかかる作業（サムネイル生成・削除・画像保存）の進行メッセージ（nullなら非表示） */
+  const [pdfTaskMessage, setPdfTaskMessage] = useState<string | null>(null);
 
   // 発行元リスト
   const [publisherPresets, setPublisherPresets] = useState<string[]>([]);
@@ -111,8 +121,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
       const msg = error?.message ?? '';
       const isFailedFetch = typeof msg === 'string' && msg.includes('Failed to fetch');
       const userMessage = isFailedFetch
-        ? '電子回覧板の読み込みに失敗しました（接続エラー）。Supabaseプロジェクトが一時停止していないか、ネットワークとブラウザの開発者ツール（ネットワークタブ）を確認してください。'
-        : '電子回覧板の読み込みに失敗しました: ' + msg;
+        ? '電子回覧板を読み込めませんでした（接続エラー）。インターネット接続を確認して、もう一度お試しください。'
+        : '電子回覧板を読み込めませんでした。時間をおいてもう一度お試しください。';
       setError(userMessage);
     } finally {
       setIsLoading(false);
@@ -140,7 +150,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
     } catch (error: any) {
       console.error('❌ 記事読み込みエラー:', error);
-      setError('記事の読み込みに失敗しました: ' + error.message);
+      setError('記事を読み込めませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsLoadingArticles(false);
     }
@@ -198,11 +208,11 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
       const updated = freshList.find((n) => n.id === selectedNewsletter?.id);
       if (updated) setSelectedNewsletter(updated as any);
 
-      alert('記事を削除しました');
+      showToast('記事を削除しました');
       console.log('✅ handleArticleDelete完了');
     } catch (error: any) {
       console.error('❌ 記事削除エラー:', error);
-      alert(`記事の削除に失敗しました\n\nエラー: ${error.message}`);
+      showError('記事を削除できませんでした。時間をおいてもう一度お試しください。');
       throw error; // エラーを再スロー
     }
   };
@@ -220,11 +230,12 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     }
 
     // 確認ダイアログ
-    const confirmed = confirm(
-      `「${newsletter.title}」を削除しますか？\n\n` +
-      `記事数: ${newsletter.article_count}件\n\n` +
-      `この操作は取り消せません。`
-    );
+    const confirmed = await appConfirm({
+      title: `「${newsletter.title}」を削除しますか？`,
+      message: `記事数: ${newsletter.article_count}件\nこの操作は取り消せません。`,
+      confirmLabel: '削除する',
+      danger: true,
+    });
 
     if (!confirmed) return;
 
@@ -241,10 +252,10 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
         handleBackToList();
       }
 
-      alert(`「${newsletter.title}」を削除しました。`);
+      showToast(`「${newsletter.title}」を削除しました`);
     } catch (error: any) {
       console.error('❌ 削除エラー:', error);
-      alert(`削除に失敗しました\n\nエラー: ${error.message}`);
+      showError('削除できませんでした。時間をおいてもう一度お試しください。');
     }
   };
 
@@ -281,6 +292,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 onClick={async () => {
                   const title = prompt('記事のタイトルを入力してください');
                   if (!title?.trim()) return;
+                  setIsAddingArticle(true);
                   try {
                     const newArticle = {
                       organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
@@ -304,12 +316,14 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     await addArticlesToNewsletter(selectedNewsletter.id, [newArticle]);
                     const articleData = await getArticlesByNewsletterId(selectedNewsletter.id);
                     setArticles(articleData);
-                  } catch (err: any) { alert(`記事の追加に失敗しました\n\n${err?.message || err}`); console.error('記事追加エラー:', err); }
+                  } catch (err: any) { console.error('記事追加エラー:', err); showError('記事を追加できませんでした。時間をおいてもう一度お試しください。'); }
+                  finally { setIsAddingArticle(false); }
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition-colors"
+                disabled={isAddingArticle}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
               >
-                <Plus size={18} />
-                記事を追加
+                {isAddingArticle ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                {isAddingArticle ? '記事を追加しています…' : '記事を追加'}
               </button>
             )}
 
@@ -328,7 +342,12 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             {selectedNewsletter.status === 'published' && (
               <button
                 onClick={async () => {
-                  if (!confirm('公開版のコピーを下書きとして作成します。\n公開中の内容はそのまま表示され続けます。')) return;
+                  if (!(await appConfirm({
+                    title: '公開版のコピーを下書きとして作成しますか？',
+                    message: '公開中の内容はそのまま表示され続けます。',
+                    confirmLabel: 'コピーを作成する',
+                  }))) return;
+                  setIsDuplicating(true);
                   try {
                     const { newsletter: copy } = await duplicateNewsletterAsDraft(selectedNewsletter.id);
                     // 一覧を再読み込みしてコピーを表示
@@ -339,16 +358,19 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     if (copyWithCount) {
                       handleSelectNewsletter(copyWithCount);
                     }
-                    alert(`「${copy.title}」の編集用コピーを作成しました`);
+                    showToast(`「${copy.title}」の編集用コピーを作成しました`);
                   } catch (error) {
                     console.error('コピー作成エラー:', error);
-                    alert('コピーの作成に失敗しました');
+                    showError('コピーを作成できませんでした。時間をおいてもう一度お試しください。');
+                  } finally {
+                    setIsDuplicating(false);
                   }
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                disabled={isDuplicating}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors"
               >
-                <Copy size={18} />
-                編集する
+                {isDuplicating ? <Loader2 size={18} className="animate-spin" /> : <Copy size={18} />}
+                {isDuplicating ? '編集用コピーを作成しています…' : '編集する'}
               </button>
             )}
 
@@ -362,24 +384,63 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               プレビュー
             </button>
 
+            {/* 担当者に確認依頼（下書きのみ） */}
+            {selectedNewsletter.status === 'draft' && (
+              <button
+                onClick={async () => {
+                  // 確認待ち中はリンクの再表示のみ（トークンは変えない）
+                  if (selectedNewsletter.review_status === 'pending' && selectedNewsletter.review_token) {
+                    setReviewLinkUrl(`${window.location.origin}/review/${selectedNewsletter.review_token}`);
+                    return;
+                  }
+                  if (!(await appConfirm({
+                    title: '担当者に確認を依頼しますか？',
+                    message: '確認用リンクが発行されるので、LINEやメールで担当者に送ってください。',
+                    confirmLabel: '依頼する',
+                  }))) return;
+                  try {
+                    const updated = await requestReview(selectedNewsletter.id);
+                    setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
+                    setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
+                    setReviewLinkUrl(`${window.location.origin}/review/${updated.review_token}`);
+                  } catch (error) {
+                    console.error('確認依頼エラー:', error);
+                    showError('確認依頼を作成できませんでした。時間をおいてもう一度お試しください。');
+                  }
+                }}
+                disabled={articles.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 font-medium transition-colors"
+                title="担当者に公開前の確認を依頼"
+              >
+                <ClipboardCheck size={18} />
+                {selectedNewsletter.review_status === 'pending' ? '確認リンクを表示'
+                  : selectedNewsletter.review_status === 'changes_requested' ? '再度確認を依頼'
+                  : '確認を依頼'}
+              </button>
+            )}
+
             {/* 公開 / 非公開ボタン */}
             {selectedNewsletter.status === 'draft' ? (
               <button
                 onClick={async () => {
-                  if (!confirm('この回覧板を公開しますか？\n公開すると住民に表示されます。')) return;
+                  if (!(await appConfirm({
+                    title: 'この回覧板を公開しますか？',
+                    message: '公開すると住民に表示されます。',
+                    confirmLabel: '公開する',
+                  }))) return;
                   try {
                     const updated = await publishNewsletter(selectedNewsletter.id);
                     setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
                     setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
-                    alert('公開しました');
+                    showToast('公開しました。住民向けページに表示されています。');
                   } catch (error) {
                     console.error('公開エラー:', error);
-                    alert('公開に失敗しました');
+                    showError('公開できませんでした。時間をおいてもう一度お試しください。');
                   }
                 }}
-                disabled={articles.length === 0}
+                disabled={articles.length === 0 || selectedNewsletter.review_status !== 'approved'}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
-                title="公開する"
+                title={selectedNewsletter.review_status === 'approved' ? '公開する' : '担当者の承認後に公開できます'}
               >
                 <Globe size={18} />
                 公開する
@@ -387,15 +448,19 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             ) : selectedNewsletter.status === 'published' ? (
               <button
                 onClick={async () => {
-                  if (!confirm('この回覧板を非公開にしますか？\n住民に表示されなくなります。')) return;
+                  if (!(await appConfirm({
+                    title: 'この回覧板を非公開にしますか？',
+                    message: '住民に表示されなくなります。',
+                    confirmLabel: '非公開にする',
+                  }))) return;
                   try {
                     const updated = await unpublishNewsletter(selectedNewsletter.id);
                     setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
                     setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
-                    alert('非公開にしました');
+                    showToast('非公開にしました。住民向けページには表示されません。');
                   } catch (error) {
                     console.error('非公開エラー:', error);
-                    alert('非公開への変更に失敗しました');
+                    showError('非公開にできませんでした。時間をおいてもう一度お試しください。');
                   }
                 }}
                 className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium transition-colors"
@@ -417,6 +482,72 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             </button>
           </div>
         </div>
+
+        {/* 担当者確認の状況バナー（下書きのみ） */}
+        {selectedNewsletter.status === 'draft' && selectedNewsletter.review_status === 'pending' && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <ClipboardCheck size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-800">
+              <p className="font-bold">担当者の確認待ちです</p>
+              <p className="mt-1">
+                「確認リンクを表示」からリンクをコピーして、LINEやメールで担当者に送ってください。
+                承認されると「公開する」ボタンが押せるようになります。
+              </p>
+              <button
+                onClick={async () => {
+                  if (!(await appConfirm({
+                    title: '確認依頼を取り下げますか？',
+                    message: '送ったリンクは無効になります。',
+                    confirmLabel: '取り下げる',
+                  }))) return;
+                  try {
+                    const updated = await cancelReview(selectedNewsletter.id);
+                    setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
+                    setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
+                  } catch (error) {
+                    console.error('取り下げエラー:', error);
+                    showError('確認依頼を取り下げられませんでした。時間をおいてもう一度お試しください。');
+                  }
+                }}
+                className="mt-2 text-amber-700 underline hover:text-amber-900"
+              >
+                確認依頼を取り下げる
+              </button>
+            </div>
+          </div>
+        )}
+        {selectedNewsletter.status === 'draft' && selectedNewsletter.review_status === 'approved' && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+            <CheckCircle2 size={20} className="text-green-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-green-800">
+              <p className="font-bold">
+                承認済みです
+                {selectedNewsletter.reviewer_name ? `（${selectedNewsletter.reviewer_name}さん）` : ''}
+                {selectedNewsletter.reviewed_at ? ` ・ ${new Date(selectedNewsletter.reviewed_at).toLocaleString('ja-JP')}` : ''}
+              </p>
+              <p className="mt-1">「公開する」ボタンから公開できます。</p>
+              {selectedNewsletter.review_comment && (
+                <p className="mt-2 p-2 bg-white rounded-lg whitespace-pre-wrap text-slate-700">{selectedNewsletter.review_comment}</p>
+              )}
+            </div>
+          </div>
+        )}
+        {selectedNewsletter.status === 'draft' && selectedNewsletter.review_status === 'changes_requested' && (
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-start gap-3">
+            <MessageSquareWarning size={20} className="text-orange-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-orange-800">
+              <p className="font-bold">
+                修正依頼が届いています
+                {selectedNewsletter.reviewer_name ? `（${selectedNewsletter.reviewer_name}さん）` : ''}
+                {selectedNewsletter.reviewed_at ? ` ・ ${new Date(selectedNewsletter.reviewed_at).toLocaleString('ja-JP')}` : ''}
+              </p>
+              {selectedNewsletter.review_comment && (
+                <p className="mt-2 p-2 bg-white rounded-lg whitespace-pre-wrap text-slate-700">{selectedNewsletter.review_comment}</p>
+              )}
+              <p className="mt-2">修正が終わったら「再度確認を依頼」で新しいリンクを送ってください。</p>
+            </div>
+          </div>
+        )}
 
         {/* Newsletter情報 */}
         <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
@@ -548,7 +679,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     });
                     const cards = await getEventCards(selectedNewsletter.id);
                     setEventCards(cards);
-                  } catch { alert('追加に失敗しました'); }
+                  } catch (error) { console.error('イベント追加エラー:', error); showError('イベントを追加できませんでした。時間をおいてもう一度お試しください。'); }
                 }}
                 className="text-sm text-primary-600 hover:text-primary-800 font-medium flex items-center gap-1"
               >
@@ -628,13 +759,13 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                               const cards = await getEventCards(selectedNewsletter.id);
                               setEventCards(cards);
                               setEditingCard(null);
-                            } catch { alert('保存に失敗しました'); }
+                            } catch (error) { console.error('イベント保存エラー:', error); showError('保存できませんでした。時間をおいてもう一度お試しください。'); }
                             finally { setIsSavingCard(false); }
                           }}
                           disabled={isSavingCard || !editingCard.title.trim()}
-                          className="px-3 py-1 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded disabled:opacity-40"
+                          className="px-3 py-1 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded disabled:opacity-40 flex items-center gap-1"
                         >
-                          {isSavingCard ? '保存中...' : '保存'}
+                          {isSavingCard ? (<><Loader2 size={12} className="animate-spin" /> 保存しています…</>) : '保存'}
                         </button>
                       </div>
                     </div>
@@ -654,7 +785,11 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                           <span className="truncate">🔗 {linkedArticle.title}</span>
                           <button
                             onClick={async () => {
-                              if (!confirm(`「${card.title}」の記事リンクを解除しますか？\n読者側の「詳しく読む」表示が消えます`)) return;
+                              if (!(await appConfirm({
+                                title: `「${card.title}」の記事リンクを解除しますか？`,
+                                message: '読者側の「詳しく読む」表示が消えます。',
+                                confirmLabel: '解除する',
+                              }))) return;
                               await updateEventCard(card.id, { linked_article_id: null });
                               const cards = await getEventCards(selectedNewsletter.id);
                               setEventCards(cards);
@@ -700,7 +835,11 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                       </button>
                       <button
                         onClick={async () => {
-                          if (!confirm(`「${card.title}」を削除しますか？`)) return;
+                          if (!(await appConfirm({
+                            title: `「${card.title}」を削除しますか？`,
+                            confirmLabel: '削除する',
+                            danger: true,
+                          }))) return;
                           await deleteEventCard(card.id);
                           const cards = await getEventCards(selectedNewsletter.id);
                           setEventCards(cards);
@@ -788,6 +927,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 {pdfEntries.length > 0 && (
                   <button
                     onClick={async () => {
+                      setPdfTaskMessage('サムネイル画像の作成準備をしています…');
+                      try {
                       const pdfjsLib = await import('pdfjs-dist');
                       const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
                       pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -797,6 +938,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                       let count = 0;
                       const entries: any[] = [...(selectedNewsletter.source_pdf_urls || [])];
                       for (let i = 0; i < entries.length; i++) {
+                        setPdfTaskMessage(`PDFの表紙からサムネイル画像を作っています…（${i + 1}件目 / 全${entries.length}件）`);
                         const entry = entries[i];
                         const url = typeof entry === 'string' ? entry : entry.url;
                         // 全件再生成（既存サムネイルも上書き）
@@ -836,9 +978,13 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                       const updated = freshList.find(n => n.id === selectedNewsletter.id);
                       if (updated) setSelectedNewsletter(updated as any);
                       const failed = entries.filter((e: any) => e.thumbnail === 'failed').length;
-                      alert(`${count}件のサムネイルを生成しました` + (failed > 0 ? `\n${failed}件は自動生成できませんでした（手動アップロードしてください）` : ''));
+                      showToast(`${count}件のサムネイルを生成しました` + (failed > 0 ? `\n${failed}件は自動生成できませんでした。「サムネイル追加」から画像を登録してください。` : ''));
+                      } finally {
+                        setPdfTaskMessage(null);
+                      }
                     }}
-                    className="text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded transition"
+                    disabled={pdfTaskMessage !== null}
+                    className="text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded transition disabled:opacity-40"
                   >
                     サムネイル生成
                   </button>
@@ -846,7 +992,12 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 {selectedNewsletter.status === 'draft' && pdfEntries.length > 1 && (
                   <button
                     onClick={async () => {
-                      if (!confirm(`${pdfEntries.length}件のPDFを全て削除しますか？`)) return;
+                      if (!(await appConfirm({
+                        title: `${pdfEntries.length}件のPDFを全て削除しますか？`,
+                        confirmLabel: '削除する',
+                        danger: true,
+                      }))) return;
+                      setPdfTaskMessage(`${pdfEntries.length}件のPDFを削除しています…`);
                       try {
                         for (const pdf of pdfEntries) {
                           await removePdfUrlFromNewsletter(selectedNewsletter.id, pdf.url);
@@ -855,15 +1006,26 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         setNewsletters(freshList);
                         const updated = freshList.find((n) => n.id === selectedNewsletter.id);
                         if (updated) setSelectedNewsletter(updated as any);
-                      } catch { alert('削除に失敗しました'); }
+                      } catch (error) { console.error('PDF一括削除エラー:', error); showError('削除できませんでした。時間をおいてもう一度お試しください。'); }
+                      finally { setPdfTaskMessage(null); }
                     }}
-                    className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition"
+                    disabled={pdfTaskMessage !== null}
+                    className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition disabled:opacity-40"
                   >
                     全て削除
                   </button>
                 )}
                 </div>
               </div>
+              {/* サムネイル生成・削除など時間のかかる作業の進行表示 */}
+              {pdfTaskMessage && (
+                <div className="mb-3">
+                  <ProcessingIndicator
+                    label={pdfTaskMessage}
+                    sublabel="このままお待ちください。画面を閉じたり移動したりしないでください。"
+                  />
+                </div>
+              )}
               {sourcePdfs.length > 0 && <p className="text-xs font-medium text-blue-600 mb-2">📄 記事をPDF版で読む ({sourcePdfs.length}件)</p>}
               <div className="space-y-2">
                 {pdfEntries.map((pdf, i) => (
@@ -895,7 +1057,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                             updatePdfLabel(selectedNewsletter.id, pdf.url, newLabel).then((updated) => {
                               setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
                               setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
-                            }).catch(() => alert('更新に失敗しました'));
+                            }).catch((error) => { console.error('ラベル更新エラー:', error); showError('ラベルを更新できませんでした。時間をおいてもう一度お試しください。'); });
                           }}
                           title={selectedNewsletter.status === 'draft' ? 'クリックして編集' : ''}
                         >
@@ -915,7 +1077,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                             updatePdfLabel(selectedNewsletter.id, pdf.url, pdf.label, newPublisher).then((updated) => {
                               setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
                               setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
-                            }).catch(() => alert('更新に失敗しました'));
+                            }).catch((error) => { console.error('発行元更新エラー:', error); showError('発行元を更新できませんでした。時間をおいてもう一度お試しください。'); });
                           }}
                           title={selectedNewsletter.status === 'draft' ? 'クリックして発行元を編集' : ''}
                         >
@@ -930,6 +1092,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                               onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (!file) return;
+                                setPdfTaskMessage('サムネイル画像を保存しています…');
                                 try {
                                   const { uploadImage } = await import('@cc-saas/shared/services/data/storageService');
                                   const { getSupabaseClient } = await import('@cc-saas/shared/services/supabaseClient');
@@ -943,7 +1106,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                                   setNewsletters(freshList);
                                   const updated = freshList.find(n => n.id === selectedNewsletter.id);
                                   if (updated) setSelectedNewsletter(updated as any);
-                                } catch { alert('アップロードに失敗しました'); }
+                                } catch (error) { console.error('サムネイルアップロードエラー:', error); showError('画像を保存できませんでした。時間をおいてもう一度お試しください。'); }
+                                finally { setPdfTaskMessage(null); }
                                 e.target.value = '';
                               }}
                             />
@@ -968,7 +1132,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                                   const updated = freshList.find(n => n.id === selectedNewsletter.id);
                                   if (updated) setSelectedNewsletter(updated as any);
                                 }
-                              } catch { alert('変更に失敗しました'); }
+                              } catch (error) { console.error('PDF種別変更エラー:', error); showError('変更できませんでした。時間をおいてもう一度お試しください。'); }
                             }}
                             className={`text-xs px-1.5 py-0.5 rounded transition ${
                               (typeof (selectedNewsletter.source_pdf_urls || [])[i] === 'object' && ((selectedNewsletter.source_pdf_urls || [])[i] as any)?.type === 'source')
@@ -1031,13 +1195,18 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         {/* 削除 */}
                         <button
                           onClick={async () => {
-                            if (!confirm(`「${pdf.label || pdf.filename}」を削除しますか？`)) return;
+                            if (!(await appConfirm({
+                              title: `「${pdf.label || pdf.filename}」を削除しますか？`,
+                              confirmLabel: '削除する',
+                              danger: true,
+                            }))) return;
                             try {
                               const updated = await removePdfUrlFromNewsletter(selectedNewsletter.id, pdf.url);
                               setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
                               setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
                             } catch (err) {
-                              alert('削除に失敗しました');
+                              console.error('PDF削除エラー:', err);
+                              showError('削除できませんでした。時間をおいてもう一度お試しください。');
                             }
                           }}
                           className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition"
@@ -1097,6 +1266,52 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               setArticles(articleData);
             }}
           />
+        )}
+
+        {/* 確認リンクダイアログ */}
+        {reviewLinkUrl && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
+              <div className="flex items-center gap-2">
+                <ClipboardCheck size={22} className="text-amber-600" />
+                <h3 className="text-lg font-bold text-slate-800">確認リンクを担当者に送ってください</h3>
+              </div>
+              <p className="text-sm text-slate-600">
+                このリンクを開くと、ログインなしで回覧板のプレビューを確認して「承認」「修正依頼」を回答できます。
+                LINEやメールに貼り付けて送ってください。
+              </p>
+              <input
+                type="text"
+                readOnly
+                value={reviewLinkUrl}
+                onFocus={(e) => e.currentTarget.select()}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-700"
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setReviewLinkUrl(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg font-medium hover:bg-slate-200 transition"
+                >
+                  閉じる
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(reviewLinkUrl);
+                      showToast('リンクをコピーしました');
+                    } catch (error) {
+                      console.error('リンクコピーエラー:', error);
+                      showError('コピーできませんでした。リンクを長押し（または選択）してコピーしてください。');
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition"
+                >
+                  <Copy size={16} />
+                  リンクをコピー
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* スマホプレビュー */}
@@ -1203,6 +1418,18 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     {newsletter.parent_id && newsletter.status === 'draft' && (
                       <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
                         編集版
+                      </span>
+                    )}
+                    {newsletter.status === 'draft' && newsletter.review_status && (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        newsletter.review_status === 'approved'
+                          ? 'bg-green-100 text-green-700'
+                          : newsletter.review_status === 'pending'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-orange-100 text-orange-700'
+                      }`}>
+                        {newsletter.review_status === 'approved' ? '承認済み' :
+                         newsletter.review_status === 'pending' ? '確認待ち' : '修正依頼あり'}
                       </span>
                     )}
                   </div>

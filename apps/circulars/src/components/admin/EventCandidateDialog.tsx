@@ -15,6 +15,7 @@ import {
 } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
 import { Loader2, AlertCircle, X, Sparkles, Copy, Check } from 'lucide-react';
+import { ProcessingIndicator } from '@/components/ui/feedback';
 
 /**
  * 編集可能なイベント候補（選択状態付き）
@@ -177,9 +178,11 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
         {/* 本文 */}
         <div className="flex-1 overflow-y-auto p-4">
           {isExtracting ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-3">
-              <Loader2 size={32} className="animate-spin text-primary-600" />
-              <p className="text-sm text-slate-600">記事からイベント候補を抽出しています...</p>
+            <div className="py-8">
+              <ProcessingIndicator
+                label="AIが記事からイベントの予定を読み取っています…"
+                sublabel="記事の量によって1分ほどかかることがあります。このままお待ちください。"
+              />
             </div>
           ) : error ? (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
@@ -290,7 +293,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                 className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-40 flex items-center gap-2"
               >
                 {isRegistering && <Loader2 size={15} className="animate-spin" />}
-                選択した{selectedCandidates.length}件を登録
+                {isRegistering ? '登録しています…' : `選択した${selectedCandidates.length}件を登録`}
               </button>
             </div>
           </div>

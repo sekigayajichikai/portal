@@ -13,6 +13,7 @@ import type { PendingImage, Article } from '@cc-saas/shared';
 import { getPendingImagesByNewsletterId, assignImageToArticle, rejectPendingImage } from '@cc-saas/shared/services/image/pendingImageService';
 import { updateArticle } from '@cc-saas/shared';
 import { uploadImage } from '@cc-saas/shared/services/data/storageService';
+import { showToast, showError, appConfirm } from '@/components/ui/feedback';
 
 interface CroppedItem {
   id: string;
@@ -72,7 +73,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
       }
     } catch (error) {
       console.error('保留画像の読み込みエラー:', error);
-      alert('保留画像の読み込みに失敗しました');
+      showError('画像を読み込めませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsLoading(false);
     }
@@ -126,7 +127,8 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
   const handleAddCrop = async () => {
     const blob = await getCroppedBlob();
     if (!blob) {
-      alert('切り抜きに失敗しました');
+      console.error('切り抜き画像の生成に失敗しました');
+      showError('切り抜きできませんでした。範囲を選び直してもう一度お試しください。');
       return;
     }
 
@@ -169,7 +171,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
   const handleSaveAllCrops = async () => {
     const itemsToSave = croppedItems.filter((item) => item.articleId);
     if (itemsToSave.length === 0) {
-      alert('記事が紐付けられた切り抜きがありません');
+      showToast('切り抜きに記事を紐付けてください', 'info');
       return;
     }
 
@@ -203,7 +205,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
       advanceToNextImage();
     } catch (error) {
       console.error('画像保存エラー:', error);
-      alert('画像の保存に失敗しました');
+      showError('画像を保存できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsProcessing(false);
     }
@@ -212,7 +214,11 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
   const handleRejectImage = async () => {
     const currentImage = pendingImages[selectedImageIndex];
     if (!currentImage) return;
-    if (!confirm('この画像を却下しますか？')) return;
+    if (!(await appConfirm({
+      title: 'この画像を却下しますか？',
+      message: '却下した画像は記事に使われなくなります。',
+      confirmLabel: '却下する',
+    }))) return;
 
     setIsProcessing(true);
     try {
@@ -220,7 +226,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
       advanceToNextImage();
     } catch (error) {
       console.error('画像却下エラー:', error);
-      alert('画像の却下に失敗しました');
+      showError('却下できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsProcessing(false);
     }
@@ -234,7 +240,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
     if (newPendingImages.length > 0) {
       setSelectedImageIndex(Math.min(selectedImageIndex, newPendingImages.length - 1));
     } else {
-      alert('全ての画像を処理しました');
+      showToast('全ての画像を処理しました');
       onAssigned();
       onClose();
     }

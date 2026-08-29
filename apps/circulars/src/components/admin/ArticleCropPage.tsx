@@ -17,6 +17,7 @@ import { addArticlesToNewsletter, updateArticle } from '@cc-saas/shared';
 import { extractArticleFromImage } from '@cc-saas/shared/services/ai/claudeService';
 import { uploadImage } from '@cc-saas/shared/services/data/storageService';
 import { MOCK_CATEGORIES } from '@cc-saas/shared/constants';
+import { showError, ProcessingIndicator } from '@/components/ui/feedback';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -177,7 +178,7 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
       setEditContent(result.content || '');
     } catch (error: any) {
       console.error('記事抽出エラー:', error);
-      alert(`記事の抽出に失敗しました\n\n${error.message}`);
+      showError('記事を読み取れませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsExtracting(false);
     }
@@ -217,7 +218,8 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
       setCropItems(prev => { prev.forEach(i => URL.revokeObjectURL(i.previewUrl)); return []; });
       onSaved();
     } catch (error: any) {
-      alert(`保存に失敗しました: ${error.message}`);
+      console.error('記事保存エラー:', error);
+      showError('保存できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsSaving(false);
     }
@@ -250,7 +252,8 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
       setSelectedArticleId(null);
       onSaved();
     } catch (error: any) {
-      alert(`保存に失敗しました: ${error.message}`);
+      console.error('画像保存エラー:', error);
+      showError('画像を保存できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsSaving(false);
     }
@@ -292,7 +295,10 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
 
       {isLoadingPdf ? (
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 size={32} className="animate-spin text-primary-600" />
+          <div className="text-center">
+            <Loader2 size={32} className="animate-spin text-primary-600 mx-auto mb-3" />
+            <p className="text-slate-600">PDFを読み込んでいます…</p>
+          </div>
         </div>
       ) : (
         <div className="flex-1 flex overflow-hidden">
@@ -356,7 +362,7 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                 {mode === 'article' && cropItems.length > 0 && (
                   <button onClick={handleExtractArticle} disabled={isExtracting}
                     className="flex items-center gap-1 px-3 py-1 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 font-medium transition">
-                    {isExtracting ? <><Loader2 size={14} className="animate-spin" /> 抽出中...</>
+                    {isExtracting ? <><Loader2 size={14} className="animate-spin" /> 読み取り中…</>
                       : <><Scissors size={14} /> まとめて抽出</>}
                   </button>
                 )}
@@ -386,11 +392,11 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
               {mode === 'article' ? (
                 // === 記事モード ===
                 isExtracting ? (
-                  <div className="flex-1 flex items-center justify-center py-12">
-                    <div className="text-center">
-                      <Loader2 size={32} className="animate-spin text-primary-600 mx-auto mb-3" />
-                      <p className="text-slate-600">AIが記事を読み取り中...</p>
-                    </div>
+                  <div className="py-8">
+                    <ProcessingIndicator
+                      label="AIが選択した範囲から記事を読み取っています…"
+                      sublabel="内容の量によって1〜3分ほどかかります。このままお待ちください。"
+                    />
                   </div>
                 ) : extractedArticle ? (
                   <div className="space-y-4">
@@ -524,7 +530,10 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                                     setNewArticleTitle('');
                                     setShowNewArticleForm(false);
                                   }
-                                } catch { alert('記事の作成に失敗しました'); }
+                                } catch (error) {
+                                  console.error('記事作成エラー:', error);
+                                  showError('記事を作成できませんでした。時間をおいてもう一度お試しください。');
+                                }
                               })();
                             }
                           }} />
@@ -558,7 +567,10 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                                 setNewArticleTitle('');
                                 setShowNewArticleForm(false);
                               }
-                            } catch { alert('記事の作成に失敗しました'); }
+                            } catch (error) {
+                              console.error('記事作成エラー:', error);
+                              showError('記事を作成できませんでした。時間をおいてもう一度お試しください。');
+                            }
                           }} disabled={!newArticleTitle.trim()}
                             className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50">
                             作成
@@ -650,7 +662,10 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                           setCropItems(prev => { prev.forEach(ci => URL.revokeObjectURL(ci.previewUrl)); return []; });
                           setSelectedArticleId(null);
                           onSaved();
-                        } catch (e: any) { alert(`保存に失敗しました: ${e.message}`); }
+                        } catch (e: any) {
+                          console.error('サムネイル保存エラー:', e);
+                          showError('保存できませんでした。時間をおいてもう一度お試しください。');
+                        }
                         finally { setIsSaving(false); }
                       }}
                       disabled={!selectedArticleId || cropItems.length === 0 || isSaving}

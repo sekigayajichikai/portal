@@ -15,6 +15,7 @@ import { X, Check, Plus, Trash2, FileText, ArrowLeft, ChevronLeft, ChevronRight,
 import type { Article } from '@cc-saas/shared';
 import { updateArticle, addArticlesToNewsletter } from '@cc-saas/shared';
 import { uploadImage } from '@cc-saas/shared/services/data/storageService';
+import { showToast, showError, appConfirm } from '@/components/ui/feedback';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -135,7 +136,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
       console.log('📄 PDF読み込み完了:', doc.numPages, 'ページ');
     } catch (error: any) {
       console.error('❌ PDF読み込みエラー:', error);
-      setPdfError(error.message || 'PDFの読み込みに失敗しました');
+      setPdfError('PDFを読み込めませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsLoadingPdf(false);
     }
@@ -264,7 +265,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
       }
     } catch (error) {
       console.error('記事作成エラー:', error);
-      alert('記事の作成に失敗しました');
+      showError('記事を作成できませんでした。時間をおいてもう一度お試しください。');
     }
   };
 
@@ -272,7 +273,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
   const handleSaveAll = async () => {
     const itemsToSave = croppedItems.filter((item) => item.articleId && !item.saved);
     if (itemsToSave.length === 0) {
-      alert('保存する切り抜きがありません');
+      showToast('保存する切り抜きがありません', 'info');
       return;
     }
 
@@ -338,16 +339,21 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
       console.log(`✅ ${itemsToSave.length}件を保存しました`);
     } catch (error) {
       console.error('保存エラー:', error);
-      alert('画像の保存に失敗しました');
+      showError('画像を保存できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleClose = () => {
+  const handleClose = async () => {
     const unsaved = croppedItems.filter((item) => item.articleId && !item.saved);
     if (unsaved.length > 0) {
-      if (!confirm(`未保存の切り抜きが${unsaved.length}件あります。閉じますか？`)) return;
+      if (!(await appConfirm({
+        title: `未保存の切り抜きが${unsaved.length}件あります`,
+        message: '閉じると、保存していない切り抜きは失われます。',
+        confirmLabel: '保存せずに閉じる',
+        danger: true,
+      }))) return;
     }
     croppedItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
     onClose();

@@ -67,6 +67,16 @@ export async function invokeAIProxy<T = unknown>(
         // JSONでない場合はそのまま
       }
     }
+
+    // トークンが無効（別環境の古いトークンが残っている等）: 保存済みトークンを
+    // 破棄して再ログインを促す。放置すると全AI機能が失敗し続けるため。
+    if (context?.status === 401 || detail === 'Unauthorized') {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      }
+      throw new Error('ログインの有効期限が切れました。ページを再読み込みして、もう一度ログインしてください。');
+    }
+
     throw new Error(`AI呼び出しに失敗しました: ${detail}`);
   }
 

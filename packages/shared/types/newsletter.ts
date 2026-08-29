@@ -4,6 +4,9 @@
 
 export type NewsletterStatus = 'draft' | 'published' | 'archived';
 
+/** 公開前の担当者確認の状況（null/undefined = 未依頼） */
+export type ReviewStatus = 'pending' | 'approved' | 'changes_requested';
+
 /**
  * 広報誌（月号）
  */
@@ -21,4 +24,12 @@ export interface Newsletter {
   parent_id: string | null; // コピー元の公開版Newsletter ID（編集コピー時に設定）
   digest_audio_url?: string | null; // ダイジェスト版音声ファイルのURL
   digest_audio_filename?: string | null; // ダイジェスト版音声ファイルの元のファイル名
+
+  // 公開前の担当者確認
+  review_status?: ReviewStatus | null;
+  review_token?: string | null; // 確認ページ /review/<token> 用トークン
+  review_requested_at?: string | null;
+  reviewed_at?: string | null;
+  review_comment?: string | null; // 担当者からのコメント
+  reviewer_name?: string | null; // 確認した担当者名（任意）
 }

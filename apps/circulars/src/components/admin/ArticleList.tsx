@@ -12,6 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import { ArticleEditDialog } from './ArticleEditDialog';
+import { showToast, showError, appConfirm } from '@/components/ui/feedback';
 import {
   DndContext,
   closestCenter,
@@ -467,7 +468,12 @@ export const ArticleList: React.FC<ArticleListProps> = ({
   const handleDeleteClick = async (article: Article, event: React.MouseEvent) => {
     event.stopPropagation(); // 記事の展開/折りたたみを防ぐ
 
-    if (!confirm(`「${article.title}」を削除しますか？\n\nこの操作は取り消せません。`)) {
+    if (!(await appConfirm({
+      title: `「${article.title}」を削除しますか？`,
+      message: 'この操作は取り消せません。',
+      confirmLabel: '削除する',
+      danger: true,
+    }))) {
       return;
     }
 
@@ -478,11 +484,11 @@ export const ArticleList: React.FC<ArticleListProps> = ({
         console.log('✅ 削除処理が完了しました');
       } catch (error) {
         console.error('❌ 削除処理でエラーが発生しました:', error);
-        alert('削除に失敗しました。コンソールでエラーを確認してください。');
+        showError('削除できませんでした。時間をおいてもう一度お試しください。');
       }
     } else {
       console.warn('⚠️ onArticleDeleteが設定されていません');
-      alert('削除機能が利用できません');
+      showError('この画面からは削除できません。ページを開き直してもう一度お試しください。');
     }
   };
 
@@ -499,7 +505,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({
         onArticleUpdate(articleId, updates);
       }
 
-      alert('記事を更新しました');
+      showToast('記事を更新しました');
     } catch (error) {
       console.error('記事更新エラー:', error);
       throw error;
@@ -550,7 +556,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({
       console.log('✅ 記事の並び順を保存しました');
     } catch (error) {
       console.error('❌ 並び順保存エラー:', error);
-      alert('並び順の保存に失敗しました');
+      showError('並び順を保存できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsSavingOrder(false);
     }

@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { AuthProvider, useAuth, PasswordLogin } from '@cc-saas/shared';
 import { CircularBoard } from '@/components/admin/CircularBoard';
 import { PublisherManager } from '@/components/admin/PublisherManager';
-import { FileText, Settings } from 'lucide-react';
+import { FileText, Settings, LogOut } from 'lucide-react';
+import { appConfirm } from '@/components/ui/feedback';
 
 function AdminContent() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, logout } = useAuth();
 
   if (isLoading) {
     return (
@@ -32,13 +33,26 @@ function AdminContent() {
             電子回覧板
           </span>
         </div>
-        <button
-          onClick={() => setShowPublisherManager(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
-        >
-          <Settings size={16} />
-          設定
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowPublisherManager(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
+          >
+            <Settings size={16} />
+            設定
+          </button>
+          <button
+            onClick={async () => {
+              if (await appConfirm({ title: 'ログアウトしますか？', confirmLabel: 'ログアウト' })) {
+                logout();
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
+          >
+            <LogOut size={16} />
+            ログアウト
+          </button>
+        </div>
       </header>
       <PublisherManager isOpen={showPublisherManager} onClose={() => setShowPublisherManager(false)} />
       <main className="p-4 md:p-8">

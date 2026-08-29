@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Sparkles, FileText } from 'lucide-react';
+import { showError } from '@/components/ui/feedback';
 
 interface PDFMetadataDialogProps {
   isOpen: boolean;
@@ -50,7 +51,7 @@ export const PDFMetadataDialog: React.FC<PDFMetadataDialogProps> = ({
 
   const handleConfirm = () => {
     if (!title) {
-      alert('タイトルを入力してください');
+      showError('タイトルを入力してください');
       return;
     }
     onConfirm(title, issueNumber);

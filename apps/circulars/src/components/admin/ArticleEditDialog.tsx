@@ -10,6 +10,7 @@ import { Article, Category, Priority, Visibility, Attachment } from '@cc-saas/sh
 import { X, Save, Loader2, Eye, EyeOff, Pin, Calendar, Image as ImageIcon, Upload, Trash2, FileText } from 'lucide-react';
 import { uploadImage, deleteImage } from '@cc-saas/shared/services/data/storageService';
 import { RichTextEditor } from './RichTextEditor';
+import { showError, appConfirm } from '@/components/ui/feedback';
 
 /**
  * ArticleEditDialogコンポーネントのProps
@@ -48,6 +49,7 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [newTag, setNewTag] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showPdfPicker, setShowPdfPicker] = useState(false);
@@ -144,7 +146,7 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
           newImages.push(imageAttachment);
         } catch (error: any) {
           console.error(`画像 ${file.name} のアップロードエラー:`, error);
-          alert(`画像 ${file.name} のアップロードに失敗しました: ${error.message}`);
+          showError(`画像「${file.name}」をアップロードできませんでした。時間をおいてもう一度お試しください。`);
         }
       }
 
@@ -164,7 +166,7 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
       }
     } catch (error) {
       console.error('画像アップロード処理エラー:', error);
-      alert('画像のアップロードに失敗しました');
+      showError('画像をアップロードできませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsUploading(false);
       // input要素をリセット（同じファイルを再選択できるように）
@@ -180,7 +182,12 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
   const handleImageDelete = async (index: number) => {
     const imageToDelete = uploadedImages[index];
     
-    if (!confirm(`画像「${imageToDelete.label}」を削除しますか？`)) {
+    if (!(await appConfirm({
+      title: `画像「${imageToDelete.label}」を削除しますか？`,
+      message: 'この操作は取り消せません。',
+      confirmLabel: '削除する',
+      danger: true,
+    }))) {
       return;
     }
 
@@ -210,7 +217,7 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
       console.log('画像を削除しました');
     } catch (error: any) {
       console.error('画像削除エラー:', error);
-      alert(`画像の削除に失敗しました: ${error.message}`);
+      showError('画像を削除できませんでした。時間をおいてもう一度お試しください。');
     }
   };
 
@@ -244,7 +251,7 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
       onCancel(); // ダイアログを閉じる
     } catch (error) {
       console.error('保存エラー:', error);
-      alert('保存に失敗しました');
+      showError('保存できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsSaving(false);
     }
@@ -481,8 +488,8 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
                 disabled={isUploading}
                 className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Upload size={16} />
-                {isUploading ? 'アップロード中...' : '画像を追加'}
+                {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                {isUploading ? '画像を保存しています…' : '画像を追加'}
               </button>
               <input
                 ref={fileInputRef}
@@ -556,7 +563,7 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
             {isUploading && (
               <div className="mt-4 flex items-center justify-center gap-2 text-primary-600">
                 <Loader2 size={20} className="animate-spin" />
-                <span className="text-sm">画像をアップロード中...</span>
+                <span className="text-sm">画像を保存しています…このままお待ちください</span>
               </div>
             )}
           </div>
@@ -599,16 +606,20 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
 
             {/* PDF追加ボタン */}
             <div className="flex gap-2 flex-wrap">
-              <label className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 cursor-pointer transition text-sm font-medium">
-                <Upload size={16} />
-                PDFをアップロード
+              <label className={`inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg transition text-sm font-medium ${
+                isUploadingPdf ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-200 cursor-pointer'
+              }`}>
+                {isUploadingPdf ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                {isUploadingPdf ? 'PDFを保存しています…' : 'PDFをアップロード'}
                 <input
                   type="file"
                   accept="application/pdf"
                   className="hidden"
+                  disabled={isUploadingPdf}
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+                    setIsUploadingPdf(true);
                     try {
                       const { uploadPDF } = await import('@cc-saas/shared/services/data/storageService');
                       const result = await uploadPDF(file, 'attachment');
@@ -618,8 +629,11 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
                         label: file.name.replace(/\.pdf$/i, ''),
                       };
                       updateField('attachments', [...(formData.attachments || []), newAttachment]);
-                    } catch {
-                      alert('PDFのアップロードに失敗しました');
+                    } catch (error) {
+                      console.error('PDFアップロードエラー:', error);
+                      showError('PDFを保存できませんでした。時間をおいてもう一度お試しください。');
+                    } finally {
+                      setIsUploadingPdf(false);
                     }
                     e.target.value = '';
                   }}

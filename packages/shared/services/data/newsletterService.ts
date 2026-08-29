@@ -781,6 +781,13 @@ export async function unpublishNewsletter(newsletterId: string): Promise<Newslet
     .update({
       status: 'draft',
       published_at: null,
+      // 下書きに戻したら再度担当者確認からやり直し
+      review_status: null,
+      review_token: null,
+      review_requested_at: null,
+      reviewed_at: null,
+      review_comment: null,
+      reviewer_name: null,
     })
     .eq('id', newsletterId)
     .select()

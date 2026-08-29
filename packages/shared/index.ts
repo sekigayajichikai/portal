@@ -19,6 +19,7 @@ export * from './services/ai/openRouterService.js';
 export * from './services/ai/aiService.js';
 export * from './services/supabaseClient.js';
 export * from './services/data/newsletterService.js';
+export * from './services/data/reviewService.js';
 export * from './services/data/radioService.js';
 export * from './services/data/storageService.js';
 export * from './services/data/publisherService.js';

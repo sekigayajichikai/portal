@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import { getPublishers, addPublisher, type Publisher } from '@cc-saas/shared';
 import { getSupabaseClient } from '@cc-saas/shared/services/supabaseClient';
+import { showError, appConfirm } from '@/components/ui/feedback';
 
 interface PublisherManagerProps {
   isOpen: boolean;
@@ -30,8 +31,9 @@ export const PublisherManager: React.FC<PublisherManagerProps> = ({ isOpen, onCl
     try {
       const data = await getPublishers();
       setPublishers(data);
-    } catch {
-      alert('発行元の読み込みに失敗しました');
+    } catch (error) {
+      console.error('発行元読み込みエラー:', error);
+      showError('発行元を読み込めませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsLoading(false);
     }
@@ -44,20 +46,27 @@ export const PublisherManager: React.FC<PublisherManagerProps> = ({ isOpen, onCl
       setNewName('');
       setNewShortName('');
       await loadPublishers();
-    } catch {
-      alert('追加に失敗しました');
+    } catch (error) {
+      console.error('発行元追加エラー:', error);
+      showError('追加できませんでした。時間をおいてもう一度お試しください。');
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`「${name}」を削除しますか？`)) return;
+    if (!(await appConfirm({
+      title: `「${name}」を削除しますか？`,
+      message: 'この操作は取り消せません。',
+      confirmLabel: '削除する',
+      danger: true,
+    }))) return;
     try {
       const supabase = getSupabaseClient();
       if (!supabase) return;
       await supabase.from('publishers').delete().eq('id', id);
       await loadPublishers();
-    } catch {
-      alert('削除に失敗しました');
+    } catch (error) {
+      console.error('発行元削除エラー:', error);
+      showError('削除できませんでした。時間をおいてもう一度お試しください。');
     }
   };
 
@@ -71,8 +80,9 @@ export const PublisherManager: React.FC<PublisherManagerProps> = ({ isOpen, onCl
       }).eq('id', id);
       setEditingId(null);
       await loadPublishers();
-    } catch {
-      alert('更新に失敗しました');
+    } catch (error) {
+      console.error('発行元更新エラー:', error);
+      showError('更新できませんでした。時間をおいてもう一度お試しください。');
     }
   };
 
@@ -90,8 +100,9 @@ export const PublisherManager: React.FC<PublisherManagerProps> = ({ isOpen, onCl
       await supabase.from('publishers').update({ display_order: b.display_order }).eq('id', a.id);
       await supabase.from('publishers').update({ display_order: a.display_order }).eq('id', b.id);
       await loadPublishers();
-    } catch {
-      alert('並び替えに失敗しました');
+    } catch (error) {
+      console.error('発行元並び替えエラー:', error);
+      showError('並び替えできませんでした。時間をおいてもう一度お試しください。');
     }
   };
 
