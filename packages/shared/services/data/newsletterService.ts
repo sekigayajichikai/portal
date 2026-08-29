@@ -135,6 +135,13 @@ export async function getNewsletters(
       parent_id: item.parent_id || null,
       digest_audio_url: item.digest_audio_url,
       digest_audio_filename: item.digest_audio_filename,
+      // 公開前の担当者確認（承認フロー）
+      review_status: item.review_status ?? null,
+      review_token: item.review_token ?? null,
+      review_requested_at: item.review_requested_at ?? null,
+      reviewed_at: item.reviewed_at ?? null,
+      review_comment: item.review_comment ?? null,
+      reviewer_name: item.reviewer_name ?? null,
       article_count: count ?? 0,
     };
   });
