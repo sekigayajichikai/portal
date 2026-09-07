@@ -112,7 +112,43 @@
     padding: 24px 20px 64px;
     color: #2d2a26;
     line-height: 1.9;
-    font-size: 16px; /* 基準サイズ。EventReportView の文字サイズ切替で上書きする */
+    font-size: 20px; /* 基準サイズ（既定は大きめ）。EventReportView の文字サイズ切替が inline style で上書きする */
+
+    /* 文字サイズ切替（電子回覧板と同じ3段階の「あ」ボタン） */
+    & .report-fontsize {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 4px;
+      margin-bottom: 16px;
+      font-size: 16px; /* 切替UI自体は本文サイズに連動させない */
+    }
+
+    & .report-fontsize-label {
+      font-size: 12px;
+      color: #8a8578;
+      margin-right: 6px;
+    }
+
+    & .report-fontsize button {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #e5ddcd;
+      border-radius: 8px;
+      background: #fff;
+      color: #8a8578;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    & .report-fontsize button.active {
+      background: #c0392b;
+      border-color: #c0392b;
+      color: #fff;
+    }
 
     & .report-tag {
       display: inline-block;
@@ -137,8 +173,8 @@
       display: flex;
       gap: 16px;
       flex-wrap: wrap;
-      font-size: 0.8em;
-      color: #8a8578;
+      font-size: 0.85em;
+      color: #6b665c;
       margin-bottom: 28px;
     }
 
@@ -182,9 +218,10 @@
       display: block;
     }
 
+    /* 写真のキャプション: 本文よりやや小さいだけにし、色も濃くして読みやすく（薄いグレーの小文字は見にくい） */
     & figcaption {
-      font-size: 0.78em;
-      color: #8a8578;
+      font-size: 0.9em;
+      color: #5c574d;
       margin-top: 10px;
       line-height: 1.7;
     }
@@ -206,8 +243,8 @@
       margin-top: 56px;
       padding-top: 24px;
       border-top: 1px solid #e5ddcd;
-      font-size: 0.8em;
-      color: #8a8578;
+      font-size: 0.85em;
+      color: #6b665c;
       line-height: 1.8;
     }
   }

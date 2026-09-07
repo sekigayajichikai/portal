@@ -919,7 +919,7 @@ const ReportEditor: React.FC<ReportEditorProps> = ({ frameId, article, onBack, o
               <div className="px-4 py-2 border-b border-slate-100 text-xs font-bold text-slate-400 sticky top-0 bg-white z-10">
                 プレビュー（住民ページでの見え方）
               </div>
-              <EventReportView article={previewArticle} />
+              <EventReportView article={previewArticle} showFontSizeControl={false} />
             </div>
           </div>
         )}
