@@ -2,11 +2,22 @@ import React, { useState } from 'react';
 import { AuthProvider, useAuth, PasswordLogin } from '@cc-saas/shared';
 import { CircularBoard } from '@/components/admin/CircularBoard';
 import { PublisherManager } from '@/components/admin/PublisherManager';
-import { FileText, Settings, LogOut } from 'lucide-react';
+import { OrganizerManager } from '@/components/admin/OrganizerManager';
+import { ReportBoard } from '@/components/admin/ReportBoard';
+import { FileText, Settings, Users, LogOut, Newspaper } from 'lucide-react';
 import { appConfirm } from '@/components/ui/feedback';
+
+/** 管理画面の作成対象。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事） */
+type AdminMode = 'circulars' | 'reports';
 
 function AdminContent() {
   const { isAuthenticated, isLoading, logout } = useAuth();
+  const [showPublisherManager, setShowPublisherManager] = useState(false);
+  const [showOrganizerManager, setShowOrganizerManager] = useState(false);
+  // URLの ?mode=reports で直接レポート画面を開ける（ブックマーク用）
+  const [mode, setMode] = useState<AdminMode>(() =>
+    new URLSearchParams(window.location.search).get('mode') === 'reports' ? 'reports' : 'circulars'
+  );
 
   if (isLoading) {
     return (
@@ -19,8 +30,6 @@ function AdminContent() {
   if (!isAuthenticated) {
     return <PasswordLogin />;
   }
-
-  const [showPublisherManager, setShowPublisherManager] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -35,11 +44,18 @@ function AdminContent() {
         </div>
         <div className="flex items-center gap-1">
           <button
+            onClick={() => setShowOrganizerManager(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
+          >
+            <Users size={16} />
+            主催団体
+          </button>
+          <button
             onClick={() => setShowPublisherManager(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
           >
             <Settings size={16} />
-            設定
+            発行元
           </button>
           <button
             onClick={async () => {
@@ -55,9 +71,39 @@ function AdminContent() {
         </div>
       </header>
       <PublisherManager isOpen={showPublisherManager} onClose={() => setShowPublisherManager(false)} />
+      <OrganizerManager isOpen={showOrganizerManager} onClose={() => setShowOrganizerManager(false)} />
+
+      {/* 作成対象の切替: 電子回覧板 / 関ヶ谷レポート */}
+      <div className="bg-white border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 flex gap-1">
+          <button
+            onClick={() => setMode('circulars')}
+            className={`flex items-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition ${
+              mode === 'circulars'
+                ? 'border-primary-600 text-primary-700'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <FileText size={16} />
+            電子回覧板
+          </button>
+          <button
+            onClick={() => setMode('reports')}
+            className={`flex items-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition ${
+              mode === 'reports'
+                ? 'border-[#c0392b] text-[#a93226]'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <Newspaper size={16} />
+            関ヶ谷レポート
+          </button>
+        </div>
+      </div>
+
       <main className="p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
-          <CircularBoard />
+          {mode === 'circulars' ? <CircularBoard /> : <ReportBoard />}
         </div>
       </main>
     </div>

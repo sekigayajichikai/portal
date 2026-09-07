@@ -17,6 +17,8 @@ import { PdfThumbnail } from './PdfThumbnail';
 interface CircularsViewProps {
   isSimpleMode: boolean;
   previewNewsletterId?: string;
+  /** 回覧板一覧から除外する号のタイトル（例: レポート専用枠「関ヶ谷レポート」） */
+  excludeNewsletterTitles?: string[];
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -87,7 +89,7 @@ const getArticleLength = (article: Article): ArticleLength => {
   return 'long';
 };
 
-const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNewsletterId }) => {
+const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNewsletterId, excludeNewsletterTitles }) => {
   const [newsletters, setNewsletters] = useState<(Newsletter & { article_count: number })[]>([]);
   const [selectedNewsletterId, setSelectedNewsletterId] = useState<string | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -119,7 +121,10 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
         const data = previewNewsletterId
           ? await getNewsletters()
           : await getNewsletters('published');
-        setNewsletters(data);
+        const filtered = excludeNewsletterTitles && excludeNewsletterTitles.length > 0
+          ? data.filter((n) => !excludeNewsletterTitles.includes(n.title))
+          : data;
+        setNewsletters(filtered);
         if (previewNewsletterId) {
           setSelectedNewsletterId(previewNewsletterId);
         } else if (data.length > 0 && !selectedNewsletterId) {

@@ -104,4 +104,111 @@
       text-decoration: underline;
     }
   }
+
+  /* ===== イベントレポート専用レンダラー（関ヶ谷レポート） ===== */
+  .report-article {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 20px 64px;
+    color: #2d2a26;
+    line-height: 1.9;
+    font-size: 16px; /* 基準サイズ。EventReportView の文字サイズ切替で上書きする */
+
+    & .report-tag {
+      display: inline-block;
+      background: #c0392b;
+      color: #fff;
+      font-size: 0.8em;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 4px 14px;
+      border-radius: 999px;
+      margin-bottom: 16px;
+    }
+
+    & h1 {
+      font-size: 1.875em;
+      line-height: 1.5;
+      font-weight: 800;
+      margin: 0 0 12px;
+    }
+
+    & .report-meta {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 0.8em;
+      color: #8a8578;
+      margin-bottom: 28px;
+    }
+
+    & h2 {
+      font-size: 1.375em;
+      font-weight: 800;
+      line-height: 1.5;
+      margin: 48px 0 16px;
+      padding-left: 14px;
+      border-left: 5px solid #c0392b;
+    }
+
+    & p {
+      margin: 18px 0;
+      font-size: 1em;
+    }
+
+    & strong {
+      font-weight: 700;
+      color: #a93226;
+    }
+
+    & blockquote {
+      background: #faf7f2;
+      border: 1px solid #eee6d8;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin: 24px 0;
+      font-size: 0.94em;
+      color: #4a463f;
+    }
+
+    & figure {
+      margin: 32px 0;
+    }
+
+    & figure img {
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+      display: block;
+    }
+
+    & figcaption {
+      font-size: 0.78em;
+      color: #8a8578;
+      margin-top: 10px;
+      line-height: 1.7;
+    }
+
+    & video {
+      width: 100%;
+      border-radius: 10px;
+      margin: 32px 0;
+      display: block;
+    }
+
+    & a {
+      color: #a93226;
+      font-weight: 700;
+      text-decoration: underline;
+    }
+
+    & .report-footer {
+      margin-top: 56px;
+      padding-top: 24px;
+      border-top: 1px solid #e5ddcd;
+      font-size: 0.8em;
+      color: #8a8578;
+      line-height: 1.8;
+    }
+  }
 }
