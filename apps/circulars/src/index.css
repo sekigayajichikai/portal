@@ -104,4 +104,258 @@
       text-decoration: underline;
     }
   }
+
+  /* ===== イベントレポート専用レンダラー（関ヶ谷レポート） ===== */
+  .report-article {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 20px 64px;
+    color: #2d2a26;
+    line-height: 1.9;
+    font-size: 16px; /* 基準サイズ。EventReportView の文字サイズ切替で上書きする */
+
+    /* タグと文字サイズ切替を同じ行に並べるヘッダー */
+    & .report-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    & .report-tag {
+      display: inline-block;
+      background: #c0392b;
+      color: #fff;
+      font-size: 0.8em;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 4px 14px;
+      border-radius: 999px;
+    }
+
+    /* 文字サイズ切替（小/中/大）。高齢の読み手向けの実用ボタン */
+    & .report-textsize {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    & .report-textsize-label {
+      font-size: 11px;
+      color: #8a8578;
+      margin-right: 2px;
+    }
+
+    & .report-textsize button {
+      min-width: 30px;
+      padding: 4px 8px;
+      border: 1px solid #e5ddcd;
+      background: #fff;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #8a8578;
+      line-height: 1.2;
+      transition: all 0.15s;
+    }
+
+    & .report-textsize button:hover {
+      background: #faf7f2;
+      color: #a93226;
+    }
+
+    & .report-textsize button.is-active {
+      background: #c0392b;
+      border-color: #c0392b;
+      color: #fff;
+    }
+
+    & h1 {
+      font-size: 1.875em;
+      line-height: 1.5;
+      font-weight: 800;
+      margin: 0 0 12px;
+    }
+
+    & .report-meta {
+      display: flex;
+      gap: 8px 16px;
+      flex-wrap: wrap;
+      font-size: 0.8em;
+      color: #8a8578;
+      margin-bottom: 28px;
+    }
+
+    & .report-meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    & h2 {
+      font-size: 1.375em;
+      font-weight: 800;
+      line-height: 1.5;
+      margin: 48px 0 16px;
+      padding-left: 14px;
+      border-left: 5px solid #c0392b;
+    }
+
+    & h3 {
+      font-size: 1.1em;
+      font-weight: 700;
+      line-height: 1.6;
+      margin: 32px 0 12px;
+    }
+
+    & p {
+      margin: 18px 0;
+      font-size: 1em;
+    }
+
+    & strong {
+      font-weight: 700;
+      color: #a93226;
+    }
+
+    & ul,
+    & ol {
+      margin: 18px 0;
+      padding-left: 1.4em;
+    }
+
+    & ul {
+      list-style: disc;
+    }
+
+    & ol {
+      list-style: decimal;
+    }
+
+    & li {
+      margin: 6px 0;
+      padding-left: 2px;
+    }
+
+    & table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-size: 0.92em;
+      display: block;
+      overflow-x: auto;
+    }
+
+    & th,
+    & td {
+      border: 1px solid #e5ddcd;
+      padding: 8px 12px;
+      text-align: left;
+      line-height: 1.7;
+    }
+
+    & th {
+      background: #faf7f2;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    & hr {
+      border: 0;
+      border-top: 1px solid #e5ddcd;
+      margin: 40px 0;
+    }
+
+    & blockquote {
+      background: #faf7f2;
+      border: 1px solid #eee6d8;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin: 24px 0;
+      font-size: 0.94em;
+      color: #4a463f;
+    }
+
+    & figure {
+      margin: 32px 0;
+    }
+
+    /* 記事冒頭のメイン写真は、メタ情報のすぐ下に置く */
+    & .report-hero {
+      margin: 0 0 32px;
+    }
+
+    & figure img {
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+      display: block;
+      background: #f3ede2;
+    }
+
+    & figure video {
+      margin: 0;
+    }
+
+    & figcaption {
+      font-size: 0.78em;
+      color: #8a8578;
+      margin-top: 10px;
+      line-height: 1.7;
+    }
+
+    & video {
+      width: 100%;
+      border-radius: 10px;
+      margin: 32px 0;
+      display: block;
+    }
+
+    & a {
+      color: #a93226;
+      font-weight: 700;
+      text-decoration: underline;
+    }
+
+    & .report-footer {
+      margin-top: 56px;
+      padding-top: 24px;
+      border-top: 1px solid #e5ddcd;
+      font-size: 0.8em;
+      color: #8a8578;
+      line-height: 1.8;
+    }
+  }
+
+  /* スマホでは余白と見出し前後のアキを詰める（縦に間延びさせない） */
+  @media (max-width: 640px) {
+    .report-article {
+      padding: 20px 18px 56px;
+      line-height: 1.85;
+
+      & h1 {
+        font-size: 1.6em;
+      }
+
+      & h2 {
+        margin: 36px 0 14px;
+        padding-left: 12px;
+        border-left-width: 4px;
+      }
+
+      & h3 {
+        margin: 26px 0 10px;
+      }
+
+      & figure {
+        margin: 24px 0;
+      }
+
+      & .report-footer {
+        margin-top: 44px;
+      }
+    }
+  }
 }
