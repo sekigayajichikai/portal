@@ -25,3 +25,18 @@ dist-ssr
 .env
 .vercel
 supabase/.temp/
+
+# スケジュール抽出テスト用の一時PDF
+scripts/schedule-test/pdfs/
+
+# Claude Code のローカル設定・作業ツリー
+.claude/worktrees/
+.claude/settings.local.json
+
+# 環境変数のバックアップ・DBエクスポート
+.env*.backup
+*.ubx-backup
+Supabase Snippet*.csv
+
+# レポートのサンプル動画（サイズが大きいためリポジトリに含めない）
+apps/circulars/public/report-sample/*.mp4
