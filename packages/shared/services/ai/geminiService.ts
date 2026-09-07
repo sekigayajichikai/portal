@@ -361,8 +361,15 @@ function bufferToWave(abuffer: AudioBuffer, len: number) {
 // - 無料枠の RPM 制限に合わせ、呼び出し側（EventCandidateDialog）は PDF を1枚ずつ順次処理する
 // =====================================================
 
-/** イベント抽出に使う Gemini モデル */
-export const GEMINI_EVENT_MODEL = 'gemini-2.5-flash';
+/**
+ * イベント抽出に使う Gemini モデル
+ * - 既定は gemini-3.6-flash（検証済み。gemini-2.5-flash は新規プロジェクトでは提供終了のため 404 になる。3.8-flash は高負荷の 503 が多かった）
+ * - VITE_GEMINI_EVENT_MODEL（または GEMINI_EVENT_MODEL）で切替可能（例: gemini-3.8-flash）
+ */
+export const GEMINI_EVENT_MODEL: string =
+  (typeof process !== 'undefined' && process.env?.GEMINI_EVENT_MODEL) ||
+  (import.meta as any).env?.VITE_GEMINI_EVENT_MODEL ||
+  'gemini-3.6-flash';
 
 /**
  * イベント抽出用のローカルAPIキー（本番バンドルへの混入を防ぐため DEV のみ）

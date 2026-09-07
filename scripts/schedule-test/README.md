@@ -1,13 +1,15 @@
 # スケジュール抽出テスト（API課金なし）
 
-本番のイベント抽出は **Gemini 2.5 Flash**（既定・無料枠あり）で、失敗時は Claude にフォールバックする
+本番のイベント抽出は **Gemini Flash**（既定 gemini-3.6-flash・無料枠プロジェクトのキー）で、失敗時は Claude にフォールバックする
 （`docs/AIコスト・モデル方針.md`）。テストは次の2通りで、どちらも**費用ゼロ**:
 
 1. **Gemini で本番と同じリクエストを流す**（推奨・本番そのもの）
    ```
    node scripts/schedule-test/run-gemini.mjs "<pdfsフォルダ名>"
    ```
-   本番コード（`eventExtractionPrompt.ts`）からプロンプトを生成して Gemini 無料枠で実行し、`results/prod-gemini-2.5-flash.json` に保存する。
+   本番コード（`eventExtractionPrompt.ts`）からプロンプトを生成して Gemini 無料枠で実行し、`results/prod-gemini-3.6-flash.json` に保存する。
+   無料枠は**モデルごとに 1分5回・1日20回**なので、13秒間隔で順次実行し 429/503 は待って再試行する。
+   1日の上限に当たったら別モデル名（`... prod gemini-3.8-flash`）で続けられる。
 2. **Claude Code のサブエージェント（Haiku/Sonnet）で読ませる**（Claude 側の比較用）
 
 ## 👉 いちばん短い頼み方（これをClaude Codeに言うだけ）
@@ -89,7 +91,7 @@ node scripts/schedule-test/fetch-pdfs.mjs "2026年8月号"
 
 ## 本番との対応
 - プロンプト・出力型・解析（Claude/Gemini 共通）: `packages/shared/services/ai/eventExtractionPrompt.ts`
-- Gemini 版: `geminiService.ts`（`extractEventCandidatesFromPDFWithGemini` / `extractEventCandidatesWithGemini`、`GEMINI_EVENT_MODEL = 'gemini-2.5-flash'`）
+- Gemini 版: `geminiService.ts`（`extractEventCandidatesFromPDFWithGemini` / `extractEventCandidatesWithGemini`、`GEMINI_EVENT_MODEL`＝既定 gemini-3.6-flash、`VITE_GEMINI_EVENT_MODEL` で切替）
 - Claude 版（フォールバック）: `claudeService.ts`（`...WithClaude`、`CLAUDE_MODEL`）
 - 切替: `aiService.ts` の `extractEventCandidates` / `extractEventCandidatesFromPDF`（`VITE_EVENT_AI_PROVIDER`）
 - ルール詳細: `docs/カレンダー抽出ルール.md`
@@ -102,7 +104,8 @@ node scripts/schedule-test/fetch-pdfs.mjs "2026年8月号"
 | v3 | Haiku 4.5 | 19 | 漏れ3件、誤読残る |
 | v3 | Sonnet 5 | 22 | 全件正解（誤字1字） |
 | v3 | Gemini 2.5 Flash | 24 | 読み取りは Sonnet 同等。啓発期間を2件誤検出 |
-| **v4（本番）** | **Gemini 2.5 Flash** | **22** | 誤検出なし。kind/weekly_topic 付き |
+| v4 | Gemini 2.5 Flash | 22 | 誤検出なし。kind/weekly_topic 付き（有料枠キーのみ利用可） |
+| **v4（本番）** | **Gemini 3.6 Flash** | **22** | 無料枠キーで検証。2.5 と同じ内容。3.8-flash は 503 多発・日次上限で未完 |
 
 ## 注意
 - `pdfs/` は一時作業用。コミット不要（住民のお知らせPDFが含まれるため）。

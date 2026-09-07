@@ -59,19 +59,32 @@ function topicKey(date: string, title: string): string {
   return `${date}__${t}`;
 }
 
-/** 429（無料枠のレート制限）で失敗した場合に一度だけ待って再試行する */
-async function withRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (e: any) {
-    const msg = String(e?.message ?? e);
-    if (/429|RESOURCE_EXHAUSTED|rate limit|quota/i.test(msg)) {
-      await new Promise((r) => setTimeout(r, 8000));
-      return fn();
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 429（無料枠のレート制限）/ 503（高負荷）で失敗した場合に待って再試行する（最大3回）。
+ * エラー文に "retry in 37s" 等があればその秒数に従い、無ければ 15秒・30秒・45秒と延ばす。
+ */
+async function withRateLimitRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message ?? e);
+      const retryable = /429|503|RESOURCE_EXHAUSTED|UNAVAILABLE|high demand|rate limit|quota/i.test(msg);
+      if (!retryable || attempt === maxRetries) throw e;
+      const m = msg.match(/retry in ([\d.]+)s/i) ?? msg.match(/"retryDelay":"(\d+)s"/);
+      const wait = m ? Math.ceil(Number(m[1]) * 1000) + 1000 : 15000 * (attempt + 1);
+      await sleep(wait);
     }
-    throw e;
   }
+  throw lastErr;
 }
+
+/** Gemini 無料枠（1分5リクエスト/モデル）に合わせた、順次処理時の最小リクエスト間隔 */
+const GEMINI_MIN_GAP_MS = 13000;
 
 /**
  * EventCandidateDialogコンポーネントのProps
@@ -405,9 +418,19 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
       return;
     }
 
-    // Gemini（無料枠のRPM制限）は1件ずつ順次、Claude は3件まで同時
-    setProgress({ done: 0, total: taskThunks.length });
-    const settled = await runWithConcurrency(taskThunks, provider === 'gemini' ? 1 : 3, (done, total) =>
+    // Gemini（無料枠のRPM制限）は1件ずつ順次＋間隔を空ける、Claude は3件まで同時
+    let lastStart = 0;
+    const pacedThunks =
+      provider === 'gemini'
+        ? taskThunks.map((t) => async () => {
+            const gap = GEMINI_MIN_GAP_MS - (Date.now() - lastStart);
+            if (lastStart && gap > 0) await sleep(gap);
+            lastStart = Date.now();
+            return t();
+          })
+        : taskThunks;
+    setProgress({ done: 0, total: pacedThunks.length });
+    const settled = await runWithConcurrency(pacedThunks, provider === 'gemini' ? 1 : 3, (done, total) =>
       setProgress({ done, total })
     );
 
