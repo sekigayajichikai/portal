@@ -23,8 +23,11 @@ export * from './services/data/reviewService.js';
 export * from './services/data/radioService.js';
 export * from './services/data/storageService.js';
 export * from './services/data/publisherService.js';
+export * from './services/data/organizerService.js';
 export * from './services/data/eventCardService.js';
 export * from './services/data/likeService.js';
+export * from './services/data/calendarService.js';
+export * from './services/data/bookingService.js';
 
 // 画像関連サービス
 export * from './services/image/pendingImageService.js';

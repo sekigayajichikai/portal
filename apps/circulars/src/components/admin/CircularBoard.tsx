@@ -22,6 +22,7 @@ import { MOCK_CIRCULARS, MOCK_CATEGORIES, MOCK_ARTICLES } from '@cc-saas/shared/
 import { Sparkles, Loader2, Calendar, FileText, Upload, Trash2, Save, Check, ChevronRight, Edit3, ArrowLeft, X } from 'lucide-react';
 import { showToast, showError, appConfirm, ProcessingIndicator } from '@/components/ui/feedback';
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
+import { MonthlyGuide } from './MonthlyGuide';
 import { ArticleList } from './ArticleList';
 import { PDFMetadataDialog } from './PDFMetadataDialog';
 import { NewsletterList } from './NewsletterList';
@@ -63,6 +64,8 @@ async function generatePdfThumbnail(pdfFile: File): Promise<string> {
 export const CircularBoard: React.FC = () => {
   // タブ管理
   const [activeTab, setActiveTab] = useState<'pdf' | 'saved'>('saved');
+  /** ガイドの再判定と一覧の再マウント用（ガイドのボタンで号を開くときに使う） */
+  const [guideNavCount, setGuideNavCount] = useState(0);
 
   // テキスト回覧板の状態
   const [circulars, setCirculars] = useState<Circular[]>(MOCK_CIRCULARS);
@@ -922,6 +925,20 @@ export const CircularBoard: React.FC = () => {
         </div>
       )}
 
+      {/* 今月の流れガイド。常に表示し、編集中はその号を対象にする（編集中に進捗チェックリストを見られる） */}
+      <MonthlyGuide
+        refreshKey={guideNavCount + (activeTab === 'saved' ? 0 : 1000) + (isEditMode ? 1 : 0)}
+        focusNewsletterId={isEditMode ? editingNewsletterId : null}
+        detailed={isEditMode}
+        onCreateNew={() => setActiveTab('pdf')}
+        onOpenNewsletter={(id) => {
+          window.history.replaceState(null, '', `/admin#${id}`);
+          window.dispatchEvent(new HashChangeEvent('hashchange'));
+          setActiveTab('saved');
+          setGuideNavCount((k) => k + 1);
+        }}
+      />
+
       {/* タブ切り替え */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-1 inline-flex gap-1">
         <button
@@ -1381,7 +1398,7 @@ export const CircularBoard: React.FC = () => {
       {/* 保存済み一覧セクション */}
       {activeTab === 'saved' && (
         <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
-          <NewsletterList onEditNewsletter={handleStartEdit} returnToNewsletterId={returnToNewsletterId} />
+          <NewsletterList key={guideNavCount} onEditNewsletter={handleStartEdit} returnToNewsletterId={returnToNewsletterId} />
         </div>
       )}
 

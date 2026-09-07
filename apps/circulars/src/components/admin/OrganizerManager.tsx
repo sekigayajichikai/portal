@@ -1,0 +1,220 @@
+/**
+ * 主催団体マスター管理ダイアログ
+ *
+ * イベントの主催団体を事前登録する。抽出ダイアログではここで登録した
+ * 名前からクリックで選べるようになり、表記揺れを減らせる。
+ */
+
+import React, { useState, useEffect } from 'react';
+import { X, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
+import { getOrganizers, addOrganizer, type Organizer } from '@cc-saas/shared';
+import { getSupabaseClient } from '@cc-saas/shared/services/supabaseClient';
+import { showError, appConfirm } from '@/components/ui/feedback';
+
+interface OrganizerManagerProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const OrganizerManager: React.FC<OrganizerManagerProps> = ({ isOpen, onClose }) => {
+  const [organizers, setOrganizers] = useState<Organizer[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newShortName, setNewShortName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editShortName, setEditShortName] = useState('');
+
+  useEffect(() => {
+    if (isOpen) loadOrganizers();
+  }, [isOpen]);
+
+  const loadOrganizers = async () => {
+    setIsLoading(true);
+    try {
+      const data = await getOrganizers();
+      setOrganizers(data);
+    } catch (error) {
+      console.error('主催団体読み込みエラー:', error);
+      showError('主催団体を読み込めませんでした。マスターが未作成の可能性があります（マイグレーション未適用）。');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAdd = async () => {
+    if (!newName.trim()) return;
+    try {
+      await addOrganizer(newName.trim(), newShortName.trim() || undefined);
+      setNewName('');
+      setNewShortName('');
+      await loadOrganizers();
+    } catch (error) {
+      console.error('主催団体追加エラー:', error);
+      showError('追加できませんでした。時間をおいてもう一度お試しください。');
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!(await appConfirm({
+      title: `「${name}」を削除しますか？`,
+      message: 'この操作は取り消せません。',
+      confirmLabel: '削除する',
+      danger: true,
+    }))) return;
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      await supabase.from('organizers').delete().eq('id', id);
+      await loadOrganizers();
+    } catch (error) {
+      console.error('主催団体削除エラー:', error);
+      showError('削除できませんでした。時間をおいてもう一度お試しください。');
+    }
+  };
+
+  const handleUpdate = async (id: string) => {
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      await supabase.from('organizers').update({
+        name: editName,
+        short_name: editShortName || null,
+      }).eq('id', id);
+      setEditingId(null);
+      await loadOrganizers();
+    } catch (error) {
+      console.error('主催団体更新エラー:', error);
+      showError('更新できませんでした。時間をおいてもう一度お試しください。');
+    }
+  };
+
+  const handleMove = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= organizers.length) return;
+
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    const a = organizers[index];
+    const b = organizers[targetIndex];
+    try {
+      await supabase.from('organizers').update({ display_order: b.display_order }).eq('id', a.id);
+      await supabase.from('organizers').update({ display_order: a.display_order }).eq('id', b.id);
+      await loadOrganizers();
+    } catch (error) {
+      console.error('主催団体並び替えエラー:', error);
+      showError('並び替えできませんでした。時間をおいてもう一度お試しください。');
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col">
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between p-5 border-b border-slate-200">
+          <h3 className="font-bold text-lg text-slate-800">主催団体の管理</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition">
+            <X size={22} />
+          </button>
+        </div>
+
+        {/* 追加フォーム */}
+        <div className="p-4 border-b border-slate-100 bg-slate-50">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="主催団体名（必須）"
+              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+            />
+            <input
+              type="text"
+              value={newShortName}
+              onChange={(e) => setNewShortName(e.target.value)}
+              placeholder="略称"
+              className="w-24 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+            />
+            <button
+              onClick={handleAdd}
+              disabled={!newName.trim()}
+              className="px-3 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition"
+            >
+              <Plus size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* 一覧 */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <p className="text-xs text-slate-500 mb-3">上下ボタンで表示順を変更。名前をクリックで編集。</p>
+          {isLoading ? (
+            <p className="text-center text-slate-500 py-8">読み込み中...</p>
+          ) : organizers.length === 0 ? (
+            <p className="text-center text-slate-500 py-8">主催団体が登録されていません</p>
+          ) : (
+            <div className="space-y-1">
+              {organizers.map((org, index) => (
+                <div key={org.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg group">
+                  {/* 並び替えボタン */}
+                  <div className="flex flex-col shrink-0">
+                    <button
+                      onClick={() => handleMove(index, 'up')}
+                      disabled={index === 0}
+                      className="p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-20 transition"
+                    >
+                      <ArrowUp size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleMove(index, 'down')}
+                      disabled={index === organizers.length - 1}
+                      className="p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-20 transition"
+                    >
+                      <ArrowDown size={14} />
+                    </button>
+                  </div>
+
+                  {/* 順番 */}
+                  <span className="text-xs text-slate-400 w-6 text-center shrink-0">{index + 1}</span>
+
+                  {/* 名前 */}
+                  {editingId === org.id ? (
+                    <div className="flex gap-2 flex-1">
+                      <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
+                        className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm" autoFocus />
+                      <input type="text" value={editShortName} onChange={(e) => setEditShortName(e.target.value)}
+                        placeholder="略称" className="w-20 px-2 py-1 border border-slate-300 rounded text-sm" />
+                      <button onClick={() => handleUpdate(org.id)} className="text-xs px-2 py-1 bg-primary-600 text-white rounded">保存</button>
+                      <button onClick={() => setEditingId(null)} className="text-xs px-2 py-1 bg-slate-200 rounded">取消</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        className="flex-1 cursor-pointer min-w-0"
+                        onClick={() => { setEditingId(org.id); setEditName(org.name); setEditShortName(org.short_name || ''); }}
+                      >
+                        <p className="text-sm font-medium text-slate-700 truncate">{org.name}</p>
+                        {org.short_name && <p className="text-xs text-slate-400">略称: {org.short_name}</p>}
+                      </div>
+                      <button
+                        onClick={() => handleDelete(org.id, org.name)}
+                        className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition shrink-0"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};

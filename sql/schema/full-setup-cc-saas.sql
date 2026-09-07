@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS articles (
   article_type TEXT NOT NULL DEFAULT 'official' CHECK (article_type IN ('official', 'local-info')),
   priority TEXT NOT NULL CHECK (priority IN ('high', 'medium', 'low')),
   control_date DATE,
+  deadline DATE,
 
   -- イベント情報（category=eventの場合にAIが自動入力）
   event_date DATE,

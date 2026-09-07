@@ -6,15 +6,19 @@
  * book-system（自治会カレンダー）連携用のJSONコピー機能も備えます。
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   extractEventCandidates,
+  extractEventCandidatesFromPDF,
+  convertPdfUrlToBase64,
   addEventCard,
+  getOrganizers,
+  addOrganizer,
   type EventCandidate,
   type EventCard,
 } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
-import { Loader2, AlertCircle, X, Sparkles, Copy, Check } from 'lucide-react';
+import { Loader2, AlertCircle, X, Sparkles, Copy, Check, Plus } from 'lucide-react';
 import { ProcessingIndicator } from '@/components/ui/feedback';
 
 /**
@@ -24,6 +28,10 @@ interface EditableCandidate extends EventCandidate {
   selected: boolean;
   /** 記事へのリンクを付けるか（読者側の「詳しく読む」の有無。AIのhas_details判定が初期値） */
   linkArticle: boolean;
+  /** 抽出元（記事テキスト or 添付PDF） */
+  source: 'article' | 'pdf';
+  /** 由来PDFのURL（source==='pdf'のときのみ。出典リンク用） */
+  sourcePdfUrl: string | null;
 }
 
 /**
@@ -54,6 +62,164 @@ function splitEventTime(time: string | null): { start: string | null; end: strin
   return { start: null, end: null };
 }
 
+/** イベント種別の表示メタ（アイコン・ラベル） */
+const CATEGORY_META: Record<'reserve' | 'recurring' | 'open', { label: string; icon: string }> = {
+  reserve: { label: '要予約', icon: '📝' },
+  recurring: { label: '連続', icon: '🔁' },
+  open: { label: '当日OK', icon: '🎪' },
+};
+const CATEGORY_KEYS = ['reserve', 'recurring', 'open'] as const;
+
+/**
+ * 同時実行数を制限してタスクを処理する。
+ * PDFを大量に一度に送るとレート制限/タイムアウトで一部が失敗するため、少数ずつ順に処理する。
+ */
+async function runWithConcurrency<T>(
+  thunks: Array<() => Promise<T>>,
+  limit: number
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(thunks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < thunks.length) {
+      const idx = next++;
+      try {
+        results[idx] = { status: 'fulfilled', value: await thunks[idx]() };
+      } catch (reason) {
+        results[idx] = { status: 'rejected', reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, thunks.length) }, () => worker()));
+  return results;
+}
+
+/**
+ * 主催団体セレクト（Notion風）
+ *
+ * 現在値をチップ表示し、クリックで検索付きのポップオーバーを開く。
+ * 登録済み主催団体から絞り込んで選択でき、未登録の名前はその場で新規登録して選択できる。
+ * ドロップダウンが長くならないよう、検索で候補を絞る方式。
+ */
+const OrganizerSelect: React.FC<{
+  value: string | null;
+  options: string[];
+  onChange: (v: string | null) => void;
+  onCreate: (name: string) => Promise<void>;
+}> = ({ value, options, onChange, onCreate }) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // 外側クリック・Escで閉じる
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q ? options.filter((o) => o.toLowerCase().includes(q)) : options;
+  const exactExists = options.some((o) => o.toLowerCase() === q);
+
+  const choose = (v: string | null) => {
+    onChange(v);
+    setOpen(false);
+    setQuery('');
+  };
+
+  const create = async () => {
+    const name = query.trim();
+    if (!name) return;
+    await onCreate(name);
+    choose(name);
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      {/* 既定は抽出結果のタグ表示のみ。クリックしたときだけNotion風ピッカーを開く */}
+      {value ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          title="クリックで主催団体を変更"
+          className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 rounded px-2 py-0.5 text-xs font-medium hover:bg-slate-200 transition max-w-full"
+        >
+          <span className="truncate">{value}</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 border border-dashed border-slate-300 hover:border-slate-400 rounded px-2 py-0.5 transition"
+        >
+          <Plus size={12} className="shrink-0" />
+          主催団体
+        </button>
+      )}
+
+      {open && (
+        <div className="absolute z-[60] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-slate-100">
+            <input
+              type="text"
+              value={query}
+              autoFocus
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!exactExists && q) create(); else if (filtered[0]) choose(filtered[0]); } }}
+              placeholder="検索または新規追加…"
+              className="w-full text-sm border border-slate-200 rounded px-2 py-1 focus:ring-2 focus:ring-primary-400 focus:border-transparent"
+            />
+          </div>
+          <div className="max-h-44 overflow-y-auto py-1">
+            {value && (
+              <button
+                type="button"
+                onClick={() => choose(null)}
+                className="w-full text-left px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-50"
+              >
+                × 選択を解除
+              </button>
+            )}
+            {filtered.map((o) => (
+              <button
+                type="button"
+                key={o}
+                onClick={() => choose(o)}
+                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 flex items-center justify-between ${o === value ? 'text-slate-900 font-medium' : 'text-slate-700'}`}
+              >
+                <span className="truncate">{o}</span>
+                {o === value && <Check size={14} className="text-slate-500 shrink-0" />}
+              </button>
+            ))}
+            {q && !exactExists && (
+              <button
+                type="button"
+                onClick={create}
+                className="w-full text-left px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50 flex items-center gap-1.5"
+              >
+                <Plus size={14} className="shrink-0" />
+                「{query.trim()}」を新規登録して選択
+              </button>
+            )}
+            {filtered.length === 0 && !q && (
+              <p className="px-3 py-2 text-xs text-slate-400">主催団体が未登録です。上の欄で追加できます。</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /**
  * EventCandidateDialogコンポーネント
  *
@@ -67,35 +233,176 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
   onClose,
 }) => {
   const [candidates, setCandidates] = useState<EditableCandidate[]>([]);
-  const [isExtracting, setIsExtracting] = useState(true);
+  const [isExtracting, setIsExtracting] = useState(false);
+  /** 抽出を開始したか（false のうちは「どのPDFから抽出するか」の選択画面を表示） */
+  const [started, setStarted] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  /** 抽出対象の内訳（記事件数・PDF件数・PDF読み取り失敗数） */
+  const [sourceInfo, setSourceInfo] = useState<{ articles: number; pdfs: number; pdfFailed: number } | null>(null);
+  /** 登録済み主催団体の名前一覧（選択候補・AIヒント用） */
+  const [orgOptions, setOrgOptions] = useState<string[]>([]);
+  /** 抽出元PDF一覧（選択用）。label=媒体名, publisher=発行元 */
+  const [pdfSources, setPdfSources] = useState<
+    { url: string; label: string; publisher: string; isJichikai: boolean }[]
+  >([]);
+  /** 抽出対象に選択したPDFのURL集合（既定は全選択） */
+  const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
+  /** 記事テキストも抽出対象に含めるか */
+  const [includeArticles, setIncludeArticles] = useState(articles.length > 0);
+
+  /** 主催団体をマスターに新規登録して選択候補に反映（テーブル未作成でも選択は通す） */
+  const handleCreateOrganizer = async (name: string): Promise<void> => {
+    try {
+      await addOrganizer(name);
+    } catch {
+      // 既に存在／マスター未作成でも、ローカルの候補には加えて選択できるようにする
+    }
+    setOrgOptions((prev) => (prev.includes(name) ? prev : [...prev, name]));
+  };
 
   /**
-   * マウント時にAI抽出を実行
+   * マウント時: 主催団体と抽出元PDF一覧を準備する（抽出はまだ実行しない）
    */
   useEffect(() => {
     let cancelled = false;
-    const run = async () => {
+    (async () => {
+      let orgNames: string[] = [];
       try {
-        const results = await extractEventCandidates(articles, newsletter.issue_date);
-        if (cancelled) return;
-        setCandidates(results.map((c) => ({
+        orgNames = (await getOrganizers()).map((o) => o.name);
+      } catch {
+        orgNames = [];
+      }
+      if (cancelled) return;
+      setOrgOptions(orgNames);
+
+      // source_pdf_urls は { url, label, publisher, type, thumbnail } のオブジェクト配列（旧データは文字列）。
+      const rawEntries: any[] =
+        newsletter.source_pdf_urls && newsletter.source_pdf_urls.length > 0
+          ? newsletter.source_pdf_urls
+          : newsletter.source_pdf_url
+            ? [newsletter.source_pdf_url]
+            : [];
+      // type==='source'（自治会のお知らせ）なら自治会関連。type未設定の旧データは自治会扱い(true)。
+      const sources = rawEntries
+        .map((e: any, i: number) => {
+          if (typeof e === 'string') return { url: e, label: `PDF ${i + 1}`, publisher: '', isJichikai: true };
+          // 自治会のお知らせ(type='source')は記事化済みなので一覧から除外（記事テキストでカバー）
+          if (e?.url && e.type !== 'source')
+            return {
+              url: e.url as string,
+              label: (e.label || e.publisher || `PDF ${i + 1}`) as string,
+              publisher: (e.publisher || '') as string,
+              isJichikai: e.type ? e.type === 'source' : true,
+            };
+          return null;
+        })
+        .filter(
+          (x): x is { url: string; label: string; publisher: string; isJichikai: boolean } =>
+            !!x && x.url.length > 0
+        );
+      if (cancelled) return;
+      setPdfSources(sources);
+      setSelectedUrls(new Set(sources.map((s) => s.url))); // 既定は全選択
+    })();
+    return () => { cancelled = true; };
+  }, [newsletter.source_pdf_url, newsletter.source_pdf_urls]);
+
+  /**
+   * 選択したソース（記事＋選択PDF）からAI抽出を実行
+   */
+  const startExtraction = async () => {
+    setStarted(true);
+    setIsExtracting(true);
+    setError(null);
+
+    const orgNames = orgOptions;
+    // 「今日」(ローカル日付 YYYY-MM-DD)。これより前の予定は過去として除外する
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    const chosen = pdfSources.filter((s) => selectedUrls.has(s.url));
+    const useArticles = includeArticles && articles.length > 0;
+
+    // PDF大量時のレート制限/失敗を防ぐため、同時実行数を絞って順に処理（記事タスクは先頭固定）。
+    type ExtractTask = { source: 'article' | 'pdf'; items: EventCandidate[]; pdfUrl: string | null };
+    const taskThunks: Array<() => Promise<ExtractTask>> = [];
+    if (useArticles) {
+      taskThunks.push(() =>
+        extractEventCandidates(articles, newsletter.issue_date, orgNames, todayStr).then((items) => ({
+          source: 'article' as const,
+          items,
+          pdfUrl: null,
+        }))
+      );
+    }
+    for (const p of chosen) {
+      taskThunks.push(() =>
+        convertPdfUrlToBase64(p.url)
+          .then((b64) => extractEventCandidatesFromPDF(b64, newsletter.issue_date, orgNames, p.isJichikai, todayStr))
+          .then((items) => ({ source: 'pdf' as const, items, pdfUrl: p.url }))
+      );
+    }
+
+    if (taskThunks.length === 0) {
+      setCandidates([]);
+      setSourceInfo({ articles: 0, pdfs: 0, pdfFailed: 0 });
+      setIsExtracting(false);
+      return;
+    }
+
+    // 同時実行は3件まで
+    const settled = await runWithConcurrency(taskThunks, 3);
+
+    // PDFタスクの成否内訳（記事タスクは先頭。残りがPDF）
+    const pdfResults = useArticles ? settled.slice(1) : settled;
+    const pdfFailed = pdfResults.filter((r) => r.status === 'rejected').length;
+    setSourceInfo({ articles: useArticles ? articles.length : 0, pdfs: chosen.length, pdfFailed });
+
+    // 記事由来を先に並べる（重複時は記事側=リンク可能なほうを優先して残す）
+    const ordered = settled
+      .filter((r): r is PromiseFulfilledResult<ExtractTask> => r.status === 'fulfilled')
+      .sort((a, b) => (a.value.source === 'article' ? -1 : 1));
+
+    const seen = new Set<string>();
+    const merged: EditableCandidate[] = [];
+    for (const r of ordered) {
+      for (const c of r.value.items) {
+        // 過去除外の保険: 今日より前の予定は候補に載せない（AIが拾ってしまっても弾く）
+        if (c.event_date < todayStr) continue;
+        const key = `${c.event_date}__${c.title.trim()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push({
           ...c,
           selected: true,
           linkArticle: c.article_index !== null && c.has_details,
-        })));
-      } catch (err: any) {
-        if (cancelled) return;
-        setError(err?.message ?? 'イベント候補の抽出に失敗しました');
-      } finally {
-        if (!cancelled) setIsExtracting(false);
+          source: r.value.source,
+          sourcePdfUrl: r.value.pdfUrl,
+        });
       }
-    };
-    run();
-    return () => { cancelled = true; };
-  }, [articles, newsletter.issue_date]);
+    }
+
+    setCandidates(merged);
+    if (merged.length === 0) {
+      const firstError = settled.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (firstError) setError(firstError.reason?.message ?? 'イベント候補の抽出に失敗しました');
+    }
+    setIsExtracting(false);
+  };
+
+  /** PDF選択のトグル */
+  const toggleUrl = (url: string) =>
+    setSelectedUrls((prev) => {
+      const n = new Set(prev);
+      if (n.has(url)) n.delete(url); else n.add(url);
+      return n;
+    });
+  const allPdfSelected = pdfSources.length > 0 && pdfSources.every((s) => selectedUrls.has(s.url));
+  const toggleAllPdf = () =>
+    setSelectedUrls(allPdfSelected ? new Set() : new Set(pdfSources.map((s) => s.url)));
+  const selectedSourceCount = (includeArticles && articles.length > 0 ? 1 : 0) + selectedUrls.size;
 
   /**
    * 候補のフィールドを更新
@@ -128,6 +435,9 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           event_date: c.event_date,
           event_time: c.event_time,
           event_location: c.event_location,
+          organizer: c.organizer,
+          category: c.category,
+          source_pdf_url: c.sourcePdfUrl,
           linked_article_id:
             c.linkArticle && c.article_index !== null ? articles[c.article_index]?.id ?? null : null,
           display_order: existingCards.length + i,
@@ -151,6 +461,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
         date: c.event_date,
         title: c.title,
         location: c.event_location,
+        org_name: c.organizer,
         start_time: start,
         end_time: end,
         article_url: window.location.origin,
@@ -177,11 +488,75 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
 
         {/* 本文 */}
         <div className="flex-1 overflow-y-auto p-4">
-          {isExtracting ? (
+          {!started ? (
+            /* ソース選択画面 */
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500">
+                抽出するソースを選んでください。PDFが多いと時間がかかるので、必要なものだけに絞れます。
+                <br />
+                <span className="text-slate-400">※「自治会のお知らせ」PDFは記事に取り込み済みのため、この一覧には出していません（記事テキストで抽出されます）。</span>
+              </p>
+
+              {articles.length > 0 && (
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={includeArticles}
+                    onChange={(e) => setIncludeArticles(e.target.checked)}
+                    className="shrink-0"
+                  />
+                  <span className="text-sm text-slate-700">📝 記事テキスト（{articles.length}件）</span>
+                </label>
+              )}
+
+              {pdfSources.length > 0 ? (
+                <>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-xs font-medium text-slate-500">添付PDF（{pdfSources.length}件）</span>
+                    <button
+                      type="button"
+                      onClick={toggleAllPdf}
+                      className="text-xs text-primary-600 hover:text-primary-800"
+                    >
+                      {allPdfSelected ? 'すべて解除' : 'すべて選択'}
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {pdfSources.map((s) => (
+                      <label
+                        key={s.url}
+                        className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedUrls.has(s.url)}
+                          onChange={() => toggleUrl(s.url)}
+                          className="shrink-0"
+                        />
+                        <span
+                          className={`text-[11px] px-1.5 py-0.5 rounded shrink-0 font-medium ${s.isJichikai ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}
+                        >
+                          {s.isJichikai ? '自治会' : '地域'}
+                        </span>
+                        <span className="text-sm text-slate-700 truncate">{s.label}</span>
+                        {s.publisher ? (
+                          <span className="text-xs text-slate-400 truncate shrink-0">発行元: {s.publisher}</span>
+                        ) : (
+                          <span className="text-xs text-slate-300 shrink-0">発行元なし</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-slate-400">この号には添付PDFがありません。</p>
+              )}
+            </div>
+          ) : isExtracting ? (
             <div className="py-8">
               <ProcessingIndicator
-                label="AIが記事からイベントの予定を読み取っています…"
-                sublabel="記事の量によって1分ほどかかることがあります。このままお待ちください。"
+                label="AIが選択したソースからイベントの予定を読み取っています…"
+                sublabel="PDFの枚数によって数分かかることがあります。このままお待ちください。"
               />
             </div>
           ) : error ? (
@@ -190,17 +565,44 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
               <p className="text-sm text-red-600">{error}</p>
             </div>
           ) : candidates.length === 0 ? (
-            <p className="text-sm text-slate-500 text-center py-12">
-              カレンダーに登録できそうなイベントは見つかりませんでした
-            </p>
+            <div className="text-center py-12">
+              <p className="text-sm text-slate-500">
+                カレンダーに登録できそうなイベントは見つかりませんでした
+              </p>
+              {sourceInfo && (
+                <p className="text-[11px] text-slate-400 mt-2">
+                  抽出対象: 記事{sourceInfo.articles}件・PDF{sourceInfo.pdfs}件
+                  {sourceInfo.pdfFailed > 0 && (
+                    <span className="text-amber-600"> ／ PDF{sourceInfo.pdfFailed}件は読み取れませんでした</span>
+                  )}
+                </p>
+              )}
+            </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs text-slate-500 mb-3">
+              <p className="text-xs text-slate-500 mb-1">
                 内容を確認・修正し、登録するものにチェックを入れてください（{candidates.length}件抽出）
               </p>
+              {sourceInfo && (
+                <p className="text-[11px] text-slate-400 mb-3">
+                  抽出対象: 記事{sourceInfo.articles}件・PDF{sourceInfo.pdfs}件
+                  {sourceInfo.pdfFailed > 0 && (
+                    <span className="text-amber-600"> ／ PDF{sourceInfo.pdfFailed}件は読み取れませんでした</span>
+                  )}
+                </p>
+              )}
               {candidates.map((c, i) => {
                 const linkedArticle = c.article_index !== null ? articles[c.article_index] : undefined;
                 const duplicate = isDuplicate(c);
+                // 抽出元PDF（PDF由来のみ）。媒体名＋発行元を表示
+                const srcPdf = c.sourcePdfUrl
+                  ? pdfSources.find((s) => s.url === c.sourcePdfUrl) ?? null
+                  : null;
+                const srcLabel = srcPdf
+                  ? srcPdf.publisher
+                    ? `${srcPdf.label}（${srcPdf.publisher}）`
+                    : srcPdf.label
+                  : null;
                 return (
                   <div
                     key={i}
@@ -242,7 +644,42 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                           onChange={(e) => updateCandidate(i, { event_location: e.target.value || null })}
                           className="text-sm border border-slate-300 rounded px-2 py-1 w-full"
                         />
+                        <OrganizerSelect
+                          value={c.organizer}
+                          options={orgOptions}
+                          onChange={(v) => updateCandidate(i, { organizer: v })}
+                          onCreate={handleCreateOrganizer}
+                        />
                         <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${c.source === 'pdf' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
+                            title={c.source === 'pdf' ? '添付PDFから抽出' : '記事本文から抽出'}
+                          >
+                            {c.source === 'pdf' ? '📄 PDF' : '📝 記事'}
+                          </span>
+                          {srcLabel && (
+                            <span
+                              className="text-[11px] text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 max-w-[16rem] truncate"
+                              title={`発行元/媒体: ${srcLabel}`}
+                            >
+                              📄 {srcLabel}
+                            </span>
+                          )}
+                          {/* 種別（クリックで切替。もう一度押すと解除） */}
+                          {CATEGORY_KEYS.map((cat) => {
+                            const active = c.category === cat;
+                            return (
+                              <button
+                                key={cat}
+                                type="button"
+                                onClick={() => updateCandidate(i, { category: active ? null : cat })}
+                                className={`text-[11px] px-1.5 py-0.5 rounded font-medium border transition ${active ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
+                                title={`種別: ${CATEGORY_META[cat].label}`}
+                              >
+                                {CATEGORY_META[cat].icon} {CATEGORY_META[cat].label}
+                              </button>
+                            );
+                          })}
                           {linkedArticle && (
                             <label className="text-xs flex items-center gap-1.5 cursor-pointer select-none" title="オンにすると読者側のカードに「詳しく読む」が表示され、記事が開けます。予定表など、カード以上の情報がない記事ならオフにしてください">
                               <input
@@ -268,8 +705,28 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           )}
         </div>
 
-        {/* フッター */}
-        {!isExtracting && candidates.length > 0 && (
+        {/* フッター（ソース選択） */}
+        {!started && (
+          <div className="flex items-center justify-end gap-2 p-4 border-t border-slate-200">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={startExtraction}
+              disabled={selectedSourceCount === 0}
+              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-40 flex items-center gap-2"
+            >
+              <Sparkles size={15} />
+              選択した{selectedSourceCount}件から抽出
+            </button>
+          </div>
+        )}
+
+        {/* フッター（確認・登録） */}
+        {started && !isExtracting && candidates.length > 0 && (
           <div className="flex items-center justify-between gap-3 p-4 border-t border-slate-200">
             <button
               onClick={handleCopyJson}
