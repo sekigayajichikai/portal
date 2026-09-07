@@ -18,6 +18,19 @@ import { MOCK_CATEGORIES } from '@cc-saas/shared/constants';
 import { showToast, showError, appConfirm, appPrompt, ProcessingIndicator } from '@/components/ui/feedback';
 
 /**
+ * 回覧板一覧から除外する号のタイトル。
+ * 「関ヶ谷レポート」は記事の器（常設枠）で、管理は ReportBoard が担当する。
+ * ここに出すと号ごと削除できてしまい、レポート記事が巻き添えで消えるため除外する。
+ */
+const EXCLUDED_NEWSLETTER_TITLES = ['関ヶ谷レポート'];
+
+/** 回覧板として扱う号だけを取得する（レポート枠を除外） */
+async function loadCircularNewsletters() {
+  const all = await getNewsletters();
+  return all.filter((n) => !EXCLUDED_NEWSLETTER_TITLES.includes(n.title));
+}
+
+/**
  * NewsletterListコンポーネントのProps
  */
 interface NewsletterListProps {
@@ -95,7 +108,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   useEffect(() => {
     if (returnToNewsletterId && !selectedNewsletter) {
       const refresh = async () => {
-        const freshList = await getNewsletters();
+        const freshList = await loadCircularNewsletters();
         setNewsletters(freshList);
         const target = freshList.find((n) => n.id === returnToNewsletterId);
         if (target) {
@@ -114,7 +127,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     setError(null);
     try {
       console.log('📋 電子回覧板一覧を読み込み中...');
-      const data = await getNewsletters();
+      const data = await loadCircularNewsletters();
       setNewsletters(data);
       console.log('✅ 電子回覧板読み込み完了:', data.length, '件');
     } catch (error: any) {
@@ -136,6 +149,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   const handleSelectNewsletter = async (newsletter: Newsletter & { article_count: number }) => {
     setSelectedNewsletter(newsletter);
     window.history.replaceState(null, '', `/admin#${newsletter.id}`);
+    // 今月の流れガイドを開いた号に追従させる（replaceStateはhashchangeを発火しないため手動発火）
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
     setIsLoadingArticles(true);
     setError(null);
     setViewingPublished(false);
@@ -198,6 +213,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     setArticles([]);
     setError(null);
     window.history.replaceState(null, '', '/admin');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   };
 
   /**
@@ -237,7 +253,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
       });
 
       // Newsletterデータも再取得（PDF一覧の表示を維持するため）
-      const freshList = await getNewsletters();
+      const freshList = await loadCircularNewsletters();
       setNewsletters(freshList);
       const updated = freshList.find((n) => n.id === selectedNewsletter?.id);
       if (updated) setSelectedNewsletter(updated as any);
@@ -389,7 +405,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                   try {
                     const { newsletter: copy } = await duplicateNewsletterAsDraft(selectedNewsletter.id);
                     // 一覧を再読み込みしてコピーを表示
-                    const updatedList = await getNewsletters();
+                    const updatedList = await loadCircularNewsletters();
                     setNewsletters(updatedList);
                     // コピーの詳細画面に遷移
                     const copyWithCount = updatedList.find((n) => n.id === copy.id);
@@ -420,6 +436,18 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             >
               <Smartphone size={18} />
               プレビュー
+            </button>
+
+            {/* 公開プレビュー（公開せずに住民ページ全タブを別タブで表示） */}
+            <button
+              onClick={() =>
+                window.open(`/?preview=${selectedNewsletter.id}`, '_blank', 'noopener')
+              }
+              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-200 font-medium transition-colors"
+              title="公開後の住民ページ（回覧板/レポート/カレンダー等の全タブ）を、公開せずに別タブで確認"
+            >
+              <Eye size={18} />
+              公開プレビュー
             </button>
 
             {/* 担当者に確認依頼（下書きのみ） */}
@@ -461,10 +489,15 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             {selectedNewsletter.status === 'draft' ? (
               <button
                 onClick={async () => {
+                  // 開発環境は本番と同じDBに繋がっているため、公開前に本番反映の警告を出す
+                  const isDev = import.meta.env.DEV;
                   if (!(await appConfirm({
-                    title: 'この回覧板を公開しますか？',
-                    message: '公開すると住民に表示されます。',
-                    confirmLabel: '公開する',
+                    title: isDev ? '⚠️ 開発環境から本番に公開されます' : 'この回覧板を公開しますか？',
+                    message: isDev
+                      ? '今は開発環境ですが、本番と同じデータベースに接続しています。公開すると本番サイトにも即反映されます。本当に公開しますか？'
+                      : '公開すると住民に表示されます。',
+                    confirmLabel: isDev ? '本番に公開する' : '公開する',
+                    danger: isDev,
                   }))) return;
                   try {
                     const updated = await publishNewsletter(selectedNewsletter.id);
@@ -692,9 +725,12 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowEventExtract(true)}
-                disabled={articles.length === 0}
+                disabled={
+                  articles.length === 0 &&
+                  !((selectedNewsletter.source_pdf_urls?.length || 0) > 0 || selectedNewsletter.source_pdf_url)
+                }
                 className="text-sm text-primary-600 hover:text-primary-800 font-medium flex items-center gap-1 disabled:opacity-40"
-                title="記事からイベント候補をAIで抽出します"
+                title="記事と添付PDFからイベント候補をAIで抽出します"
               >
                 <Sparkles size={16} /> AIで抽出
               </button>
@@ -761,7 +797,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           {eventCards.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-4">イベントカードがありません</p>
           ) : (
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {eventCards.map((card) => {
                 const linkedArticle = articles.find(a => a.id === card.linked_article_id);
                 if (editingCard?.id === card.id) {
@@ -829,14 +865,20 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                   );
                 }
                 return (
-                  <div key={card.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg group">
+                  <div key={card.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-blue-600">{card.event_date || '日付未定'}</span>
-                        {card.event_time && <span className="text-xs text-slate-500">{card.event_time}</span>}
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-blue-600 shrink-0">{card.event_date || '日付未定'}</span>
+                        {card.event_time && <span className="text-xs text-slate-500 shrink-0">{card.event_time}</span>}
+                        <span className="text-sm font-medium text-slate-800 truncate">{card.title}</span>
                       </div>
-                      <p className="text-sm font-medium text-slate-800 truncate">{card.title}</p>
-                      {card.event_location && <p className="text-xs text-slate-400">📍 {card.event_location}</p>}
+                      {(card.event_location || card.organizer) && (
+                        <p className="text-xs text-slate-400 truncate">
+                          {card.event_location && `📍 ${card.event_location}`}
+                          {card.event_location && card.organizer && '　'}
+                          {card.organizer && `🏛 ${card.organizer}`}
+                        </p>
+                      )}
                       {linkedArticle ? (
                         <p className="text-xs text-primary-600 mt-0.5 flex items-center gap-2">
                           <span className="truncate">🔗 {linkedArticle.title}</span>
@@ -1036,7 +1078,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                       if (supabase) {
                         await supabase.from('newsletters').update({ source_pdf_urls: entries }).eq('id', selectedNewsletter.id);
                       }
-                      const freshList = await getNewsletters();
+                      const freshList = await loadCircularNewsletters();
                       setNewsletters(freshList);
                       const updated = freshList.find(n => n.id === selectedNewsletter.id);
                       if (updated) setSelectedNewsletter(updated as any);
@@ -1065,7 +1107,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         for (const pdf of pdfEntries) {
                           await removePdfUrlFromNewsletter(selectedNewsletter.id, pdf.url);
                         }
-                        const freshList = await getNewsletters();
+                        const freshList = await loadCircularNewsletters();
                         setNewsletters(freshList);
                         const updated = freshList.find((n) => n.id === selectedNewsletter.id);
                         if (updated) setSelectedNewsletter(updated as any);
@@ -1189,7 +1231,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                                   if (idx >= 0) entries[idx] = { ...entries[idx], thumbnail: result.url };
                                   const supabase = getSupabaseClient();
                                   if (supabase) await supabase.from('newsletters').update({ source_pdf_urls: entries }).eq('id', selectedNewsletter.id);
-                                  const freshList = await getNewsletters();
+                                  const freshList = await loadCircularNewsletters();
                                   setNewsletters(freshList);
                                   const updated = freshList.find(n => n.id === selectedNewsletter.id);
                                   if (updated) setSelectedNewsletter(updated as any);
@@ -1214,7 +1256,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                                   entries[idx] = { ...current, type: newType };
                                   const supabase = getSupabaseClient();
                                   if (supabase) await supabase.from('newsletters').update({ source_pdf_urls: entries }).eq('id', selectedNewsletter.id);
-                                  const freshList = await getNewsletters();
+                                  const freshList = await loadCircularNewsletters();
                                   setNewsletters(freshList);
                                   const updated = freshList.find(n => n.id === selectedNewsletter.id);
                                   if (updated) setSelectedNewsletter(updated as any);
