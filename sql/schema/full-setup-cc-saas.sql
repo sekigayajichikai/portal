@@ -152,6 +152,12 @@ CREATE TABLE IF NOT EXISTS event_cards (
   event_location TEXT,
   linked_article_id UUID REFERENCES articles(id) ON DELETE SET NULL,
   display_order INTEGER DEFAULT 0,
+  organizer TEXT,                     -- 主催団体（AI抽出）
+  source_pdf_url TEXT,                -- 抽出元PDFのURL（PDF由来のみ）
+  category TEXT,                      -- reserve / recurring / open / NULL
+  kind TEXT,                          -- community / support / class / NULL
+  weekly_topic BOOLEAN DEFAULT FALSE, -- 週次LINE配信のトピック候補
+  topic_reason TEXT,                  -- weekly_topic の根拠
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

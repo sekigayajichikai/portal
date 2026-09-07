@@ -2,10 +2,21 @@
 
 回覧板の記事／PDF抽出に使うLLMの選定とコスト方針のメモ。
 
-## 現状（2026-09-06）
-- 抽出は Claude を使用。モデル定数は `packages/shared/services/ai/claudeService.ts` の `CLAUDE_MODEL`。
-- **採用: Claude Haiku 4.5（`claude-haiku-4-5`）**。コスト削減のため Sonnet 4.6 から切替。
+## 現状（2026-09-07）
+- **カレンダー予定（イベント候補）抽出: Gemini 2.5 Flash**（B案を実施。`geminiService.ts` の `GEMINI_EVENT_MODEL`）。
+  失敗時は Claude（`CLAUDE_MODEL`）にフォールバック。切替は `VITE_EVENT_AI_PROVIDER`（既定 gemini）。
+- 記事化（PDF→記事）・メタデータ抽出などは引き続き Claude。モデル定数は `claudeService.ts` の `CLAUDE_MODEL`（Haiku 4.5）。
 - 抽出結果は人が確認ダイアログで承認するため、多少モデルが弱くても実害は小さい。
+
+### 2026-09-07 の検証結果（8本18ページ、`scripts/schedule-test/results/`）
+| モデル | 件数/正解22 | 1回の費用（実測） | 所見 |
+|---|---|---|---|
+| Haiku 4.5 | 19〜27（漏れ・誤読あり） | ¥8 | 縦書きスキャンを毎回部分誤読。名称の言い換え・合成 |
+| Sonnet 5 | 22 | ¥16 | 全件正解 |
+| Gemini 2.5 Flash | 22（v4） | ¥7.6（思考込み）／無料枠 ¥0 | 読み取りは Sonnet 同等。判断はやや甘いので除外ルールを明示して対処 |
+
+Claude は PDF 1ページ ≈ 1,600 tokens、Gemini は 258 tokens 固定。Gemini は思考トークンが出力の4倍ほど付くため
+有料換算では Haiku と同程度だが、無料枠の範囲では ¥0。
 
 ## 料金比較（1Mトークンあたり, 2026-09時点）
 | モデル | 入力 | 出力 | PDF対応 | 備考 |
@@ -18,7 +29,11 @@
 この業務は月1回・月数ドル未満なので、絶対額は小さい。最大のコストドライバーは
 「1回の抽出で全PDF(10〜23枚)を毎回再送」すること（テスト時の浪費含む）。
 
-## B案（将来検討）: PDF/イベント抽出を Gemini 2.5 Flash に移植
+## B案（**実施済み 2026-09-07**）: PDF/イベント抽出を Gemini 2.5 Flash に移植
+実装: プロンプト・解析を `eventExtractionPrompt.ts` に共通化して二重管理を回避。Gemini 版は `geminiService.ts`、
+切替とフォールバックは `aiService.ts`。無料枠の RPM 制限に合わせ、抽出ダイアログは PDF を1枚ずつ順次処理。
+本番（ブラウザ）は ai-proxy 経由で呼ぶため、Edge Function のシークレット `GEMINI_API_KEY` が必要。
+以下は着手前のメモ。
 - **狙い**: Sonnet比 約1/10、無料枠ならこの規模は実質$0。
 - **前提が揃っている**: `VITE_GEMINI_API_KEY` は設定済み。`services/ai/geminiService.ts` は既に
   `@google/genai` の `gemini-2.5-flash` を利用中（現状はPDFイベント抽出には未使用）。GeminiはPDFネイティブ対応。

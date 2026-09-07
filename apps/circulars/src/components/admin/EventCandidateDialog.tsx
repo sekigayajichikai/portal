@@ -10,11 +10,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   extractEventCandidates,
   extractEventCandidatesFromPDF,
+  getEventExtractionProvider,
+  getEventExtractionProviderLabel,
   convertPdfUrlToBase64,
   addEventCard,
   getOrganizers,
   addOrganizer,
   type EventCandidate,
+  type EventKind,
   type EventCard,
 } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
@@ -32,6 +35,42 @@ interface EditableCandidate extends EventCandidate {
   source: 'article' | 'pdf';
   /** 由来PDFのURL（source==='pdf'のときのみ。出典リンク用） */
   sourcePdfUrl: string | null;
+  /** weekly_topic の機械判定の根拠（単独チラシ / 複数掲載）。AIの topic_reason とは別に表示する */
+  topicHints: string[];
+}
+
+/** 性質(kind)の表示メタ */
+const KIND_META: Record<EventKind, { label: string; icon: string; title: string }> = {
+  community: { label: '交流', icon: '🎉', title: '地域交流の催し（祭り・芸術祭・講演会・だれでも参加の集まり）' },
+  support: { label: '支援', icon: '🤝', title: '福祉・健康・生活支援の案内（健康測定・相談会・介護者向け）' },
+  class: { label: '教室', icon: '📚', title: '定例の教室・講座・サロン' },
+};
+const KIND_KEYS: EventKind[] = ['community', 'support', 'class'];
+
+/**
+ * 重複掲載の判定に使うタイトルの正規化（空白・括弧・記号を除き、先頭8文字で同一視）
+ */
+function topicKey(date: string, title: string): string {
+  const t = title
+    .replace(/[\s　]/g, '')
+    .replace(/[「」『』（）()【】\[\]〈〉《》・･、。,.!！?？:：;；~〜～\-‐–—]/g, '')
+    .toLowerCase()
+    .slice(0, 8);
+  return `${date}__${t}`;
+}
+
+/** 429（無料枠のレート制限）で失敗した場合に一度だけ待って再試行する */
+async function withRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e: any) {
+    const msg = String(e?.message ?? e);
+    if (/429|RESOURCE_EXHAUSTED|rate limit|quota/i.test(msg)) {
+      await new Promise((r) => setTimeout(r, 8000));
+      return fn();
+    }
+    throw e;
+  }
 }
 
 /**
@@ -76,10 +115,12 @@ const CATEGORY_KEYS = ['reserve', 'recurring', 'open'] as const;
  */
 async function runWithConcurrency<T>(
   thunks: Array<() => Promise<T>>,
-  limit: number
+  limit: number,
+  onSettled?: (done: number, total: number) => void
 ): Promise<PromiseSettledResult<T>[]> {
   const results: PromiseSettledResult<T>[] = new Array(thunks.length);
   let next = 0;
+  let done = 0;
   const worker = async () => {
     while (next < thunks.length) {
       const idx = next++;
@@ -88,6 +129,8 @@ async function runWithConcurrency<T>(
       } catch (reason) {
         results[idx] = { status: 'rejected', reason };
       }
+      done++;
+      onSettled?.(done, thunks.length);
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, thunks.length) }, () => worker()));
@@ -241,6 +284,10 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
   const [copied, setCopied] = useState(false);
   /** 抽出対象の内訳（記事件数・PDF件数・PDF読み取り失敗数） */
   const [sourceInfo, setSourceInfo] = useState<{ articles: number; pdfs: number; pdfFailed: number } | null>(null);
+  /** 抽出の進捗（順次処理のため件数で見せる） */
+  const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  /** 使用する抽出プロバイダ（Gemini / Claude）。表示と並列数の決定に使う */
+  const provider = getEventExtractionProvider();
   /** 登録済み主催団体の名前一覧（選択候補・AIヒント用） */
   const [orgOptions, setOrgOptions] = useState<string[]>([]);
   /** 抽出元PDF一覧（選択用）。label=媒体名, publisher=発行元 */
@@ -330,17 +377,23 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
     const taskThunks: Array<() => Promise<ExtractTask>> = [];
     if (useArticles) {
       taskThunks.push(() =>
-        extractEventCandidates(articles, newsletter.issue_date, orgNames, todayStr).then((items) => ({
-          source: 'article' as const,
-          items,
-          pdfUrl: null,
-        }))
+        withRateLimitRetry(() => extractEventCandidates(articles, newsletter.issue_date, orgNames, todayStr)).then(
+          (items) => ({
+            source: 'article' as const,
+            items,
+            pdfUrl: null,
+          })
+        )
       );
     }
     for (const p of chosen) {
       taskThunks.push(() =>
         convertPdfUrlToBase64(p.url)
-          .then((b64) => extractEventCandidatesFromPDF(b64, newsletter.issue_date, orgNames, p.isJichikai, todayStr))
+          .then((b64) =>
+            withRateLimitRetry(() =>
+              extractEventCandidatesFromPDF(b64, newsletter.issue_date, orgNames, p.isJichikai, todayStr)
+            )
+          )
           .then((items) => ({ source: 'pdf' as const, items, pdfUrl: p.url }))
       );
     }
@@ -352,8 +405,11 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
       return;
     }
 
-    // 同時実行は3件まで
-    const settled = await runWithConcurrency(taskThunks, 3);
+    // Gemini（無料枠のRPM制限）は1件ずつ順次、Claude は3件まで同時
+    setProgress({ done: 0, total: taskThunks.length });
+    const settled = await runWithConcurrency(taskThunks, provider === 'gemini' ? 1 : 3, (done, total) =>
+      setProgress({ done, total })
+    );
 
     // PDFタスクの成否内訳（記事タスクは先頭。残りがPDF）
     const pdfResults = useArticles ? settled.slice(1) : settled;
@@ -365,17 +421,41 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
       .filter((r): r is PromiseFulfilledResult<ExtractTask> => r.status === 'fulfilled')
       .sort((a, b) => (a.value.source === 'article' ? -1 : 1));
 
+    // 週次配信トピックの機械判定（AI判定より優先）
+    //  1) 複数掲載: 同じイベント（日付＋正規化タイトル）が記事とPDFの両方、または2本以上のPDFに載っている
+    //  2) 単独チラシ: 1本のPDFから抽出されたイベントが1件だけ（＝そのイベントのためのチラシ）
+    const sourcesByKey = new Map<string, Set<string>>();
+    for (const r of ordered) {
+      for (const c of r.value.items) {
+        if (c.event_date < todayStr) continue;
+        const key = topicKey(c.event_date, c.title);
+        const set = sourcesByKey.get(key) ?? new Set<string>();
+        set.add(r.value.source === 'article' ? 'article' : `pdf:${r.value.pdfUrl}`);
+        sourcesByKey.set(key, set);
+      }
+    }
+
     const seen = new Set<string>();
     const merged: EditableCandidate[] = [];
     for (const r of ordered) {
-      for (const c of r.value.items) {
-        // 過去除外の保険: 今日より前の予定は候補に載せない（AIが拾ってしまっても弾く）
-        if (c.event_date < todayStr) continue;
+      const futureItems = r.value.items.filter((c) => c.event_date >= todayStr);
+      const isSingleFlyer = r.value.source === 'pdf' && futureItems.length === 1;
+      for (const c of futureItems) {
+        // 過去除外の保険は上で済み（今日より前の予定は候補に載せない）
         const key = `${c.event_date}__${c.title.trim()}`;
         if (seen.has(key)) continue;
         seen.add(key);
+
+        const hints: string[] = [];
+        if ((sourcesByKey.get(topicKey(c.event_date, c.title))?.size ?? 0) >= 2) hints.push('複数掲載');
+        if (isSingleFlyer) hints.push('単独チラシ');
+        // 機械判定に当たれば true。当たらない場合、支援系(support)はAIの甘い true を抑えて false に倒す
+        const weeklyTopic = hints.length > 0 ? true : c.kind === 'support' ? false : c.weekly_topic;
+
         merged.push({
           ...c,
+          weekly_topic: weeklyTopic,
+          topicHints: hints,
           selected: true,
           linkArticle: c.article_index !== null && c.has_details,
           source: r.value.source,
@@ -437,6 +517,9 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           event_location: c.event_location,
           organizer: c.organizer,
           category: c.category,
+          kind: c.kind,
+          weekly_topic: c.weekly_topic,
+          topic_reason: c.topicHints.length > 0 ? c.topicHints.join('・') : c.topic_reason,
           source_pdf_url: c.sourcePdfUrl,
           linked_article_id:
             c.linkArticle && c.article_index !== null ? articles[c.article_index]?.id ?? null : null,
@@ -480,6 +563,9 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           <h2 className="font-bold text-slate-800 flex items-center gap-2">
             <Sparkles size={18} className="text-primary-600" />
             イベント候補の確認（AI抽出）
+            <span className="text-[11px] font-normal text-slate-400" title="抽出に使うAI">
+              {getEventExtractionProviderLabel()}
+            </span>
           </h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
             <X size={20} />
@@ -556,7 +642,11 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
             <div className="py-8">
               <ProcessingIndicator
                 label="AIが選択したソースからイベントの予定を読み取っています…"
-                sublabel="PDFの枚数によって数分かかることがあります。このままお待ちください。"
+                sublabel={
+                  progress.total > 0
+                    ? `${progress.done} / ${progress.total} 件を処理しました。${provider === 'gemini' ? '無料枠の制限のため1件ずつ順に処理しています。' : ''}PDFの枚数によって数分かかることがあります。`
+                    : 'PDFの枚数によって数分かかることがあります。このままお待ちください。'
+                }
               />
             </div>
           ) : error ? (
@@ -581,7 +671,11 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           ) : (
             <div className="space-y-2">
               <p className="text-xs text-slate-500 mb-1">
-                内容を確認・修正し、登録するものにチェックを入れてください（{candidates.length}件抽出）
+                内容を確認・修正し、登録するものにチェックを入れてください（{candidates.length}件抽出
+                {candidates.some((c) => c.weekly_topic) && (
+                  <>・⭐ 配信候補 {candidates.filter((c) => c.weekly_topic).length}件</>
+                )}
+                ）
               </p>
               {sourceInfo && (
                 <p className="text-[11px] text-slate-400 mb-3">
@@ -680,6 +774,36 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                               </button>
                             );
                           })}
+                          {/* 性質（交流/支援/教室。クリックで切替、もう一度押すと解除） */}
+                          <span className="text-slate-300 text-[11px]">|</span>
+                          {KIND_KEYS.map((k) => {
+                            const active = c.kind === k;
+                            return (
+                              <button
+                                key={k}
+                                type="button"
+                                onClick={() => updateCandidate(i, { kind: active ? null : k })}
+                                className={`text-[11px] px-1.5 py-0.5 rounded font-medium border transition ${active ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
+                                title={`性質: ${KIND_META[k].title}`}
+                              >
+                                {KIND_META[k].icon} {KIND_META[k].label}
+                              </button>
+                            );
+                          })}
+                          {/* 週次配信トピック候補（機械判定＋AI判定。クリックで切替） */}
+                          <button
+                            type="button"
+                            onClick={() => updateCandidate(i, { weekly_topic: !c.weekly_topic })}
+                            className={`text-[11px] px-1.5 py-0.5 rounded font-medium border transition ${c.weekly_topic ? 'bg-amber-400 text-amber-950 border-amber-400' : 'bg-white text-slate-400 border-slate-200 hover:border-amber-300'}`}
+                            title={`週次LINE配信で取り上げる候補${c.topicHints.length > 0 ? `（${c.topicHints.join('・')}）` : c.topic_reason ? `（AI判定: ${c.topic_reason}）` : ''}`}
+                          >
+                            ⭐ 配信候補
+                            {(c.topicHints.length > 0 || c.topic_reason) && (
+                              <span className="ml-1 font-normal opacity-80">
+                                {c.topicHints.length > 0 ? c.topicHints.join('・') : c.topic_reason}
+                              </span>
+                            )}
+                          </button>
                           {linkedArticle && (
                             <label className="text-xs flex items-center gap-1.5 cursor-pointer select-none" title="オンにすると読者側のカードに「詳しく読む」が表示され、記事が開けます。予定表など、カード以上の情報がない記事ならオフにしてください">
                               <input

@@ -9,6 +9,8 @@
 import type { Category, ExtractionResult, BusScheduleExtractionResult } from '../../types/index.js';
 import * as claudeService from './claudeService.js';
 import * as openRouterService from './openRouterService.js';
+import * as geminiService from './geminiService.js';
+import type { EventCandidate, EventPromptArticle } from './eventExtractionPrompt.js';
 import { isAIProxyAvailable } from './aiProxyClient.js';
 
 /**
@@ -286,4 +288,90 @@ export async function extractBusScheduleFromPDF(
     console.error(`${provider}でのバス時刻表抽出に失敗しました:`, error);
     throw error;
   }
+}
+
+// =====================================================
+// カレンダー予定（イベント候補）抽出のプロバイダ切替
+//
+// 既定は Gemini 2.5 Flash（無料枠・読み取り精度は Sonnet 同等。docs/AIコスト・モデル方針.md B案）。
+// VITE_EVENT_AI_PROVIDER=anthropic で Claude（CLAUDE_MODEL）に切替可能。
+// Gemini 側が失敗した場合は Claude にフォールバックする。
+// 呼び出し側（EventCandidateDialog）は import 名を変えずにこちらを使う。
+// =====================================================
+
+/** イベント抽出に使うプロバイダ */
+export type EventExtractionProvider = 'gemini' | 'anthropic';
+
+/**
+ * イベント抽出プロバイダを決める
+ * - VITE_EVENT_AI_PROVIDER（または EVENT_AI_PROVIDER）: 'gemini' | 'anthropic'。既定 'gemini'
+ * - Gemini が使えない（DEVでキー無し かつ プロキシ無し）場合は anthropic
+ */
+export function getEventExtractionProvider(): EventExtractionProvider {
+  const configured = String(
+    (typeof process !== 'undefined' && process.env?.EVENT_AI_PROVIDER) ||
+      (import.meta as any).env?.VITE_EVENT_AI_PROVIDER ||
+      'gemini'
+  ).toLowerCase();
+  if (configured === 'anthropic') return 'anthropic';
+  return geminiService.hasGeminiEventAccess() ? 'gemini' : 'anthropic';
+}
+
+/** 画面表示用のプロバイダ名 */
+export function getEventExtractionProviderLabel(): string {
+  return getEventExtractionProvider() === 'gemini'
+    ? `Gemini（${geminiService.GEMINI_EVENT_MODEL}）`
+    : `Claude（${claudeService.CLAUDE_MODEL}）`;
+}
+
+/** Gemini で失敗したとき Claude に切り替えて再実行する共通処理 */
+async function withEventFallback<T>(
+  label: string,
+  gemini: () => Promise<T>,
+  claude: () => Promise<T>
+): Promise<T> {
+  if (getEventExtractionProvider() === 'anthropic') {
+    return claude();
+  }
+  try {
+    return await gemini();
+  } catch (error) {
+    console.warn(`⚠️ Gemini での${label}に失敗したため Claude で再試行します:`, error);
+    return claude();
+  }
+}
+
+/**
+ * 記事群からイベント候補を抽出（プロバイダ自動切替）
+ */
+export async function extractEventCandidates(
+  articles: EventPromptArticle[],
+  referenceDate: string,
+  organizerNames: string[] = [],
+  cutoffDate: string = ''
+): Promise<EventCandidate[]> {
+  return withEventFallback(
+    '記事からのイベント抽出',
+    () => geminiService.extractEventCandidatesWithGemini(articles, referenceDate, organizerNames, cutoffDate),
+    () => claudeService.extractEventCandidatesWithClaude(articles, referenceDate, organizerNames, cutoffDate)
+  );
+}
+
+/**
+ * PDFから直接イベント候補を抽出（プロバイダ自動切替）
+ */
+export async function extractEventCandidatesFromPDF(
+  pdfBase64: string,
+  referenceDate: string,
+  organizerNames: string[] = [],
+  isJichikai: boolean = true,
+  cutoffDate: string = ''
+): Promise<EventCandidate[]> {
+  return withEventFallback(
+    'PDFからのイベント抽出',
+    () =>
+      geminiService.extractEventCandidatesFromPDFWithGemini(pdfBase64, referenceDate, organizerNames, isJichikai, cutoffDate),
+    () =>
+      claudeService.extractEventCandidatesFromPDFWithClaude(pdfBase64, referenceDate, organizerNames, isJichikai, cutoffDate)
+  );
 }

@@ -8,6 +8,14 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
 import { PublicEvent } from '../../types/index.js';
+import { invokeAIProxy, isAIProxyAvailable } from './aiProxyClient.js';
+import {
+  buildArticleEventPrompt,
+  buildPdfEventPrompt,
+  parseEventCandidatesFromResponse,
+  type EventCandidate,
+  type EventPromptArticle,
+} from './eventExtractionPrompt.js';
 
 /**
  * Gemini AI クライアントインスタンスを取得する
@@ -341,4 +349,177 @@ function bufferToWave(abuffer: AudioBuffer, len: number) {
   }
 
   return new Blob([buffer], { type: 'audio/wav' });
+}
+
+// =====================================================
+// カレンダー予定（イベント候補）抽出 — Gemini 2.5 Flash 版
+//
+// 本番のイベント抽出はこちらを既定で使う（docs/AIコスト・モデル方針.md B案）。
+// プロンプト・出力型・解析は Claude 版と共通（eventExtractionPrompt.ts）。
+// - 開発モード: VITE_GEMINI_API_KEY で REST を直接呼ぶ
+// - 本番ブラウザ: ai-proxy（Edge Function）経由。シークレット GEMINI_API_KEY が必要
+// - 無料枠の RPM 制限に合わせ、呼び出し側（EventCandidateDialog）は PDF を1枚ずつ順次処理する
+// =====================================================
+
+/** イベント抽出に使う Gemini モデル */
+export const GEMINI_EVENT_MODEL = 'gemini-2.5-flash';
+
+/**
+ * イベント抽出用のローカルAPIキー（本番バンドルへの混入を防ぐため DEV のみ）
+ */
+function getLocalGeminiKey(): string | undefined {
+  const nodeKey = typeof process !== 'undefined' && process.env?.GEMINI_API_KEY;
+  if (nodeKey) return nodeKey;
+  const env = (import.meta as any).env;
+  if (env?.DEV) return env?.VITE_GEMINI_API_KEY || env?.GEMINI_API_KEY;
+  return undefined;
+}
+
+/** Gemini でイベント抽出ができるか（ローカルキー or プロキシ） */
+export function hasGeminiEventAccess(): boolean {
+  return !!getLocalGeminiKey() || isAIProxyAvailable();
+}
+
+/** Gemini generateContent の REST レスポンス（必要な部分のみ） */
+type GeminiGenerateResponse = {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+    finishReason?: string;
+  }>;
+  promptFeedback?: { blockReason?: string };
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
+  error?: { message?: string };
+};
+
+/**
+ * Gemini generateContent を呼ぶ（ローカルキーがあれば直接、無ければ ai-proxy 経由）
+ * REST ボディ形式に統一し、scripts/schedule-test/run-gemini.mjs と同じリクエストになるようにする。
+ */
+async function callGeminiGenerate(body: unknown): Promise<GeminiGenerateResponse> {
+  const path = `models/${GEMINI_EVENT_MODEL}:generateContent`;
+  const key = getLocalGeminiKey();
+  if (key) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${path}?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = (await res.json().catch(() => ({}))) as GeminiGenerateResponse;
+    if (!res.ok) {
+      throw new Error(`Gemini API エラー (${res.status}): ${json?.error?.message ?? res.statusText}`);
+    }
+    return json;
+  }
+  return invokeAIProxy<GeminiGenerateResponse>('gemini', body, path);
+}
+
+/** Gemini の構造化出力スキーマ（events 配列）。値の正規化は parseEventCandidatesFromResponse 側で行う */
+const EVENT_RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    events: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          article_index: { type: 'INTEGER', nullable: true },
+          title: { type: 'STRING' },
+          event_date: { type: 'STRING' },
+          event_time: { type: 'STRING', nullable: true },
+          event_location: { type: 'STRING', nullable: true },
+          organizer: { type: 'STRING', nullable: true },
+          category: { type: 'STRING', nullable: true },
+          has_details: { type: 'BOOLEAN' },
+          kind: { type: 'STRING', nullable: true },
+          weekly_topic: { type: 'BOOLEAN' },
+          topic_reason: { type: 'STRING', nullable: true },
+          source_text: { type: 'STRING', nullable: true },
+        },
+        required: ['title', 'event_date', 'has_details', 'weekly_topic'],
+      },
+    },
+  },
+  required: ['events'],
+} as const;
+
+/** レスポンスからテキストを取り出す（ブロック・空応答はエラーに） */
+function extractGeminiText(res: GeminiGenerateResponse): string {
+  if (res.promptFeedback?.blockReason) {
+    throw new Error(`Gemini が応答をブロックしました: ${res.promptFeedback.blockReason}`);
+  }
+  const text = (res.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+  if (!text.trim()) {
+    const reason = res.candidates?.[0]?.finishReason;
+    throw new Error(`Gemini からテキスト応答がありません${reason ? `（${reason}）` : ''}`);
+  }
+  return text;
+}
+
+/**
+ * PDFから直接イベント候補を抽出（Gemini）
+ *
+ * Claude 版 extractEventCandidatesFromPDFWithClaude と同じ入出力。
+ *
+ * @param pdfBase64 - Base64エンコードされたPDFデータ（データURLプレフィックスなし）
+ * @param referenceDate - 年の補完に使う基準日 YYYY-MM-DD
+ * @param organizerNames - 登録済み主催団体名（表記揺れ防止）
+ * @param isJichikai - 自治会関連PDFか（true なら締切系も抽出可）
+ * @param cutoffDate - 本日 YYYY-MM-DD（これより前の予定は除外）
+ */
+export async function extractEventCandidatesFromPDFWithGemini(
+  pdfBase64: string,
+  referenceDate: string,
+  organizerNames: string[] = [],
+  isJichikai: boolean = true,
+  cutoffDate: string = ''
+): Promise<EventCandidate[]> {
+  if (!hasGeminiEventAccess()) {
+    throw new Error('Gemini が利用できません（APIキー/プロキシ未設定）');
+  }
+  const prompt = buildPdfEventPrompt({ referenceDate, cutoffDate, isJichikai, organizerNames });
+  const res = await callGeminiGenerate({
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } },
+          { text: prompt },
+        ],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: EVENT_RESPONSE_SCHEMA,
+      temperature: 0,
+    },
+  });
+  // PDF由来のため記事は0件（article_indexは常にnullになる）
+  return parseEventCandidatesFromResponse(extractGeminiText(res), 0);
+}
+
+/**
+ * 記事群からイベント候補を抽出（Gemini）
+ *
+ * Claude 版 extractEventCandidatesWithClaude と同じ入出力。
+ */
+export async function extractEventCandidatesWithGemini(
+  articles: EventPromptArticle[],
+  referenceDate: string,
+  organizerNames: string[] = [],
+  cutoffDate: string = ''
+): Promise<EventCandidate[]> {
+  if (!hasGeminiEventAccess()) {
+    throw new Error('Gemini が利用できません（APIキー/プロキシ未設定）');
+  }
+  if (articles.length === 0) return [];
+  const prompt = buildArticleEventPrompt({ articles, referenceDate, cutoffDate, organizerNames });
+  const res = await callGeminiGenerate({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: EVENT_RESPONSE_SCHEMA,
+      temperature: 0,
+    },
+  });
+  return parseEventCandidatesFromResponse(extractGeminiText(res), articles.length);
 }

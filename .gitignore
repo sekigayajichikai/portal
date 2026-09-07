@@ -40,3 +40,6 @@ Supabase Snippet*.csv
 
 # レポートのサンプル動画（サイズが大きいためリポジトリに含めない）
 apps/circulars/public/report-sample/*.mp4
+
+# スケジュール抽出テストのプロンプトバンドル（build-prompt.mjs が生成）
+scripts/schedule-test/.prompt-bundle.mjs

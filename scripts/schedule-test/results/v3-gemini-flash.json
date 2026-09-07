@@ -1,0 +1,404 @@
+{
+  "promptLabel": "v3-gemini-flash",
+  "folder": "202609_01 - コピー",
+  "model": "gemini-2.5-flash",
+  "prompt": "prompt-v3.md",
+  "issue_date": "2026-08-29",
+  "today": "2026-09-07",
+  "usage_total": {
+    "input": 13698,
+    "output": 3838,
+    "thinking": 14846
+  },
+  "results": [
+    {
+      "file": "20260829_にしかぜ209号.pdf",
+      "label": "にしかぜ209号",
+      "isJichikai": false,
+      "events": [
+        {
+          "title": "にしかな芸術祭",
+          "event_date": "2026-10-03",
+          "event_time": "10:30-15:00",
+          "event_location": "西金沢地域ケアプラザ",
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "open",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "年1回の芸術祭",
+          "source_text": "にしかな芸術祭 10月3日(土)10:30~15:00"
+        },
+        {
+          "title": "医療講演会 高齢者の生活習慣病について",
+          "event_date": "2026-11-04",
+          "event_time": "13:00-14:30",
+          "event_location": null,
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "reserve",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "専門家による講演",
+          "source_text": "医療講演会 高齢者の生活習慣病について 11月4日(水)13:00~14:30"
+        },
+        {
+          "title": "男性料理教室",
+          "event_date": "2026-11-24",
+          "event_time": "10:00-11:30",
+          "event_location": "西金沢地域ケアプラザ2階調理室",
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "reserve",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "体験講座",
+          "source_text": "男性料理教室 日時 2026年11月24日(火) 10:00~11:30"
+        },
+        {
+          "title": "転倒骨折予防脳トレ体操",
+          "event_date": "2026-10-23",
+          "event_time": "10:00-11:30",
+          "event_location": "2階多目的ホール",
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "reserve",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "健康増進の体操",
+          "source_text": "転倒骨折予防脳トレ体操 日時:10月23日(金) 10:00~11:30"
+        },
+        {
+          "title": "だれでもカレー・だれでもボッチャ",
+          "event_date": "2026-11-14",
+          "event_time": "11:00-14:00",
+          "event_location": "西金沢コミュニティハウス(旧中学校)",
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "open",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "幅広い住民向けイベント",
+          "source_text": "だれでもカレー・だれでもボッチャ 日時2026年11月14日(土) 11:00~14:00"
+        },
+        {
+          "title": "にしかな工房",
+          "event_date": "2026-09-17",
+          "event_time": "13:30-15:00 (10/15も)",
+          "event_location": "多目的ホール",
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": false,
+          "topic_reason": "定例活動",
+          "source_text": "にしかな工房 9月17日(木)・10月15日(木)"
+        },
+        {
+          "title": "お元気サロン「かたつむりカフェ」",
+          "event_date": "2026-09-24",
+          "event_time": "11:30-13:30 (10/22も)",
+          "event_location": "多目的ホール",
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": false,
+          "topic_reason": "定例サロン",
+          "source_text": "お元気サロン「かたつむりカフェ」 9月24日(木)・10月22日(木)"
+        },
+        {
+          "title": "ジャンケンポン",
+          "event_date": "2026-09-08",
+          "event_time": "11時頃より (9/15も)",
+          "event_location": null,
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": false,
+          "topic_reason": "定例活動",
+          "source_text": "ジャンケンポン 9月8日(火) 9月15日(火)"
+        },
+        {
+          "title": "みんなでワイワイ百人一首",
+          "event_date": "2026-11-06",
+          "event_time": "10:00-12:00",
+          "event_location": "多目的ホール",
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": false,
+          "topic_reason": "定例活動",
+          "source_text": "みんなでワイワイ百人一首 11月6日(金)"
+        },
+        {
+          "title": "ミュージックカフェ",
+          "event_date": "2026-11-06",
+          "event_time": "13:30-15:30",
+          "event_location": "多目的ホール",
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": false,
+          "topic_reason": "定例活動",
+          "source_text": "ミュージックカフェ 11月6日(金)"
+        },
+        {
+          "title": "カラオケ広場",
+          "event_date": "2026-09-25",
+          "event_time": "13:30-15:30 (10/23も)",
+          "event_location": "多目的ホール",
+          "organizer": "西金沢地域ケアプラザ",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": false,
+          "topic_reason": "定例活動",
+          "source_text": "カラオケ広場 9月25日(金) 申込 9/1(火)から"
+        },
+        {
+          "title": "体力測定やります",
+          "event_date": "2026-09-17",
+          "event_time": "10:00-11:30",
+          "event_location": null,
+          "organizer": "地域包括支援センター",
+          "category": "reserve",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "健康増進イベント",
+          "source_text": "体力測定やります 9月17日(木) 10:00~11:30"
+        },
+        {
+          "title": "介護者のつどい アロマ講座",
+          "event_date": "2026-10-28",
+          "event_time": "10:30-12:00",
+          "event_location": null,
+          "organizer": "地域包括支援センター",
+          "category": "reserve",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "特定の対象向け講座",
+          "source_text": "介護者のつどい アロマ講座 10月28日(水) 10:30~12:00"
+        },
+        {
+          "title": "チェアヨガ体験講座",
+          "event_date": "2026-10-09",
+          "event_time": "10:30-12:00",
+          "event_location": null,
+          "organizer": "地域包括支援センター",
+          "category": "reserve",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "体験講座",
+          "source_text": "チェアヨガ体験講座 10月9日(金) 10:30~12:00"
+        }
+      ],
+      "usage": {
+        "input": 2197,
+        "output": 2239,
+        "thinking": 5522
+      },
+      "error": null
+    },
+    {
+      "file": "20260829_センターだより9月号.pdf",
+      "label": "センターだより9月号",
+      "isJichikai": false,
+      "events": [
+        {
+          "title": "押し花装飾「押し花で作ろうボールペンとシャープペン2本セット",
+          "event_date": "2026-10-03",
+          "event_time": "9:30-11:30",
+          "event_location": null,
+          "organizer": "釜利谷地区センター",
+          "category": "reserve",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "体験講座",
+          "source_text": "押し花装飾 10/3(土) 9:30~11:30"
+        },
+        {
+          "title": "手ごねのパン作り 秋",
+          "event_date": "2026-10-19",
+          "event_time": "9:15-13:00（11/16も）",
+          "event_location": null,
+          "organizer": "釜利谷地区センター",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "体験講座",
+          "source_text": "手ごねのパン作り 秋 10/19,11/16(月)全2回"
+        },
+        {
+          "title": "みんなの健康体操",
+          "event_date": "2026-09-11",
+          "event_time": "10:00-11:00（9/25、10/9も）",
+          "event_location": null,
+          "organizer": "釜利谷地区センター",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": false,
+          "topic_reason": "定例教室",
+          "source_text": "みんなの健康体操 9/11,25、10/9(金曜日)"
+        },
+        {
+          "title": "水彩画講座",
+          "event_date": "2026-10-15",
+          "event_time": "9:30-11:30（10/29、11/5,19も）",
+          "event_location": null,
+          "organizer": "釜利谷地区センター",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "体験講座",
+          "source_text": "水彩画講座 10/15,29、11/5,19(木)全4回"
+        },
+        {
+          "title": "おひざの上のお話会",
+          "event_date": "2026-09-07",
+          "event_time": "11:00-11:30（10/5も）",
+          "event_location": "プレイルーム",
+          "organizer": "釜利谷地区センター",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": false,
+          "topic_reason": "定例イベント",
+          "source_text": "おひざの上のお話会 9月7日・10月5日(月)"
+        },
+        {
+          "title": "おもちゃ病院",
+          "event_date": "2026-09-24",
+          "event_time": "9:30-12:30（10/22も）",
+          "event_location": null,
+          "organizer": "釜利谷地区センター",
+          "category": "recurring",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "修理イベント",
+          "source_text": "おもちゃ病院 9月24日・10月22日(木)"
+        }
+      ],
+      "usage": {
+        "input": 1681,
+        "output": 959,
+        "thinking": 1618
+      },
+      "error": null
+    },
+    {
+      "file": "20260829_敬老芸能大会.pdf",
+      "label": "敬老芸能大会",
+      "isJichikai": false,
+      "events": [
+        {
+          "title": "第七十一回 敬老芸能大会",
+          "event_date": "2026-09-20",
+          "event_time": "12:10-null",
+          "event_location": "釜利谷地区センター(二階体育室)",
+          "organizer": "釜利谷地区連合町内会",
+          "category": "open",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "年1回の芸能大会",
+          "source_text": "第七十一回 敬老芸能大会 日時 令和八年九月二十日(日)"
+        }
+      ],
+      "usage": {
+        "input": 1939,
+        "output": 172,
+        "thinking": 1788
+      },
+      "error": null
+    },
+    {
+      "file": "20260829_西金学援隊.pdf",
+      "label": "西金学援隊",
+      "isJichikai": false,
+      "events": [],
+      "usage": {
+        "input": 1681,
+        "output": 4,
+        "thinking": 753
+      },
+      "error": null
+    },
+    {
+      "file": "20260829_西金沢学園.pdf",
+      "label": "西金沢学園",
+      "isJichikai": false,
+      "events": [],
+      "usage": {
+        "input": 1681,
+        "output": 4,
+        "thinking": 880
+      },
+      "error": null
+    },
+    {
+      "file": "20260829_釜利谷西駐在所だより.pdf",
+      "label": "釜利谷西駐在所だより",
+      "isJichikai": false,
+      "events": [
+        {
+          "title": "秋の全国交通安全運動の実施",
+          "event_date": "2026-09-21",
+          "event_time": null,
+          "event_location": null,
+          "organizer": null,
+          "category": null,
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "全国的な運動",
+          "source_text": "秋の全国交通安全運動の実施 令和8年9月21日日"
+        },
+        {
+          "title": "交通事故死ゼロを目指す日",
+          "event_date": "2026-09-30",
+          "event_time": null,
+          "event_location": null,
+          "organizer": null,
+          "category": null,
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "全国的な運動",
+          "source_text": "交通事故死ゼロを目指す日 9月30日(水)"
+        }
+      ],
+      "usage": {
+        "input": 1423,
+        "output": 266,
+        "thinking": 2270
+      },
+      "error": null
+    },
+    {
+      "file": "202609会員向け報告会(9.27開催).pdf",
+      "label": "会員向け報告会(9.27開催)",
+      "isJichikai": true,
+      "events": [
+        {
+          "title": "会員向け報告会 正式運用開始のご報告・意見交換",
+          "event_date": "2026-09-27",
+          "event_time": "13:30-15:00",
+          "event_location": "西金沢コミュニティハウス 多目的室",
+          "organizer": "DX委員会",
+          "category": "open",
+          "has_details": true,
+          "weekly_topic": true,
+          "topic_reason": "LINE運用開始報告・意見交換",
+          "source_text": "会員向け報告会 正式運用開始のご報告・意見交換会 9月27日(日)13:30~15:00"
+        }
+      ],
+      "usage": {
+        "input": 1419,
+        "output": 190,
+        "thinking": 1246
+      },
+      "error": null
+    },
+    {
+      "file": "202609防災だより 2026年9月号 最終版.pdf",
+      "label": "防災だより 2026年9月号 最終版",
+      "isJichikai": true,
+      "events": [],
+      "usage": {
+        "input": 1677,
+        "output": 4,
+        "thinking": 769
+      },
+      "error": null
+    }
+  ]
+}

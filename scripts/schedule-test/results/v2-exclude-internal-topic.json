@@ -1,0 +1,85 @@
+{
+  "promptLabel": "v2",
+  "folder": "202609_01 - コピー",
+  "model": "claude-haiku-4-5 (Claude Code subagent)",
+  "prompt": "prompt-v2.md",
+  "issue_date": "2026-08-29",
+  "today": "2026-09-07",
+  "note": "v1 + 施設利用者向け内部行事の除外 + weekly_topic フラグ。種別は 会員向け報告会・防災だより=自治会関連、他=地域",
+  "results": [
+    {
+      "file": "20260829_にしかぜ209号.pdf",
+      "label": "にしかぜ209号",
+      "isJichikai": false,
+      "events": [
+        {"title":"にしかな芸術祭","event_date":"2026-10-03","event_time":"10:30-15:00","event_location":"西金沢地域ケアプラザ","organizer":"西金沢地域ケアプラザ","category":"open","has_details":true,"weekly_topic":true,"topic_reason":"年1回の芸術祭"},
+        {"title":"体力測定やります","event_date":"2026-09-17","event_time":"10:00-11:30","event_location":null,"organizer":"包括支援センター","category":"reserve","has_details":true,"weekly_topic":false,"topic_reason":"定期講座"},
+        {"title":"毎週火曜ジャンケンボン","event_date":"2026-09-08","event_time":"10:00-12:00","event_location":"多目的ホール","organizer":"西金沢地域ケアプラザ","category":"recurring","has_details":true,"weekly_topic":false,"topic_reason":"定期サロン"},
+        {"title":"毎月にしかな工房","event_date":"2026-09-17","event_time":"13:30-15:00","event_location":"多目的ホール","organizer":"西金沢地域ケアプラザ","category":"recurring","has_details":true,"weekly_topic":false,"topic_reason":"定期講座"},
+        {"title":"毎月お元気サロン","event_date":"2026-09-24","event_time":"11:30-13:30","event_location":"多目的ホール","organizer":"西金沢地域ケアプラザ","category":"recurring","has_details":true,"weekly_topic":false,"topic_reason":"定期サロン"},
+        {"title":"毎月ジャンケンボン歌う会","event_date":"2026-09-25","event_time":"13:30-15:30","event_location":"多目的ホール","organizer":"西金沢地域ケアプラザ","category":"recurring","has_details":true,"weekly_topic":false,"topic_reason":"定期活動"},
+        {"title":"チェアヨガ体験講座","event_date":"2026-10-09","event_time":"10:30-12:00","event_location":"西金沢コミュニティハウス（旧中学校）","organizer":"包括支援センター","category":"reserve","has_details":true,"weekly_topic":false,"topic_reason":"体験講座"},
+        {"title":"転倒骨折予防運動講座","event_date":"2026-10-23","event_time":"10:00-11:30","event_location":null,"organizer":"包括支援センター","category":"reserve","has_details":true,"weekly_topic":false,"topic_reason":"定期講座"},
+        {"title":"毎月みんなでワイワイ百人一首","event_date":"2026-11-06","event_time":"10:00-12:00","event_location":"多目的ホール","organizer":"西金沢地域ケアプラザ","category":"recurring","has_details":true,"weekly_topic":false,"topic_reason":"定期活動"},
+        {"title":"毎月ミュージックカフェ","event_date":"2026-11-06","event_time":"13:30-15:30","event_location":"多目的ホール","organizer":"西金沢地域ケアプラザ","category":"recurring","has_details":true,"weekly_topic":false,"topic_reason":"定期活動"},
+        {"title":"医療講演会高齢者生活習慣病","event_date":"2026-11-04","event_time":"13:00-14:30","event_location":null,"organizer":"西金沢地域ケアプラザ","category":"reserve","has_details":true,"weekly_topic":false,"topic_reason":"医療講演会"},
+        {"title":"だれでもカレー・ホッチャ","event_date":"2026-11-14","event_time":"11:00-14:00","event_location":"西金沢コミュニティハウス（旧中学校）","organizer":"西金沢地域ケアプラザ","category":"open","has_details":true,"weekly_topic":false,"topic_reason":"食イベント"},
+        {"title":"男性料理教室","event_date":"2026-11-24","event_time":"10:00-11:30","event_location":"西金沢地域ケアプラザ 2階調理室","organizer":"西金沢地域ケアプラザ","category":"reserve","has_details":true,"weekly_topic":false,"topic_reason":"料理教室"}
+      ]
+    },
+    {
+      "file": "20260829_センターだより9月号.pdf",
+      "label": "センターだより9月号",
+      "isJichikai": false,
+      "events": [
+        {"title":"押し花装飾","event_date":"2026-10-03","event_time":"09:30-11:30","event_location":null,"organizer":"釜利谷地区センター","category":"reserve","has_details":true,"weekly_topic":false,"topic_reason":"定例講座"},
+        {"title":"手ごねのパン作り秋","event_date":"2026-10-19","event_time":"09:15-13:00","event_location":null,"organizer":"釜利谷地区センター","category":"recurring","has_details":true,"weekly_topic":false,"topic_reason":"定例講座"},
+        {"title":"みんなの健康体操","event_date":"2026-09-11","event_time":"10:00-11:00","event_location":null,"organizer":"釜利谷地区センター","category":"recurring","has_details":true,"weekly_topic":false,"topic_reason":"定例体操教室"},
+        {"title":"水彩画講座","event_date":"2026-10-15","event_time":"09:30-11:30","event_location":null,"organizer":"釜利谷地区センター","category":"recurring","has_details":true,"weekly_topic":false,"topic_reason":"定例講座"},
+        {"title":"おひざの上のお話会","event_date":"2026-09-07","event_time":"11:00-11:30","event_location":"プレイルーム","organizer":"釜利谷地区センター","category":"open","has_details":true,"weekly_topic":false,"topic_reason":"定例お話会"},
+        {"title":"おもちゃ病院","event_date":"2026-09-24","event_time":"09:30-12:30","event_location":null,"organizer":"釜利谷地区センター","category":"open","has_details":true,"weekly_topic":false,"topic_reason":"定例修理サービス"}
+      ]
+    },
+    {
+      "file": "20260829_敬老芸能大会.pdf",
+      "label": "敬老芸能大会",
+      "isJichikai": false,
+      "events": [
+        {"title":"敬老芸能大会","event_date":"2026-09-22","event_time":"09:00-12:00","event_location":"釜利谷地区センター","organizer":"釜利谷地区連合町内会","category":"open","has_details":true,"weekly_topic":true,"topic_reason":"年1回の敬老芸能大会"}
+      ],
+      "ground_truth": {"event_date":"2026-09-20","event_time":"12:10（開場11:40）","event_location":"釜利谷地区センター 二階体育室","organizer":"釜利谷地区連合町内会","note":"v1は日付○会場×、v2は会場○日付×・時間×（時間は自治会の受付時間 9〜12時を誤って採用）"}
+    },
+    {
+      "file": "20260829_西金学援隊.pdf",
+      "label": "西金学援隊",
+      "isJichikai": false,
+      "events": []
+    },
+    {
+      "file": "20260829_西金沢学園.pdf",
+      "label": "西金沢学園",
+      "isJichikai": false,
+      "events": []
+    },
+    {
+      "file": "20260829_釜利谷西駐在所だより.pdf",
+      "label": "釜利谷西駐在所だより",
+      "isJichikai": false,
+      "events": []
+    },
+    {
+      "file": "202609会員向け報告会(9.27開催).pdf",
+      "label": "会員向け報告会",
+      "isJichikai": true,
+      "events": [
+        {"title":"会員向け報告会","event_date":"2026-09-27","event_time":"13:30-15:00","event_location":"西金沢コミュニティハウス 多目的室","organizer":"DX委員会","category":null,"has_details":true,"weekly_topic":true,"topic_reason":"LINE正式運用説明"}
+      ]
+    },
+    {
+      "file": "202609防災だより 2026年9月号 最終版.pdf",
+      "label": "防災だより9月号",
+      "isJichikai": true,
+      "events": []
+    }
+  ]
+}

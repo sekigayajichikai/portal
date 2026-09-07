@@ -20,6 +20,12 @@ export interface EventCard {
   source_pdf_url?: string | null;
   /** 種別: 'reserve'(要予約) / 'recurring'(連続) / 'open'(当日参加OK) / null(一般)。列が無い場合はundefined */
   category?: 'reserve' | 'recurring' | 'open' | null;
+  /** 性質: 'community'(地域交流) / 'support'(福祉・健康支援) / 'class'(定例教室) / null。列が無い場合はundefined */
+  kind?: 'community' | 'support' | 'class' | null;
+  /** 週次LINE配信のトピック候補（1枚ものチラシ・複数掲載・AI判定から。列が無い場合はundefined） */
+  weekly_topic?: boolean | null;
+  /** weekly_topic の根拠（例: 単独チラシ / 複数掲載 / 年1回の芸術祭） */
+  topic_reason?: string | null;
 }
 
 /** 公開カレンダー表示用に、出典（リンク記事・由来PDF）を含めたイベントカード */

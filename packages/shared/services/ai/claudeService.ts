@@ -11,6 +11,18 @@ import type { Article, Category, ExtractionResult } from '../../types/index.js';
 import type { BusScheduleExtractionResult, BusSchedule } from '../../types/index.js';
 import { MOCK_ARTICLES } from '../../constants/mockData.js';
 import { invokeAIProxy, isAIProxyAvailable } from './aiProxyClient.js';
+import { repairJsonString } from './jsonRepair.js';
+import {
+  buildArticleEventPrompt,
+  buildPdfEventPrompt,
+  parseEventCandidatesFromResponse,
+  type EventCandidate,
+  type EventPromptArticle,
+} from './eventExtractionPrompt.js';
+
+// 既存の import 互換のため再エクスポート（型・ルールの実体は eventExtractionPrompt.ts）
+export type { EventCandidate, EventKind } from './eventExtractionPrompt.js';
+export { CATEGORY_RULE, KIND_RULE, TOPIC_RULE, buildOrganizerHint, parseEventCandidatesFromResponse } from './eventExtractionPrompt.js';
 
 /**
  * 使用するClaudeモデルID（全呼び出しで共通）
@@ -280,71 +292,6 @@ ${categories.map((c) => `- ${c.id}: ${c.label}`).join('\n')}
  * @param responseText - Claude APIからのレスポンステキスト
  * @returns 記事データの配列
  */
-function repairJsonString(jsonStr: string): string {
-  const result: string[] = [];
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < jsonStr.length; i++) {
-    const char = jsonStr[i];
-
-    if (escaped) {
-      if (!'"\\/bfnrtu'.includes(char)) {
-        // 不正なエスケープシーケンス → バックスラッシュをエスケープ
-        result.push('\\');
-      }
-      result.push(char);
-      escaped = false;
-      continue;
-    }
-
-    if (char === '\\' && inString) {
-      escaped = true;
-      result.push(char);
-      continue;
-    }
-
-    if (char === '"') {
-      if (!inString) {
-        inString = true;
-        result.push(char);
-      } else {
-        // 文字列終端かどうかを後続文字で判定
-        const rest = jsonStr.substring(i + 1).trimStart();
-        const nextChar = rest[0];
-        if (
-          nextChar === undefined ||
-          nextChar === ',' ||
-          nextChar === '}' ||
-          nextChar === ']' ||
-          nextChar === ':'
-        ) {
-          // 文字列の終端
-          inString = false;
-          result.push(char);
-        } else {
-          // 文字列内のエスケープされていないダブルクォート
-          result.push('\\"');
-        }
-      }
-      continue;
-    }
-
-    // 文字列内のリテラル改行・タブをエスケープ
-    if (inString) {
-      if (char === '\n') { result.push('\\n'); continue; }
-      if (char === '\r') { continue; }
-      if (char === '\t') { result.push('\\t'); continue; }
-      // 制御文字を除去
-      if (char.charCodeAt(0) < 0x20) { continue; }
-    }
-
-    result.push(char);
-  }
-
-  return result.join('');
-}
-
 function parseArticlesFromResponse(
   responseText: string
 ): Omit<Article, 'id' | 'newsletter_id' | 'organization_id' | 'created_at' | 'updated_at'>[] {
@@ -1089,54 +1036,6 @@ function mockExtractBusSchedule(): BusScheduleExtractionResult {
 }
 
 /**
- * イベント候補
- *
- * 記事群からAIが抽出した、カレンダー登録候補のイベント情報です。
- * article_index で抽出元の記事（入力配列の添字）を指します。
- */
-export interface EventCandidate {
-  /** 抽出元記事の添字（入力配列基準。特定できない場合はnull） */
-  article_index: number | null;
-  /** イベント名（20文字以内） */
-  title: string;
-  /** 開催日 YYYY-MM-DD */
-  event_date: string;
-  /** 時間帯（例: "10:00-12:00"。不明ならnull） */
-  event_time: string | null;
-  /** 開催場所（不明ならnull） */
-  event_location: string | null;
-  /** 主催団体・主催者（自治会/子ども会/学校 など。不明ならnull） */
-  organizer: string | null;
-  /** イベント種別: 'reserve'(要予約) / 'recurring'(連続) / 'open'(当日参加OK) / null(一般) */
-  category: 'reserve' | 'recurring' | 'open' | null;
-  /** 抽出元記事に日時・場所以上の詳細情報（持ち物・申込方法・費用・内容説明など）があるか */
-  has_details: boolean;
-}
-
-/** イベント種別(category)判定と、連続イベントの集約ルール（プロンプト共通） */
-const CATEGORY_RULE = `- 【種別 category】各イベントに種別を付ける:
-  - "reserve": 予約・事前申込が必要なもの（「要予約」「申込先」「事前申込」等。地区センターの講座など対象が限られるもの）
-  - "recurring": 継続・定期開催のもの。次のいずれかに当てはまれば recurring にする:
-      ・「毎週」「隔週」「毎月」「定期」「全N回」「連続」などの語がある
-      ・タイトルに回数を示す「①②③…」「(2)」「第N回」などが付く（例: 「◯◯体操②」）
-      ・習い事・教室・講座・サロン・クラブなど、継続して開催される催し
-  - "open": 申込不要で当日自由に参加できるもの（お祭り・サロンなど）
-  - 上記に当てはまらなければ null
-- 【連続イベントの集約】category が "recurring" の場合は日付ごとに分けず1件にまとめる。event_date は「基準日以降で最も近い開催日」にし、title か event_time に「毎週◯曜」等の繰り返しが分かる表現を入れる`;
-
-/**
- * 登録済み主催団体をプロンプトに与えるヒント文を作る（表記揺れ低減用）
- */
-function buildOrganizerHint(organizerNames: string[]): string {
-  if (!organizerNames || organizerNames.length === 0) return '';
-  return (
-    '- 【登録済みの主催団体】次のいずれかに該当する場合は、表記を揃えるため必ずこの名称をそのまま organizer に使う（表記揺れ防止）:\n' +
-    organizerNames.map((n) => `  ・${n}`).join('\n') +
-    '\n  該当が無ければ実際の主催団体名をそのまま入れる。'
-  );
-}
-
-/**
  * 記事群からイベント候補を抽出
  *
  * 抽出済み記事のテキストを入力として、カレンダーに登録すべき
@@ -1147,8 +1046,8 @@ function buildOrganizerHint(organizerNames: string[]): string {
  * @param referenceDate - 年の補完に使う基準日（回覧板の発行日など） YYYY-MM-DD
  * @returns イベント候補のリスト
  */
-export async function extractEventCandidates(
-  articles: Pick<Article, 'title' | 'content' | 'event_date' | 'event_time' | 'event_location' | 'article_type'>[],
+export async function extractEventCandidatesWithClaude(
+  articles: EventPromptArticle[],
   referenceDate: string,
   organizerNames: string[] = [],
   cutoffDate: string = ''
@@ -1158,66 +1057,7 @@ export async function extractEventCandidates(
   }
   if (articles.length === 0) return [];
 
-  const organizerHint = buildOrganizerHint(organizerNames);
-  const cutoffRule = cutoffDate
-    ? `- 【過去除外】実際の開催日をそのまま使うこと。その開催日が ${cutoffDate}（本日）より前になる予定は、出力に含めない（除外する）。日付を本日や別の日に書き換えて残してはいけない。${cutoffDate} 当日は含めてよい`
-    : '';
-
-  // 記事本文は長すぎる場合に切り詰める（日時情報は冒頭に書かれることが多い）
-  // 併せて「自治会のお知らせ(official)」か「地域のお知らせ」かを明示する（募集・締切ルール用）
-  const articleList = articles
-    .map((a, i) => {
-      const kind = a.article_type === 'official' ? '自治会のお知らせ' : '地域のお知らせ';
-      const meta = [
-        a.event_date ? `開催日: ${a.event_date}` : null,
-        a.event_time ? `時間: ${a.event_time}` : null,
-        a.event_location ? `場所: ${a.event_location}` : null,
-      ].filter(Boolean).join(' / ');
-      const content = (a.content || '').slice(0, 2000);
-      return `### 記事${i}【${kind}】: ${a.title}\n${meta ? meta + '\n' : ''}${content}`;
-    })
-    .join('\n\n');
-
-  const prompt = `
-あなたは自治会の回覧板からカレンダー予定を整理する担当者です。
-以下の記事一覧から、地域カレンダーに登録すべき「日付が確定しているイベント・予定・締切」を全て抽出してください。
-
-【基準日】この回覧板の発行日は ${referenceDate} です。年が書かれていない日付は、基準日に「もっとも日付が近くなる年」で解釈してください（基準日より前の日付になっても構いません。無理に翌年へ繰り上げないこと）。
-
-【抽出ルール】
-- 開催日が特定できるものだけを抽出する（「毎週」「随時」「未定」は除外）
-- 1つの記事に複数の日程がある場合は、それぞれ別のイベントとして抽出する
-- 同じイベントが複数記事に載っている場合は1件にまとめ、最も詳しい記事の番号を article_index にする
-- 過去の報告記事（開催済みイベントの報告）は除外する
-${cutoffRule}
-- 【募集・締切ルール】「募集」「申込」「〆切/締切」などの締切系の日付は、記事見出しが【自治会のお知らせ】の記事からのみ抽出してよい（「〆切」を含むタイトルで可）。【地域のお知らせ】の記事からは、募集・申込・締切の日付は抽出しない（実際に開催されるイベントの開催日のみ抽出する）
-- organizer には主催団体・主催者（例: 自治会、子ども会、○○小学校、防犯協会 など）を入れる。記事から読み取れない場合は null にする
-${CATEGORY_RULE}
-${organizerHint}
-【has_details の判定】抽出元記事に「日時・場所以外の実質的な詳細情報」（持ち物、申込方法、費用、対象者、内容の説明など）が書かれていれば true、行事予定表のように日付・場所の羅列だけなら false とする。読者が記事を開いたとき、カードに書いてある以上の情報が得られるかどうかで判断すること。
-
-【出力形式】以下のJSONのみを出力してください:
-\`\`\`json
-{
-  "events": [
-    {
-      "article_index": 0,
-      "title": "イベント名（20文字以内）",
-      "event_date": "YYYY-MM-DD",
-      "event_time": "10:00-12:00（終了時刻が不明なら \\"10:00\\" のように開始のみ。時刻自体が不明なら null）",
-      "event_location": "開催場所 または null",
-      "organizer": "主催団体 または null",
-      "category": "reserve | recurring | open | null",
-      "has_details": true
-    }
-  ]
-}
-\`\`\`
-該当がなければ {"events": []} を出力してください。
-
-【記事一覧】
-${articleList}
-`;
+  const prompt = buildArticleEventPrompt({ articles, referenceDate, cutoffDate, organizerNames });
 
   const response = await callClaudeAPI({
     model: CLAUDE_MODEL,
@@ -1231,53 +1071,6 @@ ${articleList}
   }
 
   return parseEventCandidatesFromResponse(textContent.text, articles.length);
-}
-
-/**
- * イベント候補レスポンスの解析
- */
-function parseEventCandidatesFromResponse(
-  responseText: string,
-  articleCount: number
-): EventCandidate[] {
-  const jsonMatch =
-    responseText.match(/```json\s*([\s\S]*?)\s*```/) || responseText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('JSONレスポンスが見つかりません');
-  }
-  const jsonText = jsonMatch[1] || jsonMatch[0];
-
-  let parsed: any;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    parsed = JSON.parse(repairJsonString(jsonText).replace(/,\s*([}\]])/g, '$1'));
-  }
-
-  if (!Array.isArray(parsed?.events)) {
-    throw new Error('イベント配列が見つかりません');
-  }
-
-  return parsed.events
-    .filter((e: any) => typeof e?.title === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e?.event_date))
-    .map((e: any): EventCandidate => ({
-      article_index:
-        typeof e.article_index === 'number' && e.article_index >= 0 && e.article_index < articleCount
-          ? e.article_index
-          : null,
-      title: String(e.title).trim().slice(0, 30),
-      event_date: e.event_date,
-      event_time: typeof e.event_time === 'string' && e.event_time.trim() ? e.event_time.trim() : null,
-      event_location:
-        typeof e.event_location === 'string' && e.event_location.trim() ? e.event_location.trim() : null,
-      organizer:
-        typeof e.organizer === 'string' && e.organizer.trim() ? e.organizer.trim() : null,
-      category: (['reserve', 'recurring', 'open'] as const).includes(e.category)
-        ? e.category
-        : null,
-      // 判定が返ってこない場合はtrue（リンクあり）に倒し、人の確認に委ねる
-      has_details: e.has_details !== false,
-    }));
 }
 
 /**
@@ -1313,7 +1106,7 @@ export async function convertPdfUrlToBase64(url: string): Promise<string> {
  * @param referenceDate - 年の補完に使う基準日（回覧板の発行日など） YYYY-MM-DD
  * @returns イベント候補のリスト
  */
-export async function extractEventCandidatesFromPDF(
+export async function extractEventCandidatesFromPDFWithClaude(
   pdfBase64: string,
   referenceDate: string,
   organizerNames: string[] = [],
@@ -1324,52 +1117,7 @@ export async function extractEventCandidatesFromPDF(
     throw new Error('AI機能が利用できません（APIキー/プロキシ未設定）');
   }
 
-  const organizerHint = buildOrganizerHint(organizerNames);
-  const cutoffRule = cutoffDate
-    ? `- 【過去除外】実際の開催日をそのまま使うこと。その開催日が ${cutoffDate}（本日）より前になる予定は、出力に含めない（除外する）。日付を本日や別の日に書き換えて残してはいけない。${cutoffDate} 当日は含めてよい`
-    : '';
-  // 募集・締切ルール: 自治会関連PDFのみ締切系を抽出。それ以外は開催日イベントのみ
-  const deadlineRule = isJichikai
-    ? '- 申込締切など、参加者が忘れると困る日付も「〆切」を含むタイトルで抽出してよい'
-    : '- このPDFは自治会以外の発行元です。募集・申込・〆切/締切などの締切系の日付は抽出しない（実際に開催されるイベントの開催日のみ抽出する）';
-
-  const prompt = `
-あなたは自治会の回覧板からカレンダー予定を整理する担当者です。
-添付のPDFから、地域カレンダーに登録すべき「日付が確定しているイベント・予定・締切」を全て抽出してください。
-
-【基準日】このPDFが配布された時期は ${referenceDate} 前後です。年が書かれていない日付は、基準日に「もっとも日付が近くなる年」で解釈してください（基準日より前の日付になっても構いません。無理に翌年へ繰り上げないこと）。
-
-【抽出ルール】
-- 開催日が特定できるものだけを抽出する（「毎週」「随時」「未定」は除外）
-- 1つのPDFに複数の日程がある場合は、それぞれ別のイベントとして抽出する
-- 行事予定表のように日付が羅列されている場合も1件ずつ抽出する
-${deadlineRule}
-- 過去の報告（開催済みイベントの報告）は除外する
-${cutoffRule}
-- organizer には主催団体・主催者（例: 自治会、子ども会、○○小学校、防犯協会 など）を入れる。読み取れない場合は null にする
-${CATEGORY_RULE}
-${organizerHint}
-【has_details の判定】日時・場所以外の実質的な詳細情報（持ち物・申込方法・費用・対象者・内容説明など）がPDFに書かれていれば true、日付・場所の羅列だけなら false とする。
-
-【出力形式】以下のJSONのみを出力してください:
-\`\`\`json
-{
-  "events": [
-    {
-      "article_index": null,
-      "title": "イベント名（20文字以内）",
-      "event_date": "YYYY-MM-DD",
-      "event_time": "10:00-12:00（終了時刻が不明なら \\"10:00\\" のように開始のみ。時刻自体が不明なら null）",
-      "event_location": "開催場所 または null",
-      "organizer": "主催団体 または null",
-      "category": "reserve | recurring | open | null",
-      "has_details": true
-    }
-  ]
-}
-\`\`\`
-該当がなければ {"events": []} を出力してください。
-`;
+  const prompt = buildPdfEventPrompt({ referenceDate, cutoffDate, isJichikai, organizerNames });
 
   const response = await callClaudeAPI({
     model: CLAUDE_MODEL,

@@ -1,14 +1,32 @@
 # スケジュール抽出テスト（API課金なし）
 
-本番アプリの抽出は Anthropic API（従量課金）を叩くが、**テストは Claude Code（定額サブスク）側の
-Haikuサブエージェント**で行い、課金ゼロで抽出品質を確認する。本番と同じ Haiku 4.5・同じルールで検証できる。
+本番のイベント抽出は **Gemini 2.5 Flash**（既定・無料枠あり）で、失敗時は Claude にフォールバックする
+（`docs/AIコスト・モデル方針.md`）。テストは次の2通りで、どちらも**費用ゼロ**:
+
+1. **Gemini で本番と同じリクエストを流す**（推奨・本番そのもの）
+   ```
+   node scripts/schedule-test/run-gemini.mjs "<pdfsフォルダ名>"
+   ```
+   本番コード（`eventExtractionPrompt.ts`）からプロンプトを生成して Gemini 無料枠で実行し、`results/prod-gemini-2.5-flash.json` に保存する。
+2. **Claude Code のサブエージェント（Haiku/Sonnet）で読ませる**（Claude 側の比較用）
 
 ## 👉 いちばん短い頼み方（これをClaude Codeに言うだけ）
-> **「`pdfs/2026-08` フォルダの全PDFを Haikuでスケジュール抽出テストして。基準日 2026-08-29、本日は今日、地域として。結果を表でまとめて」**
+> **「`pdfs/2026-09` フォルダを run-gemini.mjs で抽出して、結果を表でまとめて」**
+> **「`pdfs/2026-09` フォルダの全PDFを Sonnetでスケジュール抽出テストして。基準日 2026-08-29、本日は今日、種別はファイル名で。結果を表でまとめて」**
 
 - PDFは自分で `scripts/schedule-test/pdfs/<月フォルダ>/` に置く。
 - 指定するのは【フォルダ名・基準日(発行日)・本日・種別(地域/自治会)】の4つ。
-- Claude Code が各PDFを Read して `prompt.md` のルールで抽出。**Anthropic APIの課金は発生しない**。
+- `prompt.md` は本番コードから自動生成される（`node scripts/schedule-test/build-prompt.mjs`）。**直接編集しない**。
+  プロンプトを変えるときは `packages/shared/services/ai/eventExtractionPrompt.ts` を直してから再生成する。
+- 過去バージョン（`prompt-v2.md` / `prompt-v3.md`）は比較用の履歴。`run-gemini.mjs "<フォルダ>" prompt-v3.md` で使える。
+
+## トークン数・費用の実測（無料）
+```
+node scripts/schedule-test/count-tokens.mjs "<pdfsフォルダ名>" prompt.md results/<結果>.json
+```
+Anthropic の count_tokens API（無料）で、本番と同じ形式（PDF + プロンプト）の入力トークン数と Haiku 単価の概算を出す。
+Gemini 側のトークン数は `run-gemini.mjs` の出力（usageMetadata）に含まれる。
+目安（8本18ページ）: Claude は1ページ約1,600 tokens、Gemini は1ページ258 tokens 固定。
 
 ## フォルダ運用（月別）
 
@@ -70,10 +88,21 @@ node scripts/schedule-test/fetch-pdfs.mjs "2026年8月号"
 >  次に prompt.md の連続判定を強めた版で同じフォルダを抽出して results/B.json に保存。最後に to-csv.mjs でCSVにして。」
 
 ## 本番との対応
-- 本番ロジック: `packages/shared/services/ai/claudeService.ts`
-  （`extractEventCandidatesFromPDF` / `extractEventCandidates`）
-- 本番モデル: `CLAUDE_MODEL = 'claude-haiku-4-5'`
+- プロンプト・出力型・解析（Claude/Gemini 共通）: `packages/shared/services/ai/eventExtractionPrompt.ts`
+- Gemini 版: `geminiService.ts`（`extractEventCandidatesFromPDFWithGemini` / `extractEventCandidatesWithGemini`、`GEMINI_EVENT_MODEL = 'gemini-2.5-flash'`）
+- Claude 版（フォールバック）: `claudeService.ts`（`...WithClaude`、`CLAUDE_MODEL`）
+- 切替: `aiService.ts` の `extractEventCandidates` / `extractEventCandidatesFromPDF`（`VITE_EVENT_AI_PROVIDER`）
 - ルール詳細: `docs/カレンダー抽出ルール.md`
+
+## 検証結果の履歴（2026-09-07, フォルダ `202609_01 - コピー` 8本18ページ）
+| 版 | モデル | 件数 | 主な所見 |
+|---|---|---|---|
+| v1 | Haiku 4.5 | 27 | デイサービス内部行事6件混入、縦書き誤読、名称の合成（ジャンケンポン歌う会） |
+| v2 | Haiku 4.5 | 21 | 内部行事は除外できたが介護者つどいも消えた |
+| v3 | Haiku 4.5 | 19 | 漏れ3件、誤読残る |
+| v3 | Sonnet 5 | 22 | 全件正解（誤字1字） |
+| v3 | Gemini 2.5 Flash | 24 | 読み取りは Sonnet 同等。啓発期間を2件誤検出 |
+| **v4（本番）** | **Gemini 2.5 Flash** | **22** | 誤検出なし。kind/weekly_topic 付き |
 
 ## 注意
 - `pdfs/` は一時作業用。コミット不要（住民のお知らせPDFが含まれるため）。
