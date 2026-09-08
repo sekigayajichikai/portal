@@ -9,9 +9,10 @@ import ReportReviewView from '@/components/public/ReportReviewView';
 type Tab = 'circulars' | 'reports';
 
 export default function PublicPage() {
-  const [tab, setTab] = useState<Tab>('circulars');
-
   const params = new URLSearchParams(window.location.search);
+  // レポート個別URL: /?report=<記事ID> で開いたときはレポートタブでそのレポートを表示する
+  const reportArticleId = params.get('report') || undefined;
+  const [tab, setTab] = useState<Tab>(reportArticleId ? 'reports' : 'circulars');
   // 公開プレビュー: ?preview=<号ID> があれば、未公開の下書きを「公開後の見え方」で表示する
   // （公開ステータスは変更しないので本番に影響しない）
   const previewNewsletterId = params.get('preview') || undefined;
@@ -70,7 +71,7 @@ export default function PublicPage() {
           previewNewsletterId={previewNewsletterId}
         />
       )}
-      {tab === 'reports' && <ReportsView />}
+      {tab === 'reports' && <ReportsView initialArticleId={reportArticleId} />}
       {/* {tab === 'calendar' && <CalendarView previewNewsletterId={previewNewsletterId} />} */}
       {/* {tab === 'bookings' && <BookingsView />} */}
     </div>

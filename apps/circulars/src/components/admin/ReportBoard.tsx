@@ -9,7 +9,7 @@
  *         横に並べてライブプレビューしながら書ける
  * - 公開状態は articles.visibility で表現する
  *     board-only   = 非公開（下書き。公開ページのレポートタブに出ない）
- *     members-only = 公開（住民ページに表示）
+ *     members-only = 公開（サイトの「レポート」タブに掲載）
  *     public       = 一般公開（将来の外部公開URL用の予約値。今は members-only と同じ見え方なので
  *                    編集画面の選択肢には出さない。既存データが public の場合のみ表示して値を保つ）
  *
@@ -210,28 +210,28 @@ export const ReportBoard: React.FC = () => {
       title: `「${a.title}」を${label}`,
       message:
         next === 'board-only'
-          ? '住民ページのレポートタブから見えなくなります。'
-          : '住民ページのレポートタブに表示されます。',
+          ? 'サイトの「レポート」から外れ、誰にも見えなくなります（確認リンクでは引き続き見られます）。'
+          : 'サイトの「レポート」に掲載され、誰でも読めるようになります。',
       confirmLabel: next === 'board-only' ? '非公開にする' : '公開する',
     });
     if (!ok) return;
     try {
       const updated = await updateArticle(a.id, { visibility: next });
       setArticles((prev) => sortReports(prev.map((x) => (x.id === a.id ? { ...x, ...updated } : x))));
-      showToast(next === 'board-only' ? '非公開にしました' : '公開しました');
+      showToast(next === 'board-only' ? '非公開にしました。サイトからは見えません。' : '公開しました。サイトの「レポート」に掲載されています。');
     } catch (e) {
       console.error('公開状態の更新エラー:', e);
       showError('公開状態を変更できませんでした。');
     }
   };
 
-  /** 枠が下書きだと記事を公開しても住民ページに出ないため、枠を公開状態にする */
+  /** 枠が下書きだと記事を公開してもサイトに出ないため、枠を公開状態にする */
   const handlePublishFrame = async () => {
     if (!frame) return;
     try {
       const updated = await publishNewsletter(frame.id);
       setFrame({ ...frame, ...updated });
-      showToast('レポート枠を公開状態にしました。「公開」にした記事が住民ページに表示されます。');
+      showToast('レポート枠を公開状態にしました。「公開」にした記事がサイトに掲載されます。');
     } catch (e) {
       console.error('枠の公開エラー:', e);
       showError('枠を公開状態にできませんでした。');
@@ -269,7 +269,7 @@ export const ReportBoard: React.FC = () => {
               関ヶ谷レポート
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              まちのできごとを写真と読み物で届けるレポート。公開すると住民ページの「レポート」タブに表示されます。
+              まちのできごとを写真と読み物で届けるレポート。公開すると、サイト（回覧板と同じページ）の「レポート」タブに掲載されます。
             </p>
           </div>
           {frame && (
@@ -277,10 +277,10 @@ export const ReportBoard: React.FC = () => {
               <button
                 onClick={() => window.open('/', '_blank', 'noopener')}
                 className="flex items-center gap-1.5 px-3 py-2 text-sm bg-slate-100 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-200 transition"
-                title="住民が見る公開ページ（回覧板・レポート）を別タブで開く"
+                title="公開中のサイト（回覧板・レポート）を別タブで開く"
               >
                 <ExternalLink size={16} />
-                公開ページを開く
+                サイトを開く
               </button>
               <button
                 onClick={() => setEditing('new')}
@@ -296,7 +296,7 @@ export const ReportBoard: React.FC = () => {
         {frame && frame.status !== 'published' && (
           <div className="mt-3 flex flex-wrap items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-3">
             <span>
-              レポート枠が下書きのため、記事を「公開」にしても住民ページには表示されません。
+              レポート枠が下書きのため、記事を「公開」にしてもサイトには掲載されません。
             </span>
             <button
               onClick={handlePublishFrame}
@@ -391,13 +391,23 @@ export const ReportBoard: React.FC = () => {
                           </>
                         )}
                       </button>
-                      <button
-                        onClick={() => copyReviewLink(a.id)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition"
-                        title="この記事をメンバーに見てもらう確認用リンクをコピー（ログイン不要・公開はしません）"
-                      >
-                        <Copy size={14} /> 確認リンク
-                      </button>
+                      {a.visibility !== 'board-only' ? (
+                        <button
+                          onClick={() => copyPublicLink(a.id)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                          title="このレポートの公開リンク（サイト上のURL）をコピー"
+                        >
+                          <Copy size={14} /> 公開リンク
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => copyReviewLink(a.id)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                          title="この記事をメンバーに見てもらう確認用リンクをコピー（ログイン不要・公開はしません）"
+                        >
+                          <Copy size={14} /> 確認リンク
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDelete(a)}
                         className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg transition"
@@ -427,6 +437,18 @@ async function copyReviewLink(articleId: string) {
   try {
     await navigator.clipboard.writeText(link);
     showToast('この記事のメンバー確認リンクをコピーしました。LINE等で共有できます。');
+  } catch {
+    window.prompt('このリンクをコピーして共有してください', link);
+  }
+}
+
+/** 公開中レポートの個別URL（/?report=<記事ID>）をコピーする。LINE配信や共有に使う */
+async function copyPublicLink(articleId: string) {
+  const base = (import.meta.env.VITE_PUBLIC_SITE_URL || window.location.origin).replace(/\/+$/, '');
+  const link = `${base}/?report=${articleId}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    showToast('公開リンクをコピーしました。LINE等で共有できます。');
   } catch {
     window.prompt('このリンクをコピーして共有してください', link);
   }
@@ -633,8 +655,8 @@ const ReportEditor: React.FC<ReportEditorProps> = ({ frameId, article, onBack, o
       onSaved(saved);
       showToast(
         form.visibility === 'board-only'
-          ? '保存しました（非公開）。公開するには「公開状態」を変更して保存してください。'
-          : '保存しました。住民ページのレポートタブに表示されます。'
+          ? '下書きとして保存しました。まだサイトには出ていません（公開するには「公開状態」を「公開」にして保存）。'
+          : '保存しました。サイトの「レポート」に掲載されています。'
       );
     } catch (e) {
       console.error('レポート保存エラー:', e);
@@ -917,7 +939,7 @@ const ReportEditor: React.FC<ReportEditorProps> = ({ frameId, article, onBack, o
           <div className="hidden lg:block">
             <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-2xl shadow border border-slate-200">
               <div className="px-4 py-2 border-b border-slate-100 text-xs font-bold text-slate-400 sticky top-0 bg-white z-10">
-                プレビュー（住民ページでの見え方）
+                プレビュー（サイトでの見え方）
               </div>
               <EventReportView article={previewArticle} showFontSizeControl={false} />
             </div>
