@@ -4,11 +4,12 @@ import { CircularBoard } from '@/components/admin/CircularBoard';
 import { PublisherManager } from '@/components/admin/PublisherManager';
 import { OrganizerManager } from '@/components/admin/OrganizerManager';
 import { ReportBoard } from '@/components/admin/ReportBoard';
-import { FileText, Settings, Users, LogOut, Newspaper } from 'lucide-react';
+import { WeeklyDigest } from '@/components/admin/WeeklyDigest';
+import { FileText, Settings, Users, LogOut, Newspaper, Send } from 'lucide-react';
 import { appConfirm } from '@/components/ui/feedback';
 
 /** 管理画面の作成対象。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事） */
-type AdminMode = 'circulars' | 'reports';
+type AdminMode = 'circulars' | 'reports' | 'weekly';
 
 function AdminContent() {
   const { isAuthenticated, isLoading, logout } = useAuth();
@@ -16,7 +17,7 @@ function AdminContent() {
   const [showOrganizerManager, setShowOrganizerManager] = useState(false);
   // URLの ?mode=reports で直接レポート画面を開ける（ブックマーク用）
   const [mode, setMode] = useState<AdminMode>(() =>
-    new URLSearchParams(window.location.search).get('mode') === 'reports' ? 'reports' : 'circulars'
+    (['reports', 'weekly'].find((m) => m === new URLSearchParams(window.location.search).get('mode')) as AdminMode | undefined) ?? 'circulars'
   );
 
   if (isLoading) {
@@ -98,12 +99,23 @@ function AdminContent() {
             <Newspaper size={16} />
             関ヶ谷レポート
           </button>
+          <button
+            onClick={() => setMode('weekly')}
+            className={`flex items-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition ${
+              mode === 'weekly'
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <Send size={16} />
+            週次配信
+          </button>
         </div>
       </div>
 
       <main className="p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
-          {mode === 'circulars' ? <CircularBoard /> : <ReportBoard />}
+          {mode === 'circulars' ? <CircularBoard /> : mode === 'reports' ? <ReportBoard /> : <WeeklyDigest />}
         </div>
       </main>
     </div>

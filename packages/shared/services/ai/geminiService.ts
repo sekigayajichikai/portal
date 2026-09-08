@@ -441,6 +441,8 @@ const EVENT_RESPONSE_SCHEMA = {
           weekly_topic: { type: 'BOOLEAN' },
           topic_reason: { type: 'STRING', nullable: true },
           source_text: { type: 'STRING', nullable: true },
+          apply_deadline: { type: 'STRING', nullable: true },
+          first_come: { type: 'BOOLEAN' },
         },
         required: ['title', 'event_date', 'has_details', 'weekly_topic'],
       },

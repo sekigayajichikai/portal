@@ -543,6 +543,8 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           kind: c.kind,
           weekly_topic: c.weekly_topic,
           topic_reason: c.topicHints.length > 0 ? c.topicHints.join('・') : c.topic_reason,
+          apply_deadline: c.apply_deadline,
+          first_come: c.first_come,
           source_pdf_url: c.sourcePdfUrl,
           linked_article_id:
             c.linkArticle && c.article_index !== null ? articles[c.article_index]?.id ?? null : null,
@@ -827,6 +829,27 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                               </span>
                             )}
                           </button>
+                          {/* 申込締切・先着順（要予約のとき。週次配信の「申込受付中」「締切間近」に使う） */}
+                          {(c.category === 'reserve' || c.category === 'recurring' || c.apply_deadline) && (
+                            <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                              <span>締切</span>
+                              <input
+                                type="date"
+                                value={c.apply_deadline ?? ''}
+                                onChange={(e) => updateCandidate(i, { apply_deadline: e.target.value || null })}
+                                className="text-[11px] border border-slate-300 rounded px-1.5 py-0.5"
+                                title="申込締切日。不明なら空欄（配信では開催7日前を仮の締切として扱います）"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => updateCandidate(i, { first_come: !c.first_come })}
+                                className={`px-1.5 py-0.5 rounded font-medium border transition ${c.first_come ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
+                                title="先着順（締切前に埋まるので早めに配信）"
+                              >
+                                先着
+                              </button>
+                            </span>
+                          )}
                           {linkedArticle && (
                             <label className="text-xs flex items-center gap-1.5 cursor-pointer select-none" title="オンにすると読者側のカードに「詳しく読む」が表示され、記事が開けます。予定表など、カード以上の情報がない記事ならオフにしてください">
                               <input

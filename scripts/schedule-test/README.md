@@ -106,6 +106,7 @@ node scripts/schedule-test/fetch-pdfs.mjs "2026年8月号"
 | v3 | Gemini 2.5 Flash | 24 | 読み取りは Sonnet 同等。啓発期間を2件誤検出 |
 | v4 | Gemini 2.5 Flash | 22 | 誤検出なし。kind/weekly_topic 付き（有料枠キーのみ利用可） |
 | **v4（本番）** | **Gemini 3.6 Flash** | **22** | 無料枠キーで検証。2.5 と同じ内容。3.8-flash は 503 多発・日次上限で未完 |
+| v5（本番） | Gemini 3.6 Flash | 22 | 申込締切・先着順を属性として抽出（にしかぜ・センターだよりで確認） |
 
 ## 注意
 - `pdfs/` は一時作業用。コミット不要（住民のお知らせPDFが含まれるため）。

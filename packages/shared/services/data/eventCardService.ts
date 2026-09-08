@@ -26,6 +26,10 @@ export interface EventCard {
   weekly_topic?: boolean | null;
   /** weekly_topic の根拠（例: 単独チラシ / 複数掲載 / 年1回の芸術祭） */
   topic_reason?: string | null;
+  /** 申込締切日 YYYY-MM-DD（要予約イベント。不明なら null。列が無い場合はundefined） */
+  apply_deadline?: string | null;
+  /** 先着順の申込か（締切前に埋まるので早めに配信する） */
+  first_come?: boolean | null;
 }
 
 /** 公開カレンダー表示用に、出典（リンク記事・由来PDF）を含めたイベントカード */

@@ -158,6 +158,8 @@ CREATE TABLE IF NOT EXISTS event_cards (
   kind TEXT,                          -- community / support / class / NULL
   weekly_topic BOOLEAN DEFAULT FALSE, -- 週次LINE配信のトピック候補
   topic_reason TEXT,                  -- weekly_topic の根拠
+  apply_deadline DATE,                -- 申込締切日（要予約イベント）
+  first_come BOOLEAN DEFAULT FALSE,   -- 先着順
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

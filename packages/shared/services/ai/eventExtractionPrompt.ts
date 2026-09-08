@@ -48,6 +48,10 @@ export interface EventCandidate {
   topic_reason: string | null;
   /** 根拠となる原文の一節（40字以内。名称・日付が書かれた箇所） */
   source_text: string | null;
+  /** 申込締切日 YYYY-MM-DD（要予約イベントの属性。不明なら null） */
+  apply_deadline: string | null;
+  /** 先着順の申込か */
+  first_come: boolean;
 }
 
 /** イベント種別(category)判定と、連続イベントの集約ルール（プロンプト共通） */
@@ -82,6 +86,10 @@ export const EXCLUSION_RULE = `- 【催しでないものは除外】次は「�
   - 対象が「ご家族の介護をしている方」「子育て中の方」「65歳以上」など属性で絞られていても、一般に開かれた案内（申込先がある、「お気軽にご参加ください」等）があれば抽出する。除外するのは「その施設の利用者しか参加できないもの」だけ
 - 【名称は原文のまま】title はチラシ・記事に書かれているイベント名をそのまま使う（20字を超える場合のみ末尾を省く）。別の記事の語を混ぜたり、内容から名前を作ったりしない。名前が無い場合のみ内容を要約した名前にする`;
 
+/** 申込締切・先着順の属性ルール（プロンプト共通） */
+export const DEADLINE_ATTR_RULE = `- 【申込締切 apply_deadline】要予約（category が reserve）のイベントは、申込締切日が書かれていれば apply_deadline に YYYY-MM-DD で入れる（「締切 10/16」「10/30(金)まで」「申込は◯日まで」等）。これはイベントの属性であり、締切そのものを別のイベントとして出力してはいけない。書かれていなければ null
+- 【先着順 first_come】「先着」「定員になり次第締切」など、締切前に埋まる方式なら first_come を true にする`;
+
 /** 出力JSONの形式説明（プロンプト共通） */
 const OUTPUT_FORMAT = `【出力形式】以下のJSONのみを出力してください:
 \`\`\`json
@@ -99,7 +107,9 @@ const OUTPUT_FORMAT = `【出力形式】以下のJSONのみを出力してく�
       "kind": "community | support | class | null",
       "weekly_topic": false,
       "topic_reason": "判断理由（15字以内）",
-      "source_text": "名称と日付が書かれた原文の一節（40字以内・そのまま書き写す）"
+      "source_text": "名称と日付が書かれた原文の一節（40字以内・そのまま書き写す）",
+      "apply_deadline": "申込締切 YYYY-MM-DD または null（要予約のみ）",
+      "first_come": false
     }
   ]
 }
@@ -146,7 +156,7 @@ export function buildPdfEventPrompt({
 }: PdfEventPromptParams): string {
   const deadlineRule = isJichikai
     ? '- 申込締切など、参加者が忘れると困る日付も「〆切」を含むタイトルで抽出してよい'
-    : '- このPDFは自治会以外の発行元です。募集・申込・〆切/締切などの締切系の日付は抽出しない（実際に開催されるイベントの開催日のみ抽出する）';
+    : '- このPDFは自治会以外の発行元です。募集・申込・〆切/締切などの締切だけを独立したイベントとして抽出しない（実際に開催されるイベントの開催日のみ抽出する）。ただし要予約イベントの申込締切は、そのイベントの apply_deadline 属性として入れてよい';
 
   return `
 あなたは自治会の回覧板からカレンダー予定を整理する担当者です。
@@ -167,6 +177,7 @@ ${EXCLUSION_RULE}
 ${CATEGORY_RULE}
 ${KIND_RULE}
 ${TOPIC_RULE}
+${DEADLINE_ATTR_RULE}
 ${buildOrganizerHint(organizerNames)}
 【has_details の判定】日時・場所以外の実質的な詳細情報（持ち物・申込方法・費用・対象者・内容説明など）がPDFに書かれていれば true、日付・場所の羅列だけなら false とする。
 【source_text】各イベントに、そのイベント名と開催日が書かれている原文の一節を40字以内でそのまま書き写す（要約・言い換え禁止）。原文に見つからないイベントは出力しない。
@@ -231,6 +242,7 @@ ${EXCLUSION_RULE}
 ${CATEGORY_RULE}
 ${KIND_RULE}
 ${TOPIC_RULE}
+${DEADLINE_ATTR_RULE}
 ${buildOrganizerHint(organizerNames)}
 【has_details の判定】抽出元記事に「日時・場所以外の実質的な詳細情報」（持ち物、申込方法、費用、対象者、内容の説明など）が書かれていれば true、行事予定表のように日付・場所の羅列だけなら false とする。読者が記事を開いたとき、カードに書いてある以上の情報が得られるかどうかで判断すること。
 【source_text】各イベントに、そのイベント名と開催日が書かれている記事中の一節を40字以内でそのまま書き写す。
@@ -296,5 +308,7 @@ export function parseEventCandidatesFromResponse(
       weekly_topic: e.weekly_topic === true,
       topic_reason: str(e.topic_reason)?.slice(0, 30) ?? null,
       source_text: str(e.source_text)?.slice(0, 80) ?? null,
+      apply_deadline: /^\d{4}-\d{2}-\d{2}$/.test(e.apply_deadline) ? e.apply_deadline : null,
+      first_come: e.first_come === true,
     }));
 }
