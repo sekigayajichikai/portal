@@ -50,27 +50,30 @@ export interface EventCandidate {
   source_text: string | null;
   /** 申込締切日 YYYY-MM-DD（要予約イベントの属性。不明なら null） */
   apply_deadline: string | null;
-  /** 先着順の申込か */
-  first_come: boolean;
+  /** 対象者（例: 65歳以上 / 乳幼児と保護者 / 成人。15字以内。不明なら null） */
+  target_audience: string | null;
+  /** 参加費（例: 無料 / 400円/回 / 3,200円（2回分）。不明なら null） */
+  fee: string | null;
 }
 
 /** イベント種別(category)判定と、連続イベントの集約ルール（プロンプト共通） */
-export const CATEGORY_RULE = `- 【種別 category】各イベントに種別を付ける:
-  - "reserve": 予約・事前申込が必要なもの（「要予約」「申込先」「事前申込」等。地区センターの講座など対象が限られるもの）
-  - "recurring": 継続・定期開催のもの。次のいずれかに当てはまれば recurring にする:
+export const CATEGORY_RULE = `- 【種別 category】各イベントに種別を付ける。判定は「申込の要否」を最優先する:
+  - "open": 「申込不要」「予約不要」「当日直接お越しください」など、申込なしで当日参加できると明記されているもの（お祭り・サロン・お話会など）。定例開催や複数日付でも、申込不要と書いてあれば open にする
+  - "reserve": 予約・事前申込が必要なもの（「要予約」「申込先」「事前申込」「定員」「応募締切」等。地区センターの講座など対象が限られるもの）。申込先・締切・定員の記載があるものは open にしない
+  - "recurring": 申込の要否が書かれていない継続・定期開催のもの。次のいずれかに当てはまれば recurring にする:
       ・「毎週」「隔週」「毎月」「定期」「全N回」「連続」などの語がある
       ・タイトルに回数を示す「①②③…」「(2)」「第N回」などが付く（例: 「◯◯体操②」）
       ・習い事・教室・講座・サロン・クラブなど、継続して開催される催し
       ・同じ囲み・同じ見出しの中に開催日が複数並ぶもの（例: 9/25(金)・10/23(金)）
-  - "open": 申込不要で当日自由に参加できるもの（お祭り・サロンなど）
   - 上記に当てはまらなければ null
-- 【連続イベントの集約】category が "recurring" の場合は日付ごとに分けず1件にまとめる。event_date は「基準日以降で最も近い開催日」にし、他の日付は event_time の末尾に「（10/23も）」のように補記するか、title に「毎週◯曜」等の繰り返しが分かる表現を入れる`;
+- 【複数日付の集約】category に関わらず、同じ催しの開催日が複数並ぶものは日付ごとに分けず1件にまとめる。event_date は「基準日以降で最も近い開催日」にし、他の日付は event_time の末尾に「（10/23も）」のように補記するか、title に「毎週◯曜」等の繰り返しが分かる表現を入れる`;
 
 /** 性質(kind)の判定ルール（プロンプト共通） */
-export const KIND_RULE = `- 【性質 kind】各イベントの性質を付ける:
+export const KIND_RULE = `- 【性質 kind】各イベントの性質を付ける。判定は「セクション見出し」を最優先し、次に「対象・内容」で決める:
+  - "support": 福祉・健康・生活支援の案内。チラシの見出しが「地域包括支援センター」「居宅介護支援」「保健」「福祉」等の配下にあるものは原則 support。見出しが無い場合は、相談会・介護者や家族向けのつどい・健康測定/体力測定など「支援を受ける人向け」のものだけ support にする
   - "community": 地域交流の催し。お祭り・芸術祭・発表会・講演会・季節行事・「だれでも参加できる」集まり・食事会など
-  - "support": 福祉・健康・生活支援の案内。健康測定・体力測定・相談会・介護者や家族向けのつどい・予防講座など。チラシの見出しが「地域包括支援センター」「居宅介護支援」「保健」「福祉」等の配下にあるものは原則 support
-  - "class": 定例の教室・講座・サロン・クラブ活動（毎週/毎月の習い事、連続講座、カフェ・サロン）
+  - "class": 定例の教室・講座・サロン・クラブ活動（毎週/毎月の習い事、連続講座、体操・健康教室、カフェ・サロン）
+  - 「地域交流からのご案内」など一般向けのセクションにあるものは、健康や予防がテーマでも support にせず community か class にする（例: 転倒予防の体操教室 → class）
   - どれにも当てはまらなければ null`;
 
 /** 週次配信トピック(weekly_topic)の判定ルール（プロンプト共通） */
@@ -86,9 +89,12 @@ export const EXCLUSION_RULE = `- 【催しでないものは除外】次は「�
   - 対象が「ご家族の介護をしている方」「子育て中の方」「65歳以上」など属性で絞られていても、一般に開かれた案内（申込先がある、「お気軽にご参加ください」等）があれば抽出する。除外するのは「その施設の利用者しか参加できないもの」だけ
 - 【名称は原文のまま】title はチラシ・記事に書かれているイベント名をそのまま使う（20字を超える場合のみ末尾を省く）。別の記事の語を混ぜたり、内容から名前を作ったりしない。名前が無い場合のみ内容を要約した名前にする`;
 
-/** 申込締切・先着順の属性ルール（プロンプト共通） */
-export const DEADLINE_ATTR_RULE = `- 【申込締切 apply_deadline】要予約（category が reserve）のイベントは、申込締切日が書かれていれば apply_deadline に YYYY-MM-DD で入れる（「締切 10/16」「10/30(金)まで」「申込は◯日まで」等）。これはイベントの属性であり、締切そのものを別のイベントとして出力してはいけない。書かれていなければ null
-- 【先着順 first_come】「先着」「定員になり次第締切」など、締切前に埋まる方式なら first_come を true にする`;
+/** 申込締切の属性ルール（プロンプト共通） */
+export const DEADLINE_ATTR_RULE = `- 【申込締切 apply_deadline】要予約（category が reserve）のイベントは、申込締切日が書かれていれば apply_deadline に YYYY-MM-DD で入れる（「締切 10/16」「10/30(金)まで」「申込は◯日まで」等）。これはイベントの属性であり、締切そのものを別のイベントとして出力してはいけない。書かれていなければ null`;
+
+/** 対象者・参加費の属性ルール（プロンプト共通） */
+export const AUDIENCE_FEE_RULE = `- 【対象者 target_audience】「対象 成人」「65歳以上」「乳幼児＆幼児」「小学生から成人」など、参加できる人の条件を原文どおり15字以内で入れる。定員（「20人」「先着50名」）は対象者に含めない。書かれていなければ null
+- 【参加費 fee】「参加費」「費用」「材料費」「無料」の記載を10字以内で入れる。「1回400円」は「400円/回」、複数回分は「3,200円（2回分）」のように。無料と明記されていれば「無料」。書かれていなければ null`;
 
 /** 出力JSONの形式説明（プロンプト共通） */
 const OUTPUT_FORMAT = `【出力形式】以下のJSONのみを出力してください:
@@ -109,7 +115,8 @@ const OUTPUT_FORMAT = `【出力形式】以下のJSONのみを出力してく�
       "topic_reason": "判断理由（15字以内）",
       "source_text": "名称と日付が書かれた原文の一節（40字以内・そのまま書き写す）",
       "apply_deadline": "申込締切 YYYY-MM-DD または null（要予約のみ）",
-      "first_come": false
+      "target_audience": "対象者（15字以内） または null",
+      "fee": "参加費（10字以内。無料なら \"無料\"） または null"
     }
   ]
 }
@@ -178,6 +185,7 @@ ${CATEGORY_RULE}
 ${KIND_RULE}
 ${TOPIC_RULE}
 ${DEADLINE_ATTR_RULE}
+${AUDIENCE_FEE_RULE}
 ${buildOrganizerHint(organizerNames)}
 【has_details の判定】日時・場所以外の実質的な詳細情報（持ち物・申込方法・費用・対象者・内容説明など）がPDFに書かれていれば true、日付・場所の羅列だけなら false とする。
 【source_text】各イベントに、そのイベント名と開催日が書かれている原文の一節を40字以内でそのまま書き写す（要約・言い換え禁止）。原文に見つからないイベントは出力しない。
@@ -243,6 +251,7 @@ ${CATEGORY_RULE}
 ${KIND_RULE}
 ${TOPIC_RULE}
 ${DEADLINE_ATTR_RULE}
+${AUDIENCE_FEE_RULE}
 ${buildOrganizerHint(organizerNames)}
 【has_details の判定】抽出元記事に「日時・場所以外の実質的な詳細情報」（持ち物、申込方法、費用、対象者、内容の説明など）が書かれていれば true、行事予定表のように日付・場所の羅列だけなら false とする。読者が記事を開いたとき、カードに書いてある以上の情報が得られるかどうかで判断すること。
 【source_text】各イベントに、そのイベント名と開催日が書かれている記事中の一節を40字以内でそのまま書き写す。
@@ -290,7 +299,10 @@ export function parseEventCandidatesFromResponse(
 
   return parsed.events
     .filter((e: any) => typeof e?.title === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e?.event_date))
-    .map((e: any): EventCandidate => ({
+    .map((e: any): EventCandidate => {
+      const deadline = /^\d{4}-\d{2}-\d{2}$/.test(e.apply_deadline) ? (e.apply_deadline as string) : null;
+      const rawCategory = ((['reserve', 'recurring', 'open'] as const).includes(e.category) ? e.category : null) as EventCandidate['category'];
+      return {
       article_index:
         typeof e.article_index === 'number' && e.article_index >= 0 && e.article_index < articleCount
           ? e.article_index
@@ -301,14 +313,17 @@ export function parseEventCandidatesFromResponse(
       event_time: str(e.event_time)?.replace(/\s*[-～〜]\s*null$/i, '') ?? null,
       event_location: str(e.event_location),
       organizer: str(e.organizer),
-      category: (['reserve', 'recurring', 'open'] as const).includes(e.category) ? e.category : null,
+      // 締切があるのに「当日OK」や種別なしは矛盾なので、要予約に補正する（AIの揺れ対策。recurring はそのまま）
+      category: deadline && (rawCategory === null || rawCategory === 'open') ? 'reserve' : rawCategory,
       // 判定が返ってこない場合はtrue（リンクあり）に倒し、人の確認に委ねる
       has_details: e.has_details !== false,
       kind: (['community', 'support', 'class'] as const).includes(e.kind) ? e.kind : null,
       weekly_topic: e.weekly_topic === true,
       topic_reason: str(e.topic_reason)?.slice(0, 30) ?? null,
       source_text: str(e.source_text)?.slice(0, 80) ?? null,
-      apply_deadline: /^\d{4}-\d{2}-\d{2}$/.test(e.apply_deadline) ? e.apply_deadline : null,
-      first_come: e.first_come === true,
-    }));
+      apply_deadline: deadline,
+      target_audience: str(e.target_audience)?.slice(0, 30) ?? null,
+      fee: str(e.fee)?.slice(0, 20) ?? null,
+      };
+    });
 }

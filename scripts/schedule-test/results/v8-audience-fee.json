@@ -1,0 +1,130 @@
+{
+  "promptLabel": "v8-audience-fee",
+  "folder": "_subset-1",
+  "model": "gemini-3.6-flash",
+  "prompt": "prod",
+  "issue_date": "2026-08-29",
+  "today": "2026-09-08",
+  "usage_total": {
+    "input": 3277,
+    "output": 1290,
+    "thinking": 2950
+  },
+  "results": [
+    {
+      "file": "20260829_センターだより9月号.pdf",
+      "label": "センターだより9月号",
+      "isJichikai": false,
+      "events": [
+        {
+          "article_index": null,
+          "title": "押し花装飾",
+          "event_date": "2026-10-03",
+          "event_time": "09:30-11:30",
+          "event_location": "釜利谷地区センター",
+          "organizer": "釜利谷地区センター",
+          "category": "reserve",
+          "has_details": true,
+          "kind": "class",
+          "weekly_topic": false,
+          "topic_reason": "定員ありの講座",
+          "source_text": "押し花装飾 10/3(土)",
+          "apply_deadline": "2026-09-19",
+          "target_audience": "小学生から成人",
+          "fee": "1,000円"
+        },
+        {
+          "article_index": null,
+          "title": "手ごねのパン作り 秋",
+          "event_date": "2026-10-19",
+          "event_time": "09:15-13:00（11/16も）",
+          "event_location": "釜利谷地区センター",
+          "organizer": "釜利谷地区センター",
+          "category": "reserve",
+          "has_details": true,
+          "kind": "class",
+          "weekly_topic": false,
+          "topic_reason": "定員ありの講座",
+          "source_text": "手ごねのパン作り 秋 10/19,11/16(月)",
+          "apply_deadline": "2026-10-05",
+          "target_audience": "成人",
+          "fee": "3,200円"
+        },
+        {
+          "article_index": null,
+          "title": "みんなの健康体操",
+          "event_date": "2026-09-11",
+          "event_time": "10:00-11:00（9/25、10/9も）",
+          "event_location": "釜利谷地区センター",
+          "organizer": "釜利谷地区センター",
+          "category": "open",
+          "has_details": true,
+          "kind": "class",
+          "weekly_topic": false,
+          "topic_reason": "定期の体操教室",
+          "source_text": "みんなの健康体操 9/11,25、10/9(金曜日)",
+          "apply_deadline": null,
+          "target_audience": "成人",
+          "fee": "400円/回"
+        },
+        {
+          "article_index": null,
+          "title": "水彩画講座",
+          "event_date": "2026-10-15",
+          "event_time": "09:30-11:30（10/29、11/5、11/19も）",
+          "event_location": "釜利谷地区センター",
+          "organizer": "釜利谷地区センター",
+          "category": "reserve",
+          "has_details": true,
+          "kind": "class",
+          "weekly_topic": false,
+          "topic_reason": "定員ありの講座",
+          "source_text": "水彩画講座 10/15,29、11/5,19(木)",
+          "apply_deadline": "2026-09-24",
+          "target_audience": "成人",
+          "fee": "4,000円"
+        },
+        {
+          "article_index": null,
+          "title": "おひざの上のお話会",
+          "event_date": "2026-10-05",
+          "event_time": "11:00-11:30",
+          "event_location": "釜利谷地区センター プレイルーム",
+          "organizer": "釜利谷地区センター",
+          "category": "open",
+          "has_details": true,
+          "kind": "community",
+          "weekly_topic": false,
+          "topic_reason": "定期おはなし会",
+          "source_text": "おひざの上のお話会 9月7日・10月5日(月)",
+          "apply_deadline": null,
+          "target_audience": "乳幼児＆幼児",
+          "fee": "無料"
+        },
+        {
+          "article_index": null,
+          "title": "おもちゃ病院",
+          "event_date": "2026-09-24",
+          "event_time": "09:30-12:30（10/22も）",
+          "event_location": "釜利谷地区センター",
+          "organizer": "釜利谷地区センター",
+          "category": "open",
+          "has_details": true,
+          "kind": "support",
+          "weekly_topic": false,
+          "topic_reason": "定期の修理窓口",
+          "source_text": "おもちゃ病院 9月24日・10月22日(木)",
+          "apply_deadline": null,
+          "target_audience": null,
+          "fee": "無料"
+        }
+      ],
+      "usage": {
+        "input": 3277,
+        "output": 1290,
+        "thinking": 2950
+      },
+      "error": null
+    }
+  ]
+}

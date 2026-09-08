@@ -67,6 +67,21 @@ function topicKey(date: string, title: string): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** YYYY-MM-DD に日数を足す（締切が未記載のときの仮締切「開催7日前」表示用） */
+function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(ymd + 'T00:00:00');
+  if (isNaN(d.getTime())) return ymd;
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** YYYY-MM-DD → "9/10(木)" */
+function formatMd(ymd: string): string {
+  const d = new Date(ymd + 'T00:00:00');
+  if (isNaN(d.getTime())) return ymd;
+  return `${d.getMonth() + 1}/${d.getDate()}(${['日', '月', '火', '水', '木', '金', '土'][d.getDay()]})`;
+}
+
 /**
  * 429（無料枠のレート制限）/ 503（高負荷）で失敗した場合に待って再試行する（最大3回）。
  * エラー文に "retry in 37s" 等があればその秒数に従い、無ければ 15秒・30秒・45秒と延ばす。
@@ -547,7 +562,8 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
       u.topic_reason = c.topicHints.length > 0 ? c.topicHints.join('・') : c.topic_reason;
     }
     if (!existing.apply_deadline && c.apply_deadline) u.apply_deadline = c.apply_deadline;
-    if (!existing.first_come && c.first_come) u.first_come = true;
+    if (!existing.target_audience && c.target_audience) u.target_audience = c.target_audience;
+    if (!existing.fee && c.fee) u.fee = c.fee;
     if (!existing.source_pdf_url && c.sourcePdfUrl) u.source_pdf_url = c.sourcePdfUrl;
     return Object.keys(u).length > 0 ? u : null;
   };
@@ -585,7 +601,8 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           weekly_topic: c.weekly_topic,
           topic_reason: c.topicHints.length > 0 ? c.topicHints.join('・') : c.topic_reason,
           apply_deadline: c.apply_deadline,
-          first_come: c.first_come,
+          target_audience: c.target_audience,
+          fee: c.fee,
           source_pdf_url: c.sourcePdfUrl,
           linked_article_id:
             c.linkArticle && c.article_index !== null ? articles[c.article_index]?.id ?? null : null,
@@ -802,6 +819,15 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                           onChange={(e) => updateCandidate(i, { title: e.target.value })}
                           className="text-sm font-medium border border-slate-300 rounded px-2 py-1 w-full"
                         />
+                        {/* AIが根拠にした原文。名前の読み違い（かたつむり→かにつわり等）や、原文に無い名前（作り話）を見つける手がかり */}
+                        {c.source_text && (
+                          <p
+                            className="text-[11px] text-slate-400 truncate"
+                            title={`AIが根拠にした原文: ${c.source_text}`}
+                          >
+                            原文: {c.source_text}
+                          </p>
+                        )}
                         <input
                           type="text"
                           value={c.event_location ?? ''}
@@ -809,6 +835,25 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                           onChange={(e) => updateCandidate(i, { event_location: e.target.value || null })}
                           className="text-sm border border-slate-300 rounded px-2 py-1 w-full"
                         />
+                        {/* 対象者・参加費（週次配信の一押し・申込受付中に添える） */}
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={c.target_audience ?? ''}
+                            placeholder="対象（例: 65歳以上）"
+                            onChange={(e) => updateCandidate(i, { target_audience: e.target.value || null })}
+                            className="text-xs border border-slate-300 rounded px-2 py-1 flex-1 min-w-0"
+                            title="対象者。配信文の一押し・申込受付中の行に添えます"
+                          />
+                          <input
+                            type="text"
+                            value={c.fee ?? ''}
+                            placeholder="参加費（例: 無料 / 400円/回）"
+                            onChange={(e) => updateCandidate(i, { fee: e.target.value || null })}
+                            className="text-xs border border-slate-300 rounded px-2 py-1 flex-1 min-w-0"
+                            title="参加費。配信文の一押し・申込受付中の行に添えます"
+                          />
+                        </div>
                         <OrganizerSelect
                           value={c.organizer}
                           options={orgOptions}
@@ -875,25 +920,27 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                               </span>
                             )}
                           </button>
-                          {/* 申込締切・先着順（要予約のとき。週次配信の「申込受付中」「締切間近」に使う） */}
+                          {/* 申込締切（要予約・連続のとき。週次配信の「申込受付中」「締切間近」に使う） */}
                           {(c.category === 'reserve' || c.category === 'recurring' || c.apply_deadline) && (
                             <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
                               <span>締切</span>
                               <input
                                 type="date"
                                 value={c.apply_deadline ?? ''}
-                                onChange={(e) => updateCandidate(i, { apply_deadline: e.target.value || null })}
-                                className="text-[11px] border border-slate-300 rounded px-1.5 py-0.5"
+                                onChange={(e) => {
+                                  const v = e.target.value || null;
+                                  // 締切を入れたのに「当日OK」や種別なしは矛盾なので要予約に切り替える
+                                  const fixCategory = v && (c.category === null || c.category === 'open') ? { category: 'reserve' as const } : {};
+                                  updateCandidate(i, { apply_deadline: v, ...fixCategory });
+                                }}
+                                className={`text-[11px] border rounded px-1.5 py-0.5 ${c.apply_deadline ? 'border-slate-300' : 'border-dashed border-amber-300 bg-amber-50/40'}`}
                                 title="申込締切日。不明なら空欄（配信では開催7日前を仮の締切として扱います）"
                               />
-                              <button
-                                type="button"
-                                onClick={() => updateCandidate(i, { first_come: !c.first_come })}
-                                className={`px-1.5 py-0.5 rounded font-medium border transition ${c.first_come ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
-                                title="先着順（締切前に埋まるので早めに配信）"
-                              >
-                                先着
-                              </button>
+                              {!c.apply_deadline && (
+                                <span className="text-[11px] text-amber-700" title="チラシに締切の記載が無かったため。配信では開催7日前を仮の締切にします">
+                                  記載なし→{formatMd(addDaysYmd(c.event_date, -7))}頃として配信
+                                </span>
+                              )}
                             </span>
                           )}
                           {linkedArticle && (

@@ -159,7 +159,8 @@ CREATE TABLE IF NOT EXISTS event_cards (
   weekly_topic BOOLEAN DEFAULT FALSE, -- 週次LINE配信のトピック候補
   topic_reason TEXT,                  -- weekly_topic の根拠
   apply_deadline DATE,                -- 申込締切日（要予約イベント）
-  first_come BOOLEAN DEFAULT FALSE,   -- 先着順
+  target_audience TEXT,               -- 対象者（例: 65歳以上）
+  fee TEXT,                           -- 参加費（例: 無料 / 400円/回）
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

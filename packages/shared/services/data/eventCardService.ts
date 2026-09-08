@@ -28,8 +28,10 @@ export interface EventCard {
   topic_reason?: string | null;
   /** 申込締切日 YYYY-MM-DD（要予約イベント。不明なら null。列が無い場合はundefined） */
   apply_deadline?: string | null;
-  /** 先着順の申込か（締切前に埋まるので早めに配信する） */
-  first_come?: boolean | null;
+  /** 対象者（例: 65歳以上）。週次配信の一押し・申込受付中に添える。列が無い場合はundefined */
+  target_audience?: string | null;
+  /** 参加費（例: 無料 / 400円/回） */
+  fee?: string | null;
 }
 
 /** 公開カレンダー表示用に、出典（リンク記事・由来PDF）を含めたイベントカード */

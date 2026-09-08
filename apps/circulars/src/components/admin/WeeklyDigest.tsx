@@ -54,6 +54,11 @@ const shortTime = (t?: string | null) => {
   const m = t.match(/^(\d{1,2}:\d{2})/);
   return m ? ` ${m[1]}〜` : '';
 };
+/** 「（65歳以上・無料）」の形で対象者・参加費を添える（両方無ければ空文字） */
+const audienceFee = (c: { target_audience?: string | null; fee?: string | null }) => {
+  const s = [c.target_audience, c.fee].filter(Boolean).join('・');
+  return s ? `（${s}）` : '';
+};
 const siteUrl = () =>
   ((import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined) || window.location.origin).replace(/\/+$/, '');
 
@@ -123,7 +128,7 @@ function renderText(d: Digest): string {
     const t = d.topic;
     lines.push('', '⭐ 今週の一押し');
     lines.push(`${md(t.event_date!)}${shortTime(t.event_time)} ${t.title}`);
-    const sub = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ');
+    const sub = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
     if (sub) lines.push(sub);
   }
 
@@ -138,7 +143,7 @@ function renderText(d: Digest): string {
   if (d.urgent.length > 0) {
     lines.push('', '⏰ 締切間近');
     for (const c of d.urgent) {
-      lines.push(`・${c.title} 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${c.first_come ? ' ※先着' : ''}`);
+      lines.push(`・${c.title} 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`);
     }
   }
 
@@ -153,7 +158,7 @@ function renderText(d: Digest): string {
     lines.push('', '📝 申込受付中');
     for (const c of d.apply) {
       lines.push(
-        `・${c.title} ${md(c.event_date!)}開催 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${c.first_come ? ' ※先着' : ''}`
+        `・${c.title} ${md(c.event_date!)}開催 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`
       );
     }
   }
@@ -193,7 +198,8 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest) {
   if (d.topic) {
     line('⭐ 今週の一押し', { bold: true, color: '#a93226', size: 40 });
     line(`${md(d.topic.event_date!)} ${d.topic.title}`, { bold: true, size: 44 });
-    if (d.topic.event_location) line(d.topic.event_location, { color: '#6b665c', size: 32 });
+    const topicSub = [d.topic.event_location, audienceFee(d.topic)].filter(Boolean).join(' ');
+    if (topicSub) line(topicSub, { color: '#6b665c', size: 32 });
     y += 16;
   }
   const rows: string[] = [];
@@ -406,6 +412,7 @@ export const WeeklyDigest: React.FC = () => {
         <p>・⭐一押し: 配信候補（⭐）のうち開催が近いもの1件 ／ 📰レポート: 直近14日に公開したもの最大2件</p>
         <p>・📅今週の予定: 要予約以外で配信日から7日間、最大6件 ／ 📝申込受付中: 要予約で締切が14日以内、締切順に最大4件</p>
         <p>・⏰締切間近: 締切3日以内。締切が未入力の要予約は「開催7日前」を仮締切にして「頃」を付けます（抽出ダイアログの「締切」欄で入力できます）</p>
+        <p>・対象者・参加費は ⭐一押し と 📝申込受付中／⏰締切間近 の行にだけ「（65歳以上・無料）」の形で添えます（📅今週の予定には付けません）</p>
         <p>・件数の上限を超えた分は載りません。載せたいものがあれば文面を直接編集してください</p>
       </div>
     </div>
