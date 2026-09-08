@@ -716,7 +716,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                 label="AIが選択したソースからイベントの予定を読み取っています…"
                 sublabel={
                   progress.total > 0
-                    ? `${progress.done} / ${progress.total} 件を処理しました。${provider === 'gemini' ? '無料枠の制限のため1件ずつ順に処理しています。' : ''}PDFの枚数によって数分かかることがあります。`
+                    ? `${progress.done} / ${progress.total} 件を処理しました。PDFの枚数によって数分かかることがあります。`
                     : 'PDFの枚数によって数分かかることがあります。このままお待ちください。'
                 }
               />
