@@ -1,32 +1,25 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# CC-SaaS — 関ヶ谷自治会 電子回覧板
 
-# CC-SaaS - 自治会向け多機能Webアプリ
-
-自治会運営を効率化するためのモノレポプロジェクトです。
-
-View your app in AI Studio: https://ai.studio/apps/drive/1v9cidGk07_zJ_tvrPOd3ucAHe_w75x8L
+自治会の回覧板をスマホで読めるようにするポータル。本番: https://sekigayajichikai.vercel.app
 
 ## ✨ 主な機能
 
-- **デジタル回覧板**: PDFから記事を自動抽出し、優先度別に管理
-- **ラジオ回覧板**: 記事から2人のDJによる掛け合い形式のラジオ番組を自動生成（3-5分）
-- **イベントカレンダー**: 自治会のイベントを一元管理
-- **バス時刻表**: リアルタイムの路線バス情報
-- **ごみ収集日**: 地域のごみ収集スケジュール
-- **AIチャット**: 自治会に関する質問に自動回答
+- **電子回覧板**: 回覧板PDFから記事をAIで抽出し、月号ごとに公開。承認フロー（担当者確認→公開）付き
+- **カレンダー予定の抽出**: 記事・添付PDFからイベントを AI（Gemini 無料枠、失敗時 Claude）で読み取り、人が確認して登録
+- **関ヶ谷レポート**: 写真つきの読み物記事（イベントレポート）。Markdown で書いてライブプレビュー
+- **週次配信**: 公式LINE「今週のお知らせ」の文面と画像を、公開中の予定とレポートから自動生成
 
 ## 📁 プロジェクト構成
 
 ```
 CC-SaaS/
-├── apps/
-│   ├── admin/          # 管理者用アプリケーション（Community Connect 全機能）
-│   ├── circulars/      # デジタル回覧板専用アプリケーション（回覧板機能のみ）
-│   └── public/         # 一般ユーザー向けアプリケーション
-└── packages/
-    └── shared/         # 共有ライブラリ（型定義、サービスなど）
+├── apps/circulars/     # 本番アプリ（Vite + React）。管理画面 /admin、住民ページ /
+├── packages/shared/    # 共有ロジック（AI抽出・Supabase アクセス・型）
+├── supabase/functions/ # Edge Functions（ai-proxy: AIキーをサーバー側に置く / app-login）
+├── sql/                # DB 定義とマイグレーション（sql/README.md）
+├── docs/               # 設計メモ・ルール（docs/README.md）
+├── scripts/            # 抽出テスト（schedule-test）、レポート投入（seed-report）
+└── archive/            # 使っていない旧アプリ・旧SQL（archive/README.md）
 ```
 
 ## 🚀 ローカル環境でのセットアップ
@@ -160,18 +153,11 @@ npm run check-env
 ### 4. アプリケーションの起動
 
 ```bash
-# 全アプリを同時に起動
 npm run dev
-
-# 管理者アプリのみ起動（Community Connect: ポート3000）
-npm run dev:admin
-
-# デジタル回覧板アプリのみ起動（回覧板専用: ポート5175）
-npm run dev:circulars
-
-# 一般ユーザーアプリのみ起動
-npm run dev:public
 ```
+- 住民ページ: http://localhost:5173/
+- 管理画面: http://localhost:5173/admin（パスワードは `VITE_APP_PASSWORD`）
+- レポート編集: /admin?mode=reports、週次配信: /admin?mode=weekly
 
 ## 🛠️ 開発ツール
 
@@ -205,44 +191,18 @@ npm run format:check
 ### ビルド
 
 ```bash
-# 両方のアプリをビルド
-npm run build
-
-# 管理者アプリのみビルド
-npm run build:admin
-
-# 一般ユーザーアプリのみビルド
-npm run build:public
+npm run build   # apps/circulars/dist に出力
 ```
 
 ## 🌐 本番環境へのデプロイ
 
-### Vercelへのデプロイ（推奨）
+GitHub の `main` に push すると Vercel が自動デプロイする。ビルド設定はルートの `vercel.json`
+（`apps/circulars` をビルドして配信）。環境変数（Supabase の URL / anon key、パスワード等）は Vercel 側に設定する。
+AI の API キーはクライアントに置かず、Supabase Edge Function `ai-proxy` のシークレット（`GEMINI_API_KEY` / `ANTHROPIC_API_KEY`）に置く。
 
-このアプリをインターネット上で公開する詳細な手順は、[DEPLOYMENT.md](DEPLOYMENT.md) をご覧ください。
-
-**概要**:
-1. Supabaseで本番環境のデータベースをセットアップ
-2. Vercelアカウントを作成してGitHubと連携
-3. 2つのアプリ（一般ユーザー & 管理画面）をそれぞれデプロイ
-
-**デプロイ後のURL例**:
-- 一般ユーザー画面: `https://cc-saas-public.vercel.app`
-- 管理画面: `https://cc-saas-admin.vercel.app`
-
-**必要な環境変数**:
-- `VITE_GEMINI_API_KEY`
-- `VITE_APP_PASSWORD`
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-
-Vercelは `main` ブランチへのプッシュを自動検知し、自動的にデプロイします。
-
-### 代替のデプロイ先
-
-- **Netlify**: Vercelと同様の手順でデプロイ可能
-- **Cloudflare Pages**: 高速なエッジ配信が可能
-- **その他**: Viteアプリをホスティングできる任意のサービス
+- 本番: https://sekigayajichikai.vercel.app
+- DB: Supabase プロジェクト iplc（sekigaya-portal）。SQL は `sql/README.md` の手順で手動適用
+- 初期の3アプリ構成のデプロイ手順は `docs/archive/DEPLOYMENT.md`（現在は使わない）
 
 ## 📄 AI記事抽出のプロンプト方針
 
@@ -252,33 +212,12 @@ PDFからの記事自動抽出では、以下の方針でAIプロンプトを設
 - **タイトル・見出し（title, headline）**: AIが記事の区切りを判断し、適切に切り出す
 - **要約（brief, summary）**: AIが簡潔に生成する（本文とは別フィールド）
 
-対象プロンプトの所在: `packages/shared/services/ai/claudeService.ts`, `openRouterService.ts`
+対象プロンプトの所在: 記事抽出は `packages/shared/services/ai/claudeService.ts`、カレンダー予定の抽出は `eventExtractionPrompt.ts`（ルールは `docs/カレンダー抽出ルール.md`）
 
-## 📻 ラジオ回覧板機能
+## 📻 ラジオ回覧板機能（休止中）
 
-デジタル回覧板の記事から、AIが自動的にラジオ回覧板を生成します。
-
-### セットアップ
-
-1. データベースとストレージのセットアップ:
-   ```bash
-   # Supabase SQL Editorで実行
-   radio-programs-setup.sql
-   radio-storage-setup.sql
-   ```
-
-2. 詳細なセットアップ手順とテスト方法は [RADIO-FEATURE-GUIDE.md](RADIO-FEATURE-GUIDE.md) を参照
-
-### 使い方
-
-**管理画面（生成）:**
-1. デジタル回覧板 > 保存済み一覧 > 任意の回覧板を選択
-2. 「ラジオ回覧板を生成」ボタンをクリック
-3. 約1-2分で3-5分のラジオ回覧板が完成
-
-**一般ユーザーアプリ（再生）:**
-1. ボトムナビゲーション > ラジオ回覧板
-2. プレイリストから番組を選択して再生
+記事から2人のDJの掛け合い音声を生成する機能。旧管理画面（archive/apps/admin）向けで、現在の電子回覧板アプリからは使っていない。
+手順は docs/archive/RADIO-FEATURE-GUIDE.md、SQL は archive/sql/features/ を参照。
 
 ## 📝 開発ルール
 

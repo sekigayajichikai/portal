@@ -1,6 +1,6 @@
 # TODO - CC-SaaS (まちポータル)
 
-> 最終更新: 2026-07-28(セキュリティ改修の本番反映を反映)
+> 最終更新: 2026-09-08(レガシー整理: apps/admin・apps/public・旧docs・旧SQL を archive/ へ移動)
 > 実運用中の機能: デジタル回覧板作成 / スケジュール関連(LINE名簿は本リポジトリ外)
 
 ---
@@ -69,8 +69,8 @@
 - [ ] サービス層の常駐 console.log の整理
 
 ### レガシー整理(apps/admin・apps/public)
-- [ ] apps/admin は circulars と大幅乖離(直近のバグ修正が入っていない)— 廃止判断
-- [ ] apps/public のカレンダー(`EventCalendarView.tsx`)は31日固定のハリボテ — 廃止 or 作り直し判断
+- [x] apps/admin は archive/apps/admin へ移動(2026-09-08)。旧デプロイ先は 404 で未使用を確認
+- [x] apps/public は archive/apps/public へ移動(2026-09-08)。カレンダーは book-system 側で作り直し済み
 - [ ] レガシーイベント実装(`PublicEvent` 型、`geminiService.ts:73` の `extractEventsFromText`、`MOCK_EVENTS`)の削除
 - [ ] `control_date` の期限切れロジック(仕様のみで未実装)を実装するか仕様を削除
 

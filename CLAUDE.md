@@ -20,3 +20,4 @@ Haikuで検証できる仕組みがある。**使い方は `scripts/schedule-tes
 - 抽出ルールの仕様: `docs/カレンダー抽出ルール.md`
 - AIコスト方針: `docs/AIコスト・モデル方針.md`
 - DBスキーマ/マイグレーション: `sql/`（本番Supabaseは iplc=sekigaya-portal。SQLはSQL Editorで手動 or MCP適用）
+- 文書の索引: `docs/README.md` ／ SQLの手順: `sql/README.md` ／ 使っていない旧アプリ・旧SQL: `archive/`（`archive/README.md`）
