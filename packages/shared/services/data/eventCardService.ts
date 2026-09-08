@@ -163,14 +163,24 @@ export async function addEventCard(card: Omit<EventCard, 'id' | 'created_at'>): 
 export async function updateEventCard(id: string, updates: Partial<EventCard>): Promise<EventCard> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase未接続');
-  const { data, error } = await supabase
-    .from('event_cards')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  // 未追加の列（apply_deadline / kind 等）があればそれを外して再試行し、更新自体は通す
+  let payload: Record<string, unknown> = { ...updates };
+  for (let attempt = 0; attempt < 6; attempt++) {
+    if (Object.keys(payload).length === 0) {
+      const { data, error } = await supabase.from('event_cards').select('*').eq('id', id).single();
+      if (error) throw error;
+      return data;
+    }
+    const { data, error } = await supabase.from('event_cards').update(payload).eq('id', id).select().single();
+    if (!error) return data;
+    const col = missingColumnName(error);
+    if (col && col in payload) {
+      delete payload[col];
+      continue;
+    }
+    throw error;
+  }
+  throw new Error('イベントカードの更新に失敗しました');
 }
 
 export async function deleteEventCard(id: string): Promise<void> {

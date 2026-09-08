@@ -14,6 +14,7 @@ import {
   getEventExtractionProviderLabel,
   convertPdfUrlToBase64,
   addEventCard,
+  updateEventCard,
   getOrganizers,
   addOrganizer,
   type EventCandidate,
@@ -22,7 +23,7 @@ import {
 } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
 import { Loader2, AlertCircle, X, Sparkles, Copy, Check, Plus } from 'lucide-react';
-import { ProcessingIndicator } from '@/components/ui/feedback';
+import { ProcessingIndicator, showToast } from '@/components/ui/feedback';
 
 /**
  * 編集可能なイベント候補（選択状態付き）
@@ -37,6 +38,11 @@ interface EditableCandidate extends EventCandidate {
   sourcePdfUrl: string | null;
   /** weekly_topic の機械判定の根拠（単独チラシ / 複数掲載）。AIの topic_reason とは別に表示する */
   topicHints: string[];
+  /**
+   * 同じイベント（日付＋正規化タイトル）が既に登録済みなら、その既存カードのID。
+   * 登録時は新規追加せず、既存カードの空欄（締切・種別・⭐など）だけを補完する（元のデータは壊さない）
+   */
+  existingId: string | null;
 }
 
 /** 性質(kind)の表示メタ */
@@ -475,10 +481,16 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
         // 機械判定に当たれば true。当たらない場合、支援系(support)はAIの甘い true を抑えて false に倒す
         const weeklyTopic = hints.length > 0 ? true : c.kind === 'support' ? false : c.weekly_topic;
 
+        // 既に登録済みのカードがあれば「補完対象」にする（同じ日付＋正規化タイトル）
+        const existing = existingCards.find(
+          (card) => card.event_date === c.event_date && topicKey(card.event_date, card.title) === topicKey(c.event_date, c.title)
+        );
+
         merged.push({
           ...c,
           weekly_topic: weeklyTopic,
           topicHints: hints,
+          existingId: existing?.id ?? null,
           selected: true,
           linkArticle: c.article_index !== null && c.has_details,
           source: r.value.source,
@@ -514,24 +526,53 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
     setCandidates((prev) => prev.map((c, i) => (i === index ? { ...c, ...updates } : c)));
   };
 
-  /**
-   * 既存イベントカードとの重複判定（同一日付＋同一タイトル）
-   */
-  const isDuplicate = (c: EventCandidate): boolean =>
-    existingCards.some((card) => card.event_date === c.event_date && card.title === c.title);
-
   const selectedCandidates = candidates.filter((c) => c.selected);
+  const toAdd = selectedCandidates.filter((c) => !c.existingId);
+  const toFill = selectedCandidates.filter((c) => !!c.existingId);
 
   /**
-   * 選択した候補をイベントカードとして登録
+   * 既存カードの「空欄だけ」を候補の値で埋める更新内容を作る。
+   * タイトル・日付・記事リンクなど、人が直した可能性のある項目は触らない。
+   * 埋めるものが無ければ null（更新しない）。
+   */
+  const buildFillUpdates = (existing: EventCard, c: EditableCandidate): Partial<EventCard> | null => {
+    const u: Partial<EventCard> = {};
+    if (!existing.event_time && c.event_time) u.event_time = c.event_time;
+    if (!existing.event_location && c.event_location) u.event_location = c.event_location;
+    if (!existing.organizer && c.organizer) u.organizer = c.organizer;
+    if (!existing.category && c.category) u.category = c.category;
+    if (!existing.kind && c.kind) u.kind = c.kind;
+    if (!existing.weekly_topic && c.weekly_topic) {
+      u.weekly_topic = true;
+      u.topic_reason = c.topicHints.length > 0 ? c.topicHints.join('・') : c.topic_reason;
+    }
+    if (!existing.apply_deadline && c.apply_deadline) u.apply_deadline = c.apply_deadline;
+    if (!existing.first_come && c.first_come) u.first_come = true;
+    if (!existing.source_pdf_url && c.sourcePdfUrl) u.source_pdf_url = c.sourcePdfUrl;
+    return Object.keys(u).length > 0 ? u : null;
+  };
+
+  /**
+   * 選択した候補を登録する。
+   * - 登録済みのイベントは新規追加せず、既存カードの空欄だけを補完する（元のデータは壊さない）
+   * - それ以外は新規カードとして追加する
    */
   const handleRegister = async () => {
     if (selectedCandidates.length === 0) return;
     setIsRegistering(true);
     setError(null);
     try {
-      for (let i = 0; i < selectedCandidates.length; i++) {
-        const c = selectedCandidates[i];
+      let filled = 0;
+      for (const c of toFill) {
+        const existing = existingCards.find((card) => card.id === c.existingId);
+        if (!existing) continue;
+        const updates = buildFillUpdates(existing, c);
+        if (!updates) continue;
+        await updateEventCard(existing.id, updates);
+        filled++;
+      }
+      for (let i = 0; i < toAdd.length; i++) {
+        const c = toAdd[i];
         await addEventCard({
           newsletter_id: newsletter.id,
           title: c.title,
@@ -551,6 +592,12 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           display_order: existingCards.length + i,
         });
       }
+      const parts = [
+        toAdd.length > 0 ? `${toAdd.length}件を新しく登録` : null,
+        filled > 0 ? `登録済み${filled}件の空欄（締切・種別など）を補完` : null,
+        toFill.length - filled > 0 ? `登録済み${toFill.length - filled}件は補完する項目なし` : null,
+      ].filter(Boolean);
+      showToast(parts.length > 0 ? parts.join('、') + 'しました' : '変更はありませんでした');
       onRegistered();
       onClose();
     } catch (err: any) {
@@ -712,7 +759,6 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
               )}
               {candidates.map((c, i) => {
                 const linkedArticle = c.article_index !== null ? articles[c.article_index] : undefined;
-                const duplicate = isDuplicate(c);
                 // 抽出元PDF（PDF由来のみ）。媒体名＋発行元を表示
                 const srcPdf = c.sourcePdfUrl
                   ? pdfSources.find((s) => s.url === c.sourcePdfUrl) ?? null
@@ -862,8 +908,13 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                               </span>
                             </label>
                           )}
-                          {duplicate && (
-                            <span className="text-xs text-amber-600 font-medium">⚠ 同じ日付・名前のカードが既にあります</span>
+                          {c.existingId && (
+                            <span
+                              className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-100 text-amber-800"
+                              title="同じ日付・名前のカードが既にあります。登録時は新しく追加せず、既存カードの空欄（締切・種別・⭐など）だけを補完します"
+                            >
+                              ✔ 登録済み → 空欄だけ補完
+                            </span>
                           )}
                         </div>
                       </div>
@@ -920,7 +971,11 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                 className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-40 flex items-center gap-2"
               >
                 {isRegistering && <Loader2 size={15} className="animate-spin" />}
-                {isRegistering ? '登録しています…' : `選択した${selectedCandidates.length}件を登録`}
+                {isRegistering
+                  ? '登録しています…'
+                  : toFill.length > 0
+                    ? `新規${toAdd.length}件を登録・登録済み${toFill.length}件を補完`
+                    : `選択した${selectedCandidates.length}件を登録`}
               </button>
             </div>
           </div>
