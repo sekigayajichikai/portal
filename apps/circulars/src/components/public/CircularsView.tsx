@@ -127,8 +127,10 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
         setNewsletters(filtered);
         if (previewNewsletterId) {
           setSelectedNewsletterId(previewNewsletterId);
-        } else if (data.length > 0 && !selectedNewsletterId) {
-          setSelectedNewsletterId(data[0].id);
+        } else if (filtered.length > 0 && !selectedNewsletterId) {
+          // 除外後の一覧から選ぶ（除外前の data[0] だと、最新作成の「関ヶ谷レポート」枠が選ばれて
+          // レポート記事が回覧板タブに混ざってしまう）
+          setSelectedNewsletterId(filtered[0].id);
         }
       } catch (err: any) {
         setError('電子回覧板の読み込みに失敗しました');
