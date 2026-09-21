@@ -177,6 +177,18 @@ CREATE TABLE IF NOT EXISTS weekly_digest_sends (
   sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- LINE リッチメニューの定義（管理画面で作成）
+CREATE TABLE IF NOT EXISTS line_rich_menus (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  definition JSONB NOT NULL,
+  image_url TEXT,
+  line_rich_menu_id TEXT,
+  alias_id TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- =====================================================
 -- 6. いいね（端末IDベース）
 -- =====================================================
