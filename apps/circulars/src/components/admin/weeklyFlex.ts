@@ -2,7 +2,7 @@
  * 週次配信の LINE メッセージ（テキスト＋Flex カルーセル）を組み立てる
  *
  * 1回の配信 = ① 短いテキスト（見出し＋ひとこと） → ② ⭐一押しカード（1枚） → ③ Flex カルーセル
- *   ② ⭐ 今週の一押し … チラシ画像（上部を正方形に）＋タイトル・日時・場所・紹介文＋「チラシを見る」「予定の詳細」
+ *   ② ⭐ 今週の一押し … 見出し帯＋チラシ画像（上部を正方形に）＋タイトル・日時・場所・紹介文＋「詳しく見る」
  *      （カルーセルは全カードの高さが揃う仕様なので、背の高い一押しは別の吹き出しにする）
  *   ③ カルーセルの中身（該当が無いカードは出さない）:
  *     1. 📅 今週の予定 … 行ごとにタップで詳細（⏰締切間近があれば先頭に）
@@ -95,10 +95,11 @@ function topicBubble(d: Digest, flyerImageUrl: string | null) {
   if (place) body.push(text(`📍 ${place}`, { size: 'xs', color: '#666666' }));
   if (t.description) body.push(text(t.description, { size: 'sm', color: '#333333', margin: 'md' }));
 
-  const footer: unknown[] = [];
-  const mainLabel = link.kind === 'pdf' ? 'チラシを見る' : link.kind === 'article' ? '記事を読む' : '詳しく見る';
-  footer.push(primaryButton(mainLabel, link.url));
-  if (link.kind !== 'event') footer.push(linkButton('予定の詳細', `${siteUrl()}/?event=${t.id}`));
+  // ボタンは「詳しく見る」1つ。行き先は チラシPDF → 記事 → 予定ページ の順（topicLink）。
+  // 一押しはチラシとは限らないので、言葉はリンク先の種類で変えずに汎用にしておく
+  const mainLabel = '詳しく見る';
+  // ボタンは見出し帯と同じ琥珀色（カードの色を1つに揃える）
+  const footer: unknown[] = [primaryButton(mainLabel, link.url, AMBER)];
 
   return {
     type: 'bubble',
@@ -164,13 +165,13 @@ function applyBubble(d: Digest) {
     ];
     if (c.event_location) items.push(text(c.event_location, { size: 'xs', color: GRAY }));
     // 各行がそれぞれのチラシ（申込方法）に飛ぶ。申込が複数・別PDFでも行ごとに正しい先へ
-    contents.push({ type: 'box', layout: 'vertical', spacing: 'xs', ...(linkable ? { action: uri('申込方法を見る', topicLink(c).url) } : {}), contents: items });
+    contents.push({ type: 'box', layout: 'vertical', spacing: 'xs', ...(linkable ? { action: uri('詳しく', topicLink(c).url) } : {}), contents: items });
   });
   return {
     type: 'bubble',
     size: 'mega',
     // 下のボタンは置かない（行き先が1つに決められないため）。代わりに見出しの下で行タップを案内する
-    header: header('📝 申込受付中', '各行をタップすると申込方法（チラシ）が開きます', GREEN),
+    header: header('📝 申込受付中', '各行をタップすると詳細が開きます', GREEN),
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
   };
 }
