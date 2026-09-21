@@ -564,6 +564,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
     if (!existing.apply_deadline && c.apply_deadline) u.apply_deadline = c.apply_deadline;
     if (!existing.target_audience && c.target_audience) u.target_audience = c.target_audience;
     if (!existing.fee && c.fee) u.fee = c.fee;
+    if (!existing.description && c.description) u.description = c.description;
     if (!existing.source_pdf_url && c.sourcePdfUrl) u.source_pdf_url = c.sourcePdfUrl;
     return Object.keys(u).length > 0 ? u : null;
   };
@@ -603,6 +604,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           apply_deadline: c.apply_deadline,
           target_audience: c.target_audience,
           fee: c.fee,
+          description: c.description,
           source_pdf_url: c.sourcePdfUrl,
           linked_article_id:
             c.linkArticle && c.article_index !== null ? articles[c.article_index]?.id ?? null : null,
@@ -854,6 +856,15 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                             title="参加費。配信文の一押し・申込受付中の行に添えます"
                           />
                         </div>
+                        {/* 紹介文（週次配信の⭐一押しと予定ページに表示。1〜2文） */}
+                        <textarea
+                          value={c.description ?? ''}
+                          placeholder="紹介文（1〜2文。例: 地元の作品展示と演奏会。お茶を飲みながら気軽に楽しめます。）"
+                          rows={2}
+                          onChange={(e) => updateCandidate(i, { description: e.target.value || null })}
+                          className="text-xs border border-slate-300 rounded px-2 py-1 w-full resize-none leading-relaxed"
+                          title="紹介文。週次配信の⭐一押しのタイトル下と、予定の個別ページに表示します"
+                        />
                         <OrganizerSelect
                           value={c.organizer}
                           options={orgOptions}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import CircularsView from '@/components/public/CircularsView';
 import ReportsView from '@/components/public/ReportsView';
 import ReportReviewView from '@/components/public/ReportReviewView';
+import EventCardView, { ArticleView } from '@/components/public/EventCardView';
 // 後で再追加する可能性があるため import は残す（今はタブ非表示）
 // import CalendarView from '@/components/public/CalendarView';
 // import BookingsView from '@/components/public/BookingsView';
@@ -19,6 +20,11 @@ export default function PublicPage() {
   // レポートのメンバー確認: ?report-review=<記事ID> があれば、
   // その記事だけを「見てもらう用」に表示する（ログイン不要・公開はしない・下書きも表示）。
   const reportReviewId = params.get('report-review') || undefined;
+  // 予定の個別URL: /?event=<予定カードID>。週次LINE配信の「⭐今週の一押し」から飛んでくる先
+  // （予定の詳細＋リンク記事＋出典PDFを1ページで見せる）
+  const eventCardId = params.get('event') || undefined;
+  // 記事の個別URL: /?article=<記事ID>。一押しが記事由来のとき、週次配信から記事へ直接飛ぶ先
+  const articleId = params.get('article') || undefined;
 
   const tabClass = (active: boolean, activeColor: string) =>
     `flex-1 py-3 px-1 text-xs sm:text-sm font-bold transition border-b-2 whitespace-nowrap ${
@@ -33,6 +39,21 @@ export default function PublicPage() {
           🔍 確認用ページ（メンバー向け）— まだ一般公開はされていません
         </div>
         <ReportReviewView id={reportReviewId} />
+      </div>
+    );
+  }
+
+  if (eventCardId) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <EventCardView id={eventCardId} />
+      </div>
+    );
+  }
+  if (articleId) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <ArticleView id={articleId} />
       </div>
     );
   }

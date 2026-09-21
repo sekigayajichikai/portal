@@ -54,6 +54,8 @@ export interface EventCandidate {
   target_audience: string | null;
   /** 参加費（例: 無料 / 400円/回 / 3,200円（2回分）。不明なら null） */
   fee: string | null;
+  /** 紹介文（住民向け・1〜2文・60字以内。内容説明が無ければ null） */
+  description: string | null;
 }
 
 /** イベント種別(category)判定と、連続イベントの集約ルール（プロンプト共通） */
@@ -96,6 +98,9 @@ export const DEADLINE_ATTR_RULE = `- 【申込締切 apply_deadline】要予約�
 export const AUDIENCE_FEE_RULE = `- 【対象者 target_audience】「対象 成人」「65歳以上」「乳幼児＆幼児」「小学生から成人」など、参加できる人の条件を原文どおり15字以内で入れる。定員（「20人」「先着50名」）は対象者に含めない。書かれていなければ null
 - 【参加費 fee】「参加費」「費用」「材料費」「無料」の記載を10字以内で入れる。「1回400円」は「400円/回」、複数回分は「3,200円（2回分）」のように。無料と明記されていれば「無料」。書かれていなければ null`;
 
+/** 紹介文の属性ルール（プロンプト共通） */
+export const DESCRIPTION_RULE = `- 【紹介文 description】住民向けに「何をする催しか・どんな人におすすめか」が分かる紹介文を1〜2文・60字以内で書く（例: 「地元の作品展示と演奏会。お茶を飲みながら気軽に楽しめます。」）。原文の内容説明・見どころ・持ち物などを要約し、日時・場所・対象・費用は繰り返さない（別の項目に入るため）。原文に内容説明が無く日時・場所しか書かれていなければ null`;
+
 /** 出力JSONの形式説明（プロンプト共通） */
 const OUTPUT_FORMAT = `【出力形式】以下のJSONのみを出力してください:
 \`\`\`json
@@ -116,7 +121,8 @@ const OUTPUT_FORMAT = `【出力形式】以下のJSONのみを出力してく�
       "source_text": "名称と日付が書かれた原文の一節（40字以内・そのまま書き写す）",
       "apply_deadline": "申込締切 YYYY-MM-DD または null（要予約のみ）",
       "target_audience": "対象者（15字以内） または null",
-      "fee": "参加費（10字以内。無料なら \"無料\"） または null"
+      "fee": "参加費（10字以内。無料なら \"無料\"） または null",
+      "description": "紹介文（1〜2文・60字以内。内容説明が無ければ null）"
     }
   ]
 }
@@ -186,6 +192,7 @@ ${KIND_RULE}
 ${TOPIC_RULE}
 ${DEADLINE_ATTR_RULE}
 ${AUDIENCE_FEE_RULE}
+${DESCRIPTION_RULE}
 ${buildOrganizerHint(organizerNames)}
 【has_details の判定】日時・場所以外の実質的な詳細情報（持ち物・申込方法・費用・対象者・内容説明など）がPDFに書かれていれば true、日付・場所の羅列だけなら false とする。
 【source_text】各イベントに、そのイベント名と開催日が書かれている原文の一節を40字以内でそのまま書き写す（要約・言い換え禁止）。原文に見つからないイベントは出力しない。
@@ -252,6 +259,7 @@ ${KIND_RULE}
 ${TOPIC_RULE}
 ${DEADLINE_ATTR_RULE}
 ${AUDIENCE_FEE_RULE}
+${DESCRIPTION_RULE}
 ${buildOrganizerHint(organizerNames)}
 【has_details の判定】抽出元記事に「日時・場所以外の実質的な詳細情報」（持ち物、申込方法、費用、対象者、内容の説明など）が書かれていれば true、行事予定表のように日付・場所の羅列だけなら false とする。読者が記事を開いたとき、カードに書いてある以上の情報が得られるかどうかで判断すること。
 【source_text】各イベントに、そのイベント名と開催日が書かれている記事中の一節を40字以内でそのまま書き写す。
@@ -324,6 +332,7 @@ export function parseEventCandidatesFromResponse(
       apply_deadline: deadline,
       target_audience: str(e.target_audience)?.slice(0, 30) ?? null,
       fee: str(e.fee)?.slice(0, 20) ?? null,
+      description: str(e.description)?.replace(/\s*\n\s*/g, ' ').slice(0, 120) ?? null,
       };
     });
 }

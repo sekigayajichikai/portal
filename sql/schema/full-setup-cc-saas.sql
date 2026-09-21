@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS event_cards (
   apply_deadline DATE,                -- 申込締切日（要予約イベント）
   target_audience TEXT,               -- 対象者（例: 65歳以上）
   fee TEXT,                           -- 参加費（例: 無料 / 400円/回）
+  description TEXT,                   -- 紹介文（1〜2文。週次配信の一押し・予定ページに表示）
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

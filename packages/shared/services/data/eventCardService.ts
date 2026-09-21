@@ -32,6 +32,8 @@ export interface EventCard {
   target_audience?: string | null;
   /** 参加費（例: 無料 / 400円/回） */
   fee?: string | null;
+  /** 紹介文（1〜2文・60字程度）。週次配信の一押しと予定ページ(/?event=<ID>)に表示。列が無い場合はundefined */
+  description?: string | null;
 }
 
 /** 公開カレンダー表示用に、出典（リンク記事・由来PDF）を含めたイベントカード */
@@ -42,6 +44,8 @@ export interface PublicEventCard extends EventCard {
   newsletter_pdf_url?: string | null;
   /** 出典PDFの表示名（「にしかぜ」等。source_pdf_urls のlabel/publisherから解決） */
   source_pdf_label?: string | null;
+  /** 出典号のタイトル（個別ページの「◯月号より」表示用。getPublishedEventCardById のみ） */
+  newsletter_title?: string | null;
 }
 
 export async function getEventCards(newsletterId: string): Promise<EventCard[]> {
@@ -128,6 +132,46 @@ export async function getPublishedEventCards(
       source_pdf_label,
     };
   });
+}
+
+/**
+ * 予定カード1件を個別URL（/?event=<ID>）表示用に取得する。
+ *
+ * 公開中(status=published)の号に紐づくカードだけを返す（下書きの号のカードは null）。
+ * 出典表示用にリンク記事(id/title/source)と号のPDF情報を埋め込む（getPublishedEventCards と同じ形）。
+ */
+export async function getPublishedEventCardById(id: string): Promise<PublicEventCard | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続');
+  const { data, error } = await supabase
+    .from('event_cards')
+    .select(
+      '*, newsletters!inner(status,title,source_pdf_url,source_pdf_urls), linked_article:articles!linked_article_id(id,title,source)'
+    )
+    .eq('id', id)
+    .eq('newsletters.status', 'published')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  const row: any = data;
+  const nl = row.newsletters;
+  const entries: any[] = Array.isArray(nl?.source_pdf_urls) ? nl.source_pdf_urls : [];
+  const firstUrl =
+    (entries[0] && (typeof entries[0] === 'string' ? entries[0] : entries[0].url)) || nl?.source_pdf_url || null;
+  const { newsletters: _n, linked_article, ...card } = row;
+  let source_pdf_label: string | null = null;
+  if (card.source_pdf_url) {
+    const matched = entries.find((e: any) => e && typeof e !== 'string' && e.url === card.source_pdf_url);
+    source_pdf_label = (matched?.label || matched?.publisher || null) as string | null;
+  }
+  return {
+    ...card,
+    linked_article: linked_article ?? null,
+    newsletter_pdf_url: firstUrl,
+    source_pdf_label,
+    newsletter_title: (nl?.title as string | undefined) ?? null,
+  };
 }
 
 /**

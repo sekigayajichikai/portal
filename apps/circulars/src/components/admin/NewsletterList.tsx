@@ -74,6 +74,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     event_date: string;
     event_time: string;
     event_location: string;
+    /** 紹介文（週次配信の⭐一押し・予定ページに表示） */
+    description: string;
   } | null>(null);
   const [isSavingCard, setIsSavingCard] = useState(false);
   const [showArticleCrop, setShowArticleCrop] = useState(false);
@@ -831,6 +833,13 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         onChange={(e) => setEditingCard({ ...editingCard, event_location: e.target.value })}
                         className="text-sm border border-slate-300 rounded px-2 py-1 w-full"
                       />
+                      <textarea
+                        value={editingCard.description}
+                        placeholder="紹介文（1〜2文。週次配信の⭐一押しと予定ページに表示）"
+                        rows={2}
+                        onChange={(e) => setEditingCard({ ...editingCard, description: e.target.value })}
+                        className="text-xs border border-slate-300 rounded px-2 py-1 w-full resize-none leading-relaxed"
+                      />
                       <div className="flex justify-end gap-2 pt-1">
                         <button
                           onClick={() => setEditingCard(null)}
@@ -843,12 +852,20 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                             if (!editingCard.title.trim()) return;
                             setIsSavingCard(true);
                             try {
-                              await updateEventCard(card.id, {
+                              const saved = await updateEventCard(card.id, {
                                 title: editingCard.title.trim(),
                                 event_date: editingCard.event_date || null,
                                 event_time: editingCard.event_time.trim() || null,
                                 event_location: editingCard.event_location.trim() || null,
+                                description: editingCard.description.trim() || null,
                               });
+                              // DBに description 列が無い（マイグレーション未適用）と、紹介文だけ黙って落ちる。
+                              // 返ってきた行に列が無ければその旨を知らせる
+                              if (editingCard.description.trim() && !('description' in saved)) {
+                                showError(
+                                  '紹介文は保存されませんでした。DBに紹介文の列がありません（sql/migrations/2026-09-21-event-cards-description.sql を SQL Editor で実行してください）。'
+                                );
+                              }
                               const cards = await getEventCards(selectedNewsletter.id);
                               setEventCards(cards);
                               setEditingCard(null);
@@ -877,6 +894,11 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                           {card.event_location && `📍 ${card.event_location}`}
                           {card.event_location && card.organizer && '　'}
                           {card.organizer && `🏛 ${card.organizer}`}
+                        </p>
+                      )}
+                      {card.description && (
+                        <p className="text-xs text-slate-500 truncate" title={card.description}>
+                          {card.weekly_topic ? '⭐ ' : ''}{card.description}
                         </p>
                       )}
                       {linkedArticle ? (
@@ -931,6 +953,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                           event_date: card.event_date || '',
                           event_time: card.event_time || '',
                           event_location: card.event_location || '',
+                          description: card.description || '',
                         })}
                         className="p-1.5 text-slate-400 hover:text-primary-600 opacity-0 group-hover:opacity-100 transition"
                         title="編集"

@@ -444,6 +444,7 @@ const EVENT_RESPONSE_SCHEMA = {
           apply_deadline: { type: 'STRING', nullable: true },
           target_audience: { type: 'STRING', nullable: true },
           fee: { type: 'STRING', nullable: true },
+          description: { type: 'STRING', nullable: true },
         },
         required: ['title', 'event_date', 'has_details', 'weekly_topic'],
       },
