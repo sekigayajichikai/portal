@@ -93,29 +93,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (password === devPassword) {
         setIsAuthenticated(true);
         localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+        // Edge Function（ai-proxy / line-broadcast）はサーバー発行トークンで保護されているので、
+        // ローカルでもそれらを使えるよう、同じパスワードで app-login からトークンを取っておく（取れなくてもログインは成立）
+        void fetchAppToken(password);
         return true;
       }
       return false;
     }
 
     // 本番: サーバー側でパスワード照合
+    const ok = await fetchAppToken(password);
+    if (ok) setIsAuthenticated(true);
+    return ok;
+  };
+
+  /**
+   * app-login でパスワードを照合し、アプリトークンを localStorage に保存する。
+   * 成功なら true。失敗（パスワード不一致・未設定・通信エラー）なら false
+   */
+  const fetchAppToken = async (password: string): Promise<boolean> => {
     const supabase = getSupabaseClient();
     if (!supabase) {
       console.error('Supabaseが未設定のため、ログインできません');
       return false;
     }
-
     try {
       const { data, error } = await supabase.functions.invoke('app-login', {
         body: { password },
       });
-
       if (error || !data?.token) {
         return false;
       }
-
       localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, data.token);
-      setIsAuthenticated(true);
       return true;
     } catch (e) {
       console.error('ログイン処理でエラーが発生しました:', e);

@@ -203,7 +203,7 @@ function applyBubble(d: Digest) {
     type: 'bubble',
     size: 'mega',
     // 下のボタンは置かない（行き先が1つに決められないため）。代わりに見出しの下で行タップを案内する
-    header: header('📝 申込受付中', `締切の近い順　${ROW_HINT}`, GREEN),
+    header: header('📝 申込受付中', ROW_HINT, GREEN),
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
   };
 }

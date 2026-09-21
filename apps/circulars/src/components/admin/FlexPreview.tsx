@@ -135,7 +135,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2f6f4e' }}>
               <div className="text-base font-bold">📝 申込受付中</div>
-              <div className="text-xs opacity-80">締切の近い順　{ROW_HINT}</div>
+              <div className="text-xs opacity-80">{ROW_HINT}</div>
             </div>
             <div className="px-3 pb-2">
               {d.apply.map((c) => (

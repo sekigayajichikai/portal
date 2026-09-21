@@ -57,8 +57,13 @@ export async function sendLineMessages(mode: LineSendMode, messages: LineMessage
       }
     }
     if (context?.status === 401 || detail === 'Unauthorized') {
+      const hadToken = typeof localStorage !== 'undefined' && !!localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
       if (typeof localStorage !== 'undefined') localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-      throw new Error('ログインの有効期限が切れました。ページを再読み込みして、もう一度ログインしてください。');
+      throw new Error(
+        hadToken
+          ? 'ログインの有効期限が切れました。ページを再読み込みして、もう一度ログインしてください。'
+          : 'サーバーのログイン情報がありません。いったんログアウトして、もう一度ログインしてください（ローカルでは本番と同じパスワードが必要です）。'
+      );
     }
     throw new Error(`LINE への送信に失敗しました: ${detail}`);
   }
