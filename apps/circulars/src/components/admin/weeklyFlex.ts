@@ -62,23 +62,34 @@ const primaryButton = (label: string, url: string, color = SITE_BLUE) => ({
   action: uri(label, url),
 });
 
+/** 行の右端に置く「詳しく ›」の色（濃いめのグレー。カードの色は見出し帯だけに絞る） */
+const DETAIL_GRAY = '#555555';
+/** 両カード共通の見出し下の案内 */
+const ROW_HINT = '「詳しく ›」をタップすると案内が開きます';
+
 /**
- * 予定1件の「行」（日付 / タイトル＋場所 / ›）。
- * チラシか記事がある予定は行全体がタップでき、無い予定（行事予定表から拾っただけ）は矢印なし・タップなし
+ * 予定1件の「行」（左: 日付や締切 / 中央: タイトル＋補足 / 右端: 「詳しく ›」）。今週の予定・申込受付中で共通。
+ * チラシか記事がある予定は行全体がタップでき、無い予定（行事予定表から拾っただけ）は「詳しく ›」を出さずタップなし
  */
-function eventRow(c: PublicEventCard, opts: { prefix?: string; whenText: string; whenColor?: string }) {
+function eventRow(
+  c: PublicEventCard,
+  opts: { prefix?: string; whenText: string; whenColor?: string; sub?: Array<{ text: string; color?: string; bold?: boolean }> }
+) {
   const linkable = hasDetailLink(c);
-  const right: unknown[] = [text(`${opts.prefix ?? ''}${c.title}`, { size: 'sm', weight: 'bold' })];
-  if (c.event_location) right.push(text(c.event_location, { size: 'xs', color: GRAY }));
+  const middle: unknown[] = [text(`${opts.prefix ?? ''}${c.title}`, { size: 'sm', weight: 'bold' })];
+  for (const s of opts.sub ?? []) middle.push(text(s.text, { size: 'xs', color: s.color ?? GRAY, ...(s.bold ? { weight: 'bold' } : {}) }));
+  if (c.event_location) middle.push(text(c.event_location, { size: 'xs', color: GRAY }));
   return {
     type: 'box',
     layout: 'horizontal',
     spacing: 'md',
+    alignItems: 'center',
     ...(linkable ? { action: uri('詳しく', topicLink(c).url) } : {}),
     contents: [
       text(opts.whenText, { size: 'xs', color: opts.whenColor ?? BLUE, weight: 'bold', flex: 2 }),
-      { type: 'box', layout: 'vertical', flex: 7, contents: right },
-      { type: 'text', text: linkable ? '›' : ' ', size: 'lg', color: '#aaaaaa', flex: 1, align: 'end' },
+      { type: 'box', layout: 'vertical', flex: 6, contents: middle },
+      // 押せる行だけ「詳しく ›」（本文と同じ大きさの太字・濃いグレー）。矢印単体より大きく、文字で意味が分かる
+      { type: 'text', text: linkable ? '詳しく ›' : ' ', size: 'sm', weight: 'bold', color: DETAIL_GRAY, flex: 2, align: 'end' },
     ],
   };
 }
@@ -142,7 +153,7 @@ function eventsBubble(d: Digest) {
   return {
     type: 'bubble',
     size: 'mega',
-    header: header('📅 今週の予定', `${md(d.from)}〜${md(d.to)}`, SITE_BLUE),
+    header: header('📅 今週の予定', `${md(d.from)}〜${md(d.to)}　${ROW_HINT}`, SITE_BLUE),
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
     // 行は今週の分。ボタンは来週以降も含めた一覧（回覧板サイトの「今後のイベント」）
     footer: { type: 'box', layout: 'vertical', contents: [linkButton('ほかの予定も見る', `${siteUrl()}/`)] },
@@ -154,24 +165,21 @@ function applyBubble(d: Digest) {
   const contents: unknown[] = [];
   d.apply.forEach((c, i) => {
     if (i > 0) contents.push(separator());
-    const linkable = hasDetailLink(c);
-    const items: unknown[] = [
-      text(`${c.title}${linkable ? '  ›' : ''}`, { size: 'sm', weight: 'bold' }),
-      text(`${md(c.event_date!)}開催 ・ 締切 ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`, {
-        size: 'xs',
-        color: RED,
-        weight: 'bold',
-      }),
-    ];
-    if (c.event_location) items.push(text(c.event_location, { size: 'xs', color: GRAY }));
+    // 今週の予定と同じ行レイアウト（左: 締切 / 中央: タイトル・開催日・場所 / 右端: 詳しく ›）。
     // 各行がそれぞれのチラシ（申込方法）に飛ぶ。申込が複数・別PDFでも行ごとに正しい先へ
-    contents.push({ type: 'box', layout: 'vertical', spacing: 'xs', ...(linkable ? { action: uri('詳しく', topicLink(c).url) } : {}), contents: items });
+    contents.push(
+      eventRow(c, {
+        whenText: `締切\n${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`,
+        whenColor: RED,
+        sub: [{ text: `${md(c.event_date!)}開催${audienceFee(c)}`, color: '#444444' }],
+      })
+    );
   });
   return {
     type: 'bubble',
     size: 'mega',
     // 下のボタンは置かない（行き先が1つに決められないため）。代わりに見出しの下で行タップを案内する
-    header: header('📝 申込受付中', '各行をタップすると詳細が開きます', GREEN),
+    header: header('📝 申込受付中', `締切の近い順　${ROW_HINT}`, GREEN),
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
   };
 }

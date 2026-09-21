@@ -25,8 +25,11 @@ const Bubble: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="shrink-0 w-[260px] bg-white rounded-2xl overflow-hidden shadow-sm text-slate-800 flex flex-col">{children}</div>
 );
 
-/** 予定の行。チラシか記事がある予定だけタップできる（矢印付き） */
-const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; prefix?: string }> = ({ c, when, whenColor, prefix }) => {
+/** 両カード共通の見出し下の案内 */
+const ROW_HINT = '「詳しく ›」をタップすると案内が開きます';
+
+/** 予定の行（左: 日付や締切 / 中央: タイトル・補足・場所 / 右端: 詳しく ›）。チラシか記事がある予定だけタップできる */
+const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; prefix?: string; sub?: string }> = ({ c, when, whenColor, prefix, sub }) => {
   const linkable = hasDetailLink(c);
   const inner = (
     <>
@@ -36,9 +39,11 @@ const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; pref
           {prefix}
           {c.title}
         </span>
+        {sub && <span className="block text-[10px] text-slate-600">{sub}</span>}
         {c.event_location && <span className="block text-[10px] text-slate-400 truncate">{c.event_location}</span>}
       </span>
-      <span className="text-slate-300 text-lg leading-none w-3 text-right">{linkable ? '›' : ''}</span>
+      {/* 押せる行だけ「詳しく ›」（本文と同じ大きさの太字・濃いグレー） */}
+      <span className="shrink-0 text-xs font-bold text-slate-600 text-right w-12">{linkable ? '詳しく ›' : ''}</span>
     </>
   );
   const cls = 'flex items-center gap-2 py-2 border-b border-slate-100 last:border-0';
@@ -101,7 +106,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
             <div className="px-3 py-2 text-white" style={{ background: '#2563eb' }}>
               <div className="text-sm font-bold">📅 今週の予定</div>
               <div className="text-[10px] opacity-80">
-                {md(d.from)}〜{md(d.to)}
+                {md(d.from)}〜{md(d.to)}　{ROW_HINT}
               </div>
             </div>
             <div className="px-3">
@@ -120,36 +125,18 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2f6f4e' }}>
               <div className="text-sm font-bold">📝 申込受付中</div>
-              <div className="text-[10px] opacity-80">各行をタップすると詳細が開きます</div>
+              <div className="text-[10px] opacity-80">締切の近い順　{ROW_HINT}</div>
             </div>
             <div className="px-3 pb-2">
-              {d.apply.map((c) => {
-                const linkable = hasDetailLink(c);
-                const body = (
-                  <>
-                    <div className="text-xs font-bold">
-                      {c.title}
-                      {linkable ? '  ›' : ''}
-                    </div>
-                    <div className="text-[10px] font-bold text-red-700">
-                      {md(c.event_date!)}開催 ・ 締切 {md(c.deadline)}
-                      {c.deadlineGuessed ? '頃' : ''}
-                      {audienceFee(c)}
-                    </div>
-                    {c.event_location && <div className="text-[10px] text-slate-400">{c.event_location}</div>}
-                  </>
-                );
-                const cls = 'block py-2 border-b border-slate-100 last:border-0';
-                return linkable ? (
-                  <a key={c.id} href={topicLink(c).url} target="_blank" rel="noopener noreferrer" className={`${cls} hover:bg-slate-50`}>
-                    {body}
-                  </a>
-                ) : (
-                  <div key={c.id} className={cls}>
-                    {body}
-                  </div>
-                );
-              })}
+              {d.apply.map((c) => (
+                <Row
+                  key={c.id}
+                  c={c}
+                  when={`締切\n${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`}
+                  whenColor="text-red-700"
+                  sub={`${md(c.event_date!)}開催${audienceFee(c)}`}
+                />
+              ))}
             </div>
           </Bubble>
         )}
