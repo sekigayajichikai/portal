@@ -55,6 +55,8 @@ export const RichMenuManager: React.FC = () => {
   const [saved, setSaved] = useState<SavedRichMenu[]>([]);
   const [lineMenus, setLineMenus] = useState<LineRichMenu[]>([]);
   const [defaultId, setDefaultId] = useState<string | null>(null);
+  /** 既定が LINE公式アカウント管理画面（GUI）のメニューで、API からは読めない状態 */
+  const [defaultManagedElsewhere, setDefaultManagedElsewhere] = useState(false);
   const [aliases, setAliases] = useState<Array<{ richMenuAliasId: string; richMenuId: string }>>([]);
   const [current, setCurrent] = useState<SavedRichMenu | null>(null);
   const [def, setDef] = useState<RichMenuDef>(SAMPLE_DEFS.normal);
@@ -71,6 +73,7 @@ export const RichMenuManager: React.FC = () => {
       const [list, d, al] = await Promise.all([richMenuApi('list'), richMenuApi('get_default'), richMenuApi('alias_list')]);
       setLineMenus(list.line?.richmenus ?? []);
       setDefaultId(d.line?.richMenuId ?? null);
+      setDefaultManagedElsewhere(!!d.line?.managedElsewhere);
       setAliases(al.line?.aliases ?? []);
     } catch (e: any) {
       console.warn(e);
@@ -466,6 +469,11 @@ export const RichMenuManager: React.FC = () => {
 
       {/* LINE 側の一覧 */}
       <div className="bg-white p-5 rounded-2xl shadow border border-slate-200 text-xs">
+        {defaultManagedElsewhere && (
+          <p className="mb-2 text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            いまの全員の既定は、LINE公式アカウントの管理画面（GUI）で作ったメニューです。API からは読めません。ここで「全員の既定にする」を押すと、そちらより優先して表示されます。
+          </p>
+        )}
         <div className="flex items-center justify-between mb-2">
           <p className="font-bold text-slate-600">LINE に登録されているメニュー（API で作ったもの）</p>
           <div className="flex items-center gap-2">

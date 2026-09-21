@@ -81,7 +81,9 @@ Deno.serve(async (req: Request) => {
         break;
       case 'get_default': {
         r = await lineFetch(token, 'GET', `${API}/user/all/richmenu`);
+        // 404 = 既定なし。「owned by another channel」= 既定が LINE公式アカウント管理画面（GUI）で作られたメニューで、API からは読めない
         if (r.status === 404) r = { ok: true, status: 200, data: { richMenuId: null } };
+        else if (!r.ok && /another channel/i.test(JSON.stringify(r.data))) r = { ok: true, status: 200, data: { richMenuId: null, managedElsewhere: true } };
         break;
       }
       case 'create':
