@@ -68,28 +68,43 @@ const DETAIL_GRAY = '#555555';
 const ROW_HINT = '「詳しく ›」をタップすると案内が開きます';
 
 /**
- * 予定1件の「行」（左: 日付や締切 / 中央: タイトル＋補足 / 右端: 「詳しく ›」）。今週の予定・申込受付中で共通。
- * チラシか記事がある予定は行全体がタップでき、無い予定（行事予定表から拾っただけ）は「詳しく ›」を出さずタップなし
+ * 予定1件の「行」。今週の予定・申込受付中で共通。
+ *
+ *   9/25(金) 13:30〜                詳しく ›
+ *   映画上映会「愛の調べ」
+ *   自治会館1階会議室
+ *
+ * 日時（または締切）はタイトルの上の1行に置き、横幅いっぱいを使う。
+ * 左に日付の列を作ると、実機（本文幅 260px 前後）で「9/25(金)」の閉じカッコや「〜」が次の行に落ちるため。
+ * 右端の「詳しく ›」は幅を固定した枠に入れて、縦方向は中央。押せない行（チラシも記事も無い）は枠だけ空ける。
  */
 function eventRow(
   c: PublicEventCard,
   opts: { prefix?: string; whenText: string; whenColor?: string; sub?: Array<{ text: string; color?: string; bold?: boolean }> }
 ) {
   const linkable = hasDetailLink(c);
-  const middle: unknown[] = [text(`${opts.prefix ?? ''}${c.title}`, { size: 'sm', weight: 'bold' })];
-  for (const s of opts.sub ?? []) middle.push(text(s.text, { size: 'xs', color: s.color ?? GRAY, ...(s.bold ? { weight: 'bold' } : {}) }));
-  if (c.event_location) middle.push(text(c.event_location, { size: 'xs', color: GRAY }));
+  const lines: unknown[] = [
+    text(opts.whenText, { size: 'sm', color: opts.whenColor ?? BLUE, weight: 'bold' }),
+    text(`${opts.prefix ?? ''}${c.title}`, { size: 'sm', weight: 'bold' }),
+  ];
+  for (const s of opts.sub ?? []) lines.push(text(s.text, { size: 'xs', color: s.color ?? GRAY, ...(s.bold ? { weight: 'bold' } : {}) }));
+  if (c.event_location) lines.push(text(c.event_location, { size: 'xs', color: GRAY }));
   return {
     type: 'box',
     layout: 'horizontal',
-    spacing: 'md',
+    spacing: 'sm',
     alignItems: 'center',
     ...(linkable ? { action: uri('詳しく', topicLink(c).url) } : {}),
     contents: [
-      text(opts.whenText, { size: 'xs', color: opts.whenColor ?? BLUE, weight: 'bold', flex: 2 }),
-      { type: 'box', layout: 'vertical', flex: 6, contents: middle },
+      { type: 'box', layout: 'vertical', flex: 1, spacing: 'xs', contents: lines },
       // 押せる行だけ「詳しく ›」（本文と同じ大きさの太字・濃いグレー）。矢印単体より大きく、文字で意味が分かる
-      { type: 'text', text: linkable ? '詳しく ›' : ' ', size: 'sm', weight: 'bold', color: DETAIL_GRAY, flex: 2, align: 'end' },
+      {
+        type: 'box',
+        layout: 'vertical',
+        width: '64px',
+        flex: 0,
+        contents: [{ type: 'text', text: linkable ? '詳しく ›' : ' ', size: 'sm', weight: 'bold', color: DETAIL_GRAY, align: 'end' }],
+      },
     ],
   };
 }
@@ -140,10 +155,17 @@ function topicBubble(d: Digest, flyerImageUrl: string | null) {
 function eventsBubble(d: Digest) {
   const rows: unknown[] = [];
   for (const c of d.urgent) {
-    rows.push(eventRow(c, { prefix: '⏰ ', whenText: `締切\n${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`, whenColor: RED }));
+    rows.push(
+      eventRow(c, {
+        prefix: '⏰ ',
+        whenText: `締切 ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`,
+        whenColor: RED,
+        sub: [{ text: `${md(c.event_date!)}開催${audienceFee(c)}`, color: '#444444' }],
+      })
+    );
   }
   for (const c of d.events) {
-    rows.push(eventRow(c, { whenText: `${md(c.event_date!)}${shortTime(c.event_time).replace(' ', '\n')}` }));
+    rows.push(eventRow(c, { whenText: `${md(c.event_date!)}${shortTime(c.event_time)}` }));
   }
   const contents: unknown[] = [];
   rows.forEach((r, i) => {
@@ -169,7 +191,7 @@ function applyBubble(d: Digest) {
     // 各行がそれぞれのチラシ（申込方法）に飛ぶ。申込が複数・別PDFでも行ごとに正しい先へ
     contents.push(
       eventRow(c, {
-        whenText: `締切\n${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`,
+        whenText: `締切 ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`,
         whenColor: RED,
         sub: [{ text: `${md(c.event_date!)}開催${audienceFee(c)}`, color: '#444444' }],
       })

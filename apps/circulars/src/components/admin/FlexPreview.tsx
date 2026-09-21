@@ -28,22 +28,25 @@ const Bubble: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 /** 両カード共通の見出し下の案内 */
 const ROW_HINT = '「詳しく ›」をタップすると案内が開きます';
 
-/** 予定の行（左: 日付や締切 / 中央: タイトル・補足・場所 / 右端: 詳しく ›）。チラシか記事がある予定だけタップできる */
+/**
+ * 予定の行。日時（または締切）をタイトルの上の1行に置き、右端に固定幅の「詳しく ›」（実機で日付列が折れないように）。
+ * チラシか記事がある予定だけタップできる
+ */
 const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; prefix?: string; sub?: string }> = ({ c, when, whenColor, prefix, sub }) => {
   const linkable = hasDetailLink(c);
   const inner = (
     <>
-      <span className={`w-12 shrink-0 text-[10px] font-bold leading-tight whitespace-pre-line ${whenColor ?? 'text-blue-700'}`}>{when}</span>
       <span className="flex-1 min-w-0">
+        <span className={`block text-xs font-bold leading-snug ${whenColor ?? 'text-blue-700'}`}>{when}</span>
         <span className="block text-xs font-bold leading-snug">
           {prefix}
           {c.title}
         </span>
         {sub && <span className="block text-[10px] text-slate-600">{sub}</span>}
-        {c.event_location && <span className="block text-[10px] text-slate-400 truncate">{c.event_location}</span>}
+        {c.event_location && <span className="block text-[10px] text-slate-400">{c.event_location}</span>}
       </span>
-      {/* 押せる行だけ「詳しく ›」（本文と同じ大きさの太字・濃いグレー） */}
-      <span className="shrink-0 text-xs font-bold text-slate-600 text-right w-12">{linkable ? '詳しく ›' : ''}</span>
+      {/* 押せる行だけ「詳しく ›」（本文と同じ大きさの太字・濃いグレー）。枠は固定幅で、押せない行も位置を揃える */}
+      <span className="shrink-0 text-xs font-bold text-slate-600 text-right w-14">{linkable ? '詳しく ›' : ''}</span>
     </>
   );
   const cls = 'flex items-center gap-2 py-2 border-b border-slate-100 last:border-0';
@@ -111,10 +114,17 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
             </div>
             <div className="px-3">
               {d.urgent.map((c) => (
-                <Row key={c.id} c={c} prefix="⏰ " when={`締切\n${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`} whenColor="text-red-700" />
+                <Row
+                  key={c.id}
+                  c={c}
+                  prefix="⏰ "
+                  when={`締切 ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`}
+                  whenColor="text-red-700"
+                  sub={`${md(c.event_date!)}開催${audienceFee(c)}`}
+                />
               ))}
               {d.events.map((c) => (
-                <Row key={c.id} c={c} when={`${md(c.event_date!)}${shortTime(c.event_time).replace(' ', '\n')}`} />
+                <Row key={c.id} c={c} when={`${md(c.event_date!)}${shortTime(c.event_time)}`} />
               ))}
             </div>
             <div className="px-3 py-2 mt-auto text-center text-xs font-bold text-blue-700">ほかの予定も見る</div>
@@ -132,7 +142,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
                 <Row
                   key={c.id}
                   c={c}
-                  when={`締切\n${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`}
+                  when={`締切 ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`}
                   whenColor="text-red-700"
                   sub={`${md(c.event_date!)}開催${audienceFee(c)}`}
                 />
