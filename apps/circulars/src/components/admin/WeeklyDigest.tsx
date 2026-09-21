@@ -209,17 +209,20 @@ function renderText(d: Digest, shortUrls: Record<string, string> = {}): string {
     }
   }
 
+  // 場所は「（西金沢地域ケアプラザ 多目的ホール）」のように今週の予定と同じ形で添える
+  const loc = (c: PublicEventCard) => (c.event_location ? `（${c.event_location}）` : '');
+
   if (d.urgent.length > 0) {
     lines.push('', '⏰ 締切間近');
     for (const c of d.urgent) {
-      lines.push(`・${c.title} 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`);
+      lines.push(`・${c.title}${loc(c)} 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`);
     }
   }
 
   if (d.events.length > 0) {
     lines.push('', '📅 今週の予定');
     for (const c of d.events) {
-      lines.push(`・${md(c.event_date!)}${shortTime(c.event_time)} ${c.title}${c.event_location ? `（${c.event_location}）` : ''}`);
+      lines.push(`・${md(c.event_date!)}${shortTime(c.event_time)} ${c.title}${loc(c)}`);
     }
   }
 
@@ -227,7 +230,7 @@ function renderText(d: Digest, shortUrls: Record<string, string> = {}): string {
     lines.push('', '📝 申込受付中');
     for (const c of d.apply) {
       lines.push(
-        `・${c.title} ${md(c.event_date!)}開催 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`
+        `・${c.title}${loc(c)} ${md(c.event_date!)}開催 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`
       );
     }
   }
