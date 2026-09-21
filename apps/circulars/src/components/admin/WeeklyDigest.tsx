@@ -139,7 +139,8 @@ interface Digest {
  */
 function buildDigest(cards: PublicEventCard[], reports: Article[], baseDate: string): Digest {
   const from = baseDate;
-  const to = addDays(baseDate, 7);
+  // 「配信日から7日間」= 配信日を含めて7日（月曜配信なら日曜まで）。+7 にすると翌週の月曜まで8日間になるので +6
+  const to = addDays(baseDate, 6);
   const applyUntil = addDays(baseDate, 14);
   const urgentUntil = addDays(baseDate, 3);
 
@@ -184,7 +185,7 @@ function buildDigest(cards: PublicEventCard[], reports: Article[], baseDate: str
 /** 配信文（プレーンテキスト）を組み立てる。shortUrls は 元URL→短縮URL の対応（取得済みのものだけ） */
 function renderText(d: Digest, shortUrls: Record<string, string> = {}): string {
   const lines: string[] = [];
-  lines.push(`【関ヶ谷 今週のお知らせ】${md(d.from)}〜${md(d.to)}`);
+  lines.push(`【関ヶ谷自治会 今週のお知らせ】${md(d.from)}〜${md(d.to)}`);
 
   if (d.topic) {
     const t = d.topic;
@@ -360,7 +361,7 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer:
     ctx.fillRect(0, 0, W, 150);
     ctx.fillStyle = '#fff';
     font(56, true);
-    ctx.fillText('関ヶ谷 今週のお知らせ', 60, 95);
+    ctx.fillText('関ヶ谷自治会 今週のお知らせ', 60, 95);
     font(32);
     ctx.fillText(`${md(d.from)}〜${md(d.to)}`, 60, 138);
   };
@@ -375,7 +376,7 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer:
     // 右側は2段（媒体名／期間）で小さく
     ctx.textAlign = 'right';
     font(26);
-    ctx.fillText('関ヶ谷 今週のお知らせ', W - 60, 52);
+    ctx.fillText('関ヶ谷自治会 今週のお知らせ', W - 60, 52);
     ctx.fillText(`${md(d.from)}〜${md(d.to)}`, W - 60, 92);
     ctx.textAlign = 'left';
   };
