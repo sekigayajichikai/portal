@@ -54,9 +54,9 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
       <div className="bg-white rounded-2xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap max-w-[260px] shadow-sm text-slate-800">
         {greeting}
       </div>
-      {/* ② カルーセル */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {t && link && (
+      {/* ② ⭐一押し（1枚だけの吹き出し。カルーセルと高さを揃えなくて済む） */}
+      {t && link && (
+        <div className="flex">
           <Bubble>
             {flyerSrc ? <img src={flyerSrc} alt="" className="w-full bg-slate-100" style={{ aspectRatio: '1/1', objectFit: 'cover' }} /> : null}
             <div className="px-3 pt-3 pb-1 space-y-1">
@@ -85,8 +85,10 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
               )}
             </div>
           </Bubble>
-        )}
-
+        </div>
+      )}
+      {/* ③ カルーセル（今週の予定／申込受付中／レポート） */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {(d.events.length > 0 || d.urgent.length > 0) && (
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#c0392b' }}>

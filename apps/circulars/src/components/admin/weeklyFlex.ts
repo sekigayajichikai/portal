@@ -1,12 +1,13 @@
 /**
  * 週次配信の LINE メッセージ（テキスト＋Flex カルーセル）を組み立てる
  *
- * 1回の配信 = ① 短いテキスト（見出し＋ひとこと） → ② Flex カルーセル（案A）
- *   カルーセルの中身（該当が無いセクションは出さない）:
- *     1. ⭐ 今週の一押し … チラシ画像（あれば）＋タイトル・日時・場所・紹介文＋「チラシを見る」「予定の詳細」
- *     2. 📅 今週の予定 … 行ごとにタップで詳細（⏰締切間近があれば先頭に）
- *     3. 📝 申込受付中 … タイトル・開催日・締切・場所。行ごとにタップ
- *     4. 📰 新しいレポート … 1本ずつ（扉写真＋タイトル＋「レポートを読む」）
+ * 1回の配信 = ① 短いテキスト（見出し＋ひとこと） → ② ⭐一押しカード（1枚） → ③ Flex カルーセル
+ *   ② ⭐ 今週の一押し … チラシ画像（上部を正方形に）＋タイトル・日時・場所・紹介文＋「チラシを見る」「予定の詳細」
+ *      （カルーセルは全カードの高さが揃う仕様なので、背の高い一押しは別の吹き出しにする）
+ *   ③ カルーセルの中身（該当が無いカードは出さない）:
+ *     1. 📅 今週の予定 … 行ごとにタップで詳細（⏰締切間近があれば先頭に）
+ *     2. 📝 申込受付中 … タイトル・開催日・締切・場所。行ごとにタップ
+ *     3. 📰 新しいレポート … 1本ずつ（扉写真＋タイトル＋「レポートを読む」）
  *
  * Flex の制約: 画像は https のURL、カルーセルは最大12バブル、altText は400文字以内。
  * 仕様: docs/週次配信.md
@@ -178,26 +179,40 @@ function reportBubble(r: Digest['reports'][number]) {
   };
 }
 
-/** Flex メッセージ（カルーセル）。出すものが無ければ null */
-export function buildWeeklyFlex(d: Digest, opts: FlexBuildOptions): LineMessage | null {
+/**
+ * ⭐一押しの Flex（1枚だけのバブル）。
+ * カルーセルは全カードの高さが一番高いカードに揃う仕様なので、背の高い一押しは別の吹き出しにして、
+ * 残り（今週の予定／申込受付中／レポート）だけをカルーセルにする（高さの近いカード同士で揃う）。
+ */
+export function buildTopicFlex(d: Digest, opts: FlexBuildOptions): LineMessage | null {
+  if (!d.topic) return null;
+  const alt = `⭐今週の一押し: ${d.topic.title}（${md(d.topic.event_date!)}）`.slice(0, 400);
+  return { type: 'flex', altText: alt, contents: topicBubble(d, opts.flyerImageUrl) };
+}
+
+/** 今週の予定／申込受付中／レポートのカルーセル。出すものが無ければ null */
+export function buildWeeklyFlex(d: Digest): LineMessage | null {
   const bubbles: unknown[] = [];
-  if (d.topic) bubbles.push(topicBubble(d, opts.flyerImageUrl));
   if (d.events.length > 0 || d.urgent.length > 0) bubbles.push(eventsBubble(d));
   if (d.apply.length > 0) bubbles.push(applyBubble(d));
   for (const r of d.reports) bubbles.push(reportBubble(r));
   if (bubbles.length === 0) return null;
 
-  const alt = [digestHeading(d), d.topic ? `⭐一押し: ${d.topic.title}（${md(d.topic.event_date!)}）` : null]
-    .filter(Boolean)
-    .join(' ')
-    .slice(0, 400);
-  return { type: 'flex', altText: alt, contents: { type: 'carousel', contents: bubbles.slice(0, 12) } };
+  const alt = `${digestHeading(d)} 今週の予定・申込受付中`.slice(0, 400);
+  // バブルが1枚だけならカルーセルにせずそのまま
+  const contents = bubbles.length === 1 ? bubbles[0] : { type: 'carousel', contents: bubbles.slice(0, 12) };
+  return { type: 'flex', altText: alt, contents };
 }
 
-/** 1回の配信ぶんのメッセージ配列（テキスト → Flex）。Flex が無ければテキストだけ */
+/**
+ * 1回の配信ぶんのメッセージ配列: テキスト → ⭐一押し（1枚） → カルーセル（今週の予定・申込・レポート）。
+ * 無いものは飛ばす（最大3吹き出し。LINE の上限は5）
+ */
 export function buildWeeklyMessages(d: Digest, greeting: string, opts: FlexBuildOptions): LineMessage[] {
   const msgs: LineMessage[] = [{ type: 'text', text: greeting.trim() || digestHeading(d) }];
-  const flex = buildWeeklyFlex(d, opts);
-  if (flex) msgs.push(flex);
+  const topic = buildTopicFlex(d, opts);
+  if (topic) msgs.push(topic);
+  const rest = buildWeeklyFlex(d);
+  if (rest) msgs.push(rest);
   return msgs;
 }

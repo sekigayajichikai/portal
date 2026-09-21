@@ -653,9 +653,10 @@ export const WeeklyDigest: React.FC = () => {
   const copyFlexJson = async () => {
     try {
       const messages = buildWeeklyMessages(digest, greeting, { flyerImageUrl: null });
-      const flex = messages.find((m) => m.type === 'flex');
-      await navigator.clipboard.writeText(JSON.stringify(flex ?? messages, null, 2));
-      showToast('Flex JSON をコピーしました（チラシ画像は送信時に付きます）');
+      const flex = messages.filter((m) => m.type === 'flex');
+      // Flex Message Simulator は1メッセージずつ貼るので、複数あれば配列で（一押し → カルーセル の順）
+      await navigator.clipboard.writeText(JSON.stringify(flex.length === 1 ? flex[0] : flex, null, 2));
+      showToast('Flex JSON をコピーしました（一押しとカルーセルの2つ。チラシ画像は送信時に付きます）');
     } catch {
       showError('コピーできませんでした');
     }
@@ -871,7 +872,7 @@ export const WeeklyDigest: React.FC = () => {
                 LINE に送る（カード形式）
               </h3>
               <p className="text-sm text-slate-500 mt-1">
-                短いテキスト＋カード（一押し／今週の予定／申込受付中／レポート）を1回の配信で送ります。まず「テスト送信」で自分のLINEに届く見た目を確認してから「全員に配信」してください。
+                短いテキスト → ⭐一押しカード → カード一覧（今週の予定／申込受付中／レポート）の3つの吹き出しを1回の配信（1通）で送ります。まず「テスト送信」で自分のLINEに届く見た目を確認してから「全員に配信」してください。
               </p>
             </div>
           </div>
