@@ -58,6 +58,12 @@ export const topicLink = (c: PublicEventCard): { url: string; kind: LinkKind; la
   if (c.linked_article_id) return { url: `${siteUrl()}/?article=${c.linked_article_id}`, kind: 'article', label: '記事' };
   return { url: `${siteUrl()}/?event=${c.id}`, kind: 'event', label: '予定ページ' };
 };
+/**
+ * 「押すと詳しい情報がある」予定か（チラシPDF か リンク記事がある）。
+ * 行事予定表から拾っただけの予定（合同会議など）は false で、カードの行をタップなしにする。
+ */
+export const hasDetailLink = (c: PublicEventCard) => !!c.source_pdf_url || !!c.linked_article_id;
+
 /** 一押しの画像に使うPDF（由来PDFが無ければ号の先頭PDFで代用） */
 export const topicPdf = (c: PublicEventCard | null): { url: string; fallback: boolean } | null => {
   if (!c) return null;
@@ -119,7 +125,8 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
   const applyUntil = addDays(baseDate, 14);
   const urgentUntil = addDays(baseDate, 3);
 
-  const future = cards.filter((c) => c.event_date && c.event_date >= from);
+  // 「週次配信に載せない」（役員向け会議など）は最初から候補に入れない。カレンダーには載る
+  const future = cards.filter((c) => c.event_date && c.event_date >= from && !c.digest_exclude);
   // 日付順、同じ日は開始時刻順（時刻なしは末尾）
   const byDate = (a: PublicEventCard, b: PublicEventCard) => {
     if (a.event_date !== b.event_date) return a.event_date! < b.event_date! ? -1 : 1;

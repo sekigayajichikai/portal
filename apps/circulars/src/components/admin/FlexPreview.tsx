@@ -7,7 +7,7 @@
 
 import React from 'react';
 import type { PublicEventCard } from '@cc-saas/shared';
-import { type Digest, md, shortTime, siteUrl, topicLink, audienceFee } from './weeklyDigestCore';
+import { type Digest, md, shortTime, siteUrl, topicLink, audienceFee, hasDetailLink } from './weeklyDigestCore';
 
 interface FlexPreviewProps {
   digest: Digest;
@@ -26,24 +26,31 @@ const Bubble: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </div>
 );
 
-const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; prefix?: string }> = ({ c, when, whenColor, prefix }) => (
-  <a
-    href={topicLink(c).url}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="flex items-center gap-2 py-2 border-b border-slate-100 last:border-0 hover:bg-slate-50"
-  >
-    <span className={`w-12 shrink-0 text-[10px] font-bold leading-tight whitespace-pre-line ${whenColor ?? 'text-blue-700'}`}>{when}</span>
-    <span className="flex-1 min-w-0">
-      <span className="block text-xs font-bold leading-snug">
-        {prefix}
-        {c.title}
+/** 予定の行。チラシか記事がある予定だけタップできる（矢印付き） */
+const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; prefix?: string }> = ({ c, when, whenColor, prefix }) => {
+  const linkable = hasDetailLink(c);
+  const inner = (
+    <>
+      <span className={`w-12 shrink-0 text-[10px] font-bold leading-tight whitespace-pre-line ${whenColor ?? 'text-blue-700'}`}>{when}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block text-xs font-bold leading-snug">
+          {prefix}
+          {c.title}
+        </span>
+        {c.event_location && <span className="block text-[10px] text-slate-400 truncate">{c.event_location}</span>}
       </span>
-      {c.event_location && <span className="block text-[10px] text-slate-400 truncate">{c.event_location}</span>}
-    </span>
-    <span className="text-slate-300 text-lg leading-none">›</span>
-  </a>
-);
+      <span className="text-slate-300 text-lg leading-none w-3 text-right">{linkable ? '›' : ''}</span>
+    </>
+  );
+  const cls = 'flex items-center gap-2 py-2 border-b border-slate-100 last:border-0';
+  return linkable ? (
+    <a href={topicLink(c).url} target="_blank" rel="noopener noreferrer" className={`${cls} hover:bg-slate-50`}>
+      {inner}
+    </a>
+  ) : (
+    <div className={cls}>{inner}</div>
+  );
+};
 
 export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, flyerSrc }) => {
   const t = d.topic;
@@ -58,9 +65,14 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
       {t && link && (
         <div className="flex">
           <Bubble>
+            <div className="px-3 py-2 text-white" style={{ background: '#b45309' }}>
+              <div className="text-sm font-bold">⭐ 今週の一押し</div>
+              <div className="text-[10px] opacity-80">
+                {md(d.from)}〜{md(d.to)} のお知らせ
+              </div>
+            </div>
             {flyerSrc ? <img src={flyerSrc} alt="" className="w-full bg-slate-100" style={{ aspectRatio: '1/1', objectFit: 'cover' }} /> : null}
             <div className="px-3 pt-3 pb-1 space-y-1">
-              <div className="text-[10px] font-bold text-red-700">⭐ 今週の一押し</div>
               <div className="text-sm font-bold leading-snug">{t.title}</div>
               <div className="text-xs font-bold text-blue-700">
                 {md(t.event_date!)}
@@ -105,7 +117,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
                 <Row key={c.id} c={c} when={`${md(c.event_date!)}${shortTime(c.event_time).replace(' ', '\n')}`} />
               ))}
             </div>
-            <div className="px-3 py-2 text-center text-xs font-bold text-blue-700">回覧板サイトで全部見る</div>
+            <div className="px-3 py-2 text-center text-xs font-bold text-blue-700">ほかの予定も見る</div>
           </Bubble>
         )}
 
@@ -113,22 +125,37 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2f6f4e' }}>
               <div className="text-sm font-bold">📝 申込受付中</div>
-              <div className="text-[10px] opacity-80">締切の近い順</div>
+              <div className="text-[10px] opacity-80">各行をタップすると申込方法（チラシ）が開きます</div>
             </div>
-            <div className="px-3">
-              {d.apply.map((c) => (
-                <a key={c.id} href={topicLink(c).url} target="_blank" rel="noopener noreferrer" className="block py-2 border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <div className="text-xs font-bold">{c.title}</div>
-                  <div className="text-[10px] font-bold text-red-700">
-                    {md(c.event_date!)}開催 ・ 締切 {md(c.deadline)}
-                    {c.deadlineGuessed ? '頃' : ''}
-                    {audienceFee(c)}
+            <div className="px-3 pb-2">
+              {d.apply.map((c) => {
+                const linkable = hasDetailLink(c);
+                const body = (
+                  <>
+                    <div className="text-xs font-bold">
+                      {c.title}
+                      {linkable ? '  ›' : ''}
+                    </div>
+                    <div className="text-[10px] font-bold text-red-700">
+                      {md(c.event_date!)}開催 ・ 締切 {md(c.deadline)}
+                      {c.deadlineGuessed ? '頃' : ''}
+                      {audienceFee(c)}
+                    </div>
+                    {c.event_location && <div className="text-[10px] text-slate-400">{c.event_location}</div>}
+                  </>
+                );
+                const cls = 'block py-2 border-b border-slate-100 last:border-0';
+                return linkable ? (
+                  <a key={c.id} href={topicLink(c).url} target="_blank" rel="noopener noreferrer" className={`${cls} hover:bg-slate-50`}>
+                    {body}
+                  </a>
+                ) : (
+                  <div key={c.id} className={cls}>
+                    {body}
                   </div>
-                  {c.event_location && <div className="text-[10px] text-slate-400">{c.event_location}</div>}
-                </a>
-              ))}
+                );
+              })}
             </div>
-            <div className="px-3 py-2 text-center text-xs font-bold text-blue-700">申し込み方法を見る</div>
           </Bubble>
         )}
 

@@ -34,6 +34,8 @@ export interface EventCard {
   fee?: string | null;
   /** 紹介文（1〜2文・60字程度）。週次配信の一押しと予定ページ(/?event=<ID>)に表示。列が無い場合はundefined */
   description?: string | null;
+  /** 週次配信（今週のお知らせ）に載せない（役員向け会議など）。公開カレンダーには影響しない。列が無い場合はundefined */
+  digest_exclude?: boolean | null;
 }
 
 /** 公開カレンダー表示用に、出典（リンク記事・由来PDF）を含めたイベントカード */

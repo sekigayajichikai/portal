@@ -76,6 +76,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     event_location: string;
     /** 紹介文（週次配信の⭐一押し・予定ページに表示） */
     description: string;
+    /** 週次配信に載せない（役員向け会議など） */
+    digest_exclude: boolean;
   } | null>(null);
   const [isSavingCard, setIsSavingCard] = useState(false);
   const [showArticleCrop, setShowArticleCrop] = useState(false);
@@ -840,6 +842,14 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         onChange={(e) => setEditingCard({ ...editingCard, description: e.target.value })}
                         className="text-xs border border-slate-300 rounded px-2 py-1 w-full resize-none leading-relaxed"
                       />
+                      <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none" title="オンにすると週次LINE配信（今週のお知らせ）に載りません。カレンダーには載ります">
+                        <input
+                          type="checkbox"
+                          checked={editingCard.digest_exclude}
+                          onChange={(e) => setEditingCard({ ...editingCard, digest_exclude: e.target.checked })}
+                        />
+                        🚫 週次配信に載せない（役員向け会議など）
+                      </label>
                       <div className="flex justify-end gap-2 pt-1">
                         <button
                           onClick={() => setEditingCard(null)}
@@ -858,6 +868,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                                 event_time: editingCard.event_time.trim() || null,
                                 event_location: editingCard.event_location.trim() || null,
                                 description: editingCard.description.trim() || null,
+                                digest_exclude: editingCard.digest_exclude,
                               });
                               // DBに description 列が無い（マイグレーション未適用）と、紹介文だけ黙って落ちる。
                               // 返ってきた行に列が無ければその旨を知らせる
@@ -900,6 +911,9 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         <p className="text-xs text-slate-500 truncate" title={card.description}>
                           {card.weekly_topic ? '⭐ ' : ''}{card.description}
                         </p>
+                      )}
+                      {card.digest_exclude && (
+                        <p className="text-[11px] text-slate-400" title="週次LINE配信には載りません（カレンダーには載ります）">🚫 週次配信に載せない</p>
                       )}
                       {linkedArticle ? (
                         <p className="text-xs text-primary-600 mt-0.5 flex items-center gap-2">
@@ -954,6 +968,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                           event_time: card.event_time || '',
                           event_location: card.event_location || '',
                           description: card.description || '',
+                          digest_exclude: !!card.digest_exclude,
                         })}
                         className="p-1.5 text-slate-400 hover:text-primary-600 opacity-0 group-hover:opacity-100 transition"
                         title="編集"

@@ -469,8 +469,59 @@ export const WeeklyDigest: React.FC = () => {
     load();
   }, []);
 
-  const digest = useMemo(() => buildDigest(cards, reports, baseDate), [cards, reports, baseDate]);
+  /**
+   * この週だけ外す予定（チェックを外したもの）。保存しないので来週また拾われる。
+   * ずっと外すものは「今後も載せない」で予定カードの digest_exclude を立てる。
+   */
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  /** 拾われた予定の全体（チェック一覧用。digest_exclude のものは最初から入らない） */
+  const fullDigest = useMemo(() => buildDigest(cards, reports, baseDate), [cards, reports, baseDate]);
+  /** 実際に配信する内容（チェックを外した予定を除いたもの） */
+  const digest = useMemo(
+    () => buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate),
+    [cards, reports, baseDate, excluded]
+  );
   const pdf = useMemo(() => topicPdf(digest.topic), [digest.topic]);
+
+  /** チェック一覧の行（一押し・締切間近・今週の予定・申込受付中の順） */
+  const digestItems = useMemo(() => {
+    const rows: Array<{ card: PublicEventCard; section: string }> = [];
+    if (fullDigest.topic) rows.push({ card: fullDigest.topic, section: '⭐ 一押し' });
+    for (const c of fullDigest.urgent) rows.push({ card: c, section: '⏰ 締切間近' });
+    for (const c of fullDigest.events) rows.push({ card: c, section: '📅 今週の予定' });
+    for (const c of fullDigest.apply) rows.push({ card: c, section: '📝 申込受付中' });
+    return rows;
+  }, [fullDigest]);
+
+  const toggleExcluded = (id: string) =>
+    setExcluded((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  /** 予定カードに「週次配信に載せない」を立てる（以後の週次配信に出なくなる。カレンダーには載る） */
+  const excludeForever = async (card: PublicEventCard) => {
+    const ok = await appConfirm({
+      title: `「${card.title}」を今後も週次配信に載せませんか？`,
+      message: '予定カードに「週次配信に載せない」が付き、以後の今週のお知らせに出なくなります。カレンダーには載ります。戻すときは号の予定カードの編集でチェックを外してください。',
+      confirmLabel: '今後も載せない',
+    });
+    if (!ok) return;
+    try {
+      const saved = await updateEventCard(card.id, { digest_exclude: true });
+      if (!('digest_exclude' in saved)) {
+        showError('設定できませんでした。DBに digest_exclude 列がありません（sql/migrations/2026-09-21-event-cards-digest-exclude.sql）。');
+        return;
+      }
+      setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, digest_exclude: true } : c)));
+      showToast(`「${card.title}」を今後の週次配信から外しました`);
+    } catch (e) {
+      console.error(e);
+      showError('設定できませんでした。');
+    }
+  };
 
   // 一押しが変わったら紹介文の下書きを入れ替える
   useEffect(() => {
@@ -733,6 +784,39 @@ export const WeeklyDigest: React.FC = () => {
               <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
                 この配信日の範囲に予定がありません。予定カードが登録・公開されているか、配信日を確認してください。
               </p>
+            )}
+
+            {/* 拾われた予定の一覧。チェックを外すとこの週の文面・画像・カードから消える。「今後も載せない」は予定カードに保存 */}
+            {digestItems.length > 0 && (
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs font-bold text-slate-600 mb-1">
+                  載せる予定（チェックを外すと今週の配信から外れます）
+                  {excluded.size > 0 && <span className="ml-2 font-normal text-amber-700">{excluded.size}件を外しています</span>}
+                </p>
+                <ul className="space-y-0.5">
+                  {digestItems.map(({ card, section }) => {
+                    const on = !excluded.has(card.id);
+                    return (
+                      <li key={card.id} className="flex items-center gap-2 text-xs">
+                        <label className={`flex items-center gap-1.5 cursor-pointer select-none flex-1 min-w-0 ${on ? 'text-slate-700' : 'text-slate-400 line-through'}`}>
+                          <input type="checkbox" checked={on} onChange={() => toggleExcluded(card.id)} />
+                          <span className="shrink-0 text-slate-400 w-24">{section}</span>
+                          <span className="truncate">
+                            {card.event_date ? md(card.event_date) : ''} {card.title}
+                          </span>
+                        </label>
+                        <button
+                          onClick={() => excludeForever(card)}
+                          className="shrink-0 text-[11px] text-slate-400 hover:text-red-600"
+                          title="予定カードに「週次配信に載せない」を付けて、今後の配信にも出さない（役員向け会議など）"
+                        >
+                          🚫 今後も載せない
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             )}
             {/* ⭐一押しの紹介文（ここで入力して保存すると予定カードに保存され、文面・画像に載る） */}
             {digest.topic && (

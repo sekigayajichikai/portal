@@ -14,7 +14,7 @@
  */
 
 import type { LineMessage, PublicEventCard } from '@cc-saas/shared';
-import { type Digest, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading } from './weeklyDigestCore';
+import { type Digest, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading, hasDetailLink } from './weeklyDigestCore';
 
 /**
  * 配色は「役割別＝リンク先の色」（2026-09-21 決定）:
@@ -26,6 +26,8 @@ const RED = '#c0392b';
 const GREEN = '#2f6f4e';
 const BLUE = '#1d4ed8';
 const SITE_BLUE = '#2563eb';
+/** 一押しの見出し帯（⭐ の琥珀色。他のカードと役割が違うことが分かる色） */
+const AMBER = '#b45309';
 const GRAY = '#888888';
 
 export interface FlexBuildOptions {
@@ -60,20 +62,23 @@ const primaryButton = (label: string, url: string, color = SITE_BLUE) => ({
   action: uri(label, url),
 });
 
-/** 予定1件の「行」（日付 / タイトル＋場所 / ›）。行全体がタップできる */
+/**
+ * 予定1件の「行」（日付 / タイトル＋場所 / ›）。
+ * チラシか記事がある予定は行全体がタップでき、無い予定（行事予定表から拾っただけ）は矢印なし・タップなし
+ */
 function eventRow(c: PublicEventCard, opts: { prefix?: string; whenText: string; whenColor?: string }) {
-  const link = topicLink(c);
+  const linkable = hasDetailLink(c);
   const right: unknown[] = [text(`${opts.prefix ?? ''}${c.title}`, { size: 'sm', weight: 'bold' })];
   if (c.event_location) right.push(text(c.event_location, { size: 'xs', color: GRAY }));
   return {
     type: 'box',
     layout: 'horizontal',
     spacing: 'md',
-    action: uri('詳しく', link.url),
+    ...(linkable ? { action: uri('詳しく', topicLink(c).url) } : {}),
     contents: [
       text(opts.whenText, { size: 'xs', color: opts.whenColor ?? BLUE, weight: 'bold', flex: 2 }),
       { type: 'box', layout: 'vertical', flex: 7, contents: right },
-      { type: 'text', text: '›', size: 'lg', color: '#aaaaaa', flex: 1, align: 'end' },
+      { type: 'text', text: linkable ? '›' : ' ', size: 'lg', color: '#aaaaaa', flex: 1, align: 'end' },
     ],
   };
 }
@@ -83,7 +88,6 @@ function topicBubble(d: Digest, flyerImageUrl: string | null) {
   const t = d.topic!;
   const link = topicLink(t);
   const body: unknown[] = [
-    text('⭐ 今週の一押し', { size: 'xs', color: RED, weight: 'bold' }),
     text(t.title, { weight: 'bold', size: 'md' }),
     text(`${md(t.event_date!)}${t.event_time ? ` ${t.event_time}` : ''}`, { size: 'sm', color: BLUE, weight: 'bold' }),
   ];
@@ -99,6 +103,8 @@ function topicBubble(d: Digest, flyerImageUrl: string | null) {
   return {
     type: 'bubble',
     size: 'mega',
+    // 他のカードと同じく見出し帯を付ける（帯 → チラシ画像 → 本文 → ボタン）
+    header: header('⭐ 今週の一押し', `${md(d.from)}〜${md(d.to)} のお知らせ`, AMBER),
     ...(flyerImageUrl
       ? {
           hero: {
@@ -137,7 +143,8 @@ function eventsBubble(d: Digest) {
     size: 'mega',
     header: header('📅 今週の予定', `${md(d.from)}〜${md(d.to)}`, SITE_BLUE),
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
-    footer: { type: 'box', layout: 'vertical', contents: [linkButton('回覧板サイトで全部見る', `${siteUrl()}/`)] },
+    // 行は今週の分。ボタンは来週以降も含めた一覧（回覧板サイトの「今後のイベント」）
+    footer: { type: 'box', layout: 'vertical', contents: [linkButton('ほかの予定も見る', `${siteUrl()}/`)] },
   };
 }
 
@@ -146,9 +153,9 @@ function applyBubble(d: Digest) {
   const contents: unknown[] = [];
   d.apply.forEach((c, i) => {
     if (i > 0) contents.push(separator());
-    const link = topicLink(c);
+    const linkable = hasDetailLink(c);
     const items: unknown[] = [
-      text(c.title, { size: 'sm', weight: 'bold' }),
+      text(`${c.title}${linkable ? '  ›' : ''}`, { size: 'sm', weight: 'bold' }),
       text(`${md(c.event_date!)}開催 ・ 締切 ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`, {
         size: 'xs',
         color: RED,
@@ -156,14 +163,15 @@ function applyBubble(d: Digest) {
       }),
     ];
     if (c.event_location) items.push(text(c.event_location, { size: 'xs', color: GRAY }));
-    contents.push({ type: 'box', layout: 'vertical', spacing: 'xs', action: uri('詳しく', link.url), contents: items });
+    // 各行がそれぞれのチラシ（申込方法）に飛ぶ。申込が複数・別PDFでも行ごとに正しい先へ
+    contents.push({ type: 'box', layout: 'vertical', spacing: 'xs', ...(linkable ? { action: uri('申込方法を見る', topicLink(c).url) } : {}), contents: items });
   });
   return {
     type: 'bubble',
     size: 'mega',
-    header: header('📝 申込受付中', '締切の近い順', GREEN),
+    // 下のボタンは置かない（行き先が1つに決められないため）。代わりに見出しの下で行タップを案内する
+    header: header('📝 申込受付中', '各行をタップすると申込方法（チラシ）が開きます', GREEN),
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
-    footer: { type: 'box', layout: 'vertical', contents: [linkButton('申し込み方法を見る', `${siteUrl()}/`)] },
   };
 }
 

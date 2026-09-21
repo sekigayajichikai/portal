@@ -565,6 +565,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
     if (!existing.target_audience && c.target_audience) u.target_audience = c.target_audience;
     if (!existing.fee && c.fee) u.fee = c.fee;
     if (!existing.description && c.description) u.description = c.description;
+    if (!existing.digest_exclude && c.digest_exclude) u.digest_exclude = true;
     if (!existing.source_pdf_url && c.sourcePdfUrl) u.source_pdf_url = c.sourcePdfUrl;
     return Object.keys(u).length > 0 ? u : null;
   };
@@ -605,6 +606,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           target_audience: c.target_audience,
           fee: c.fee,
           description: c.description,
+          digest_exclude: c.digest_exclude,
           source_pdf_url: c.sourcePdfUrl,
           linked_article_id:
             c.linkArticle && c.article_index !== null ? articles[c.article_index]?.id ?? null : null,
@@ -930,6 +932,15 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                                 {c.topicHints.length > 0 ? c.topicHints.join('・') : c.topic_reason}
                               </span>
                             )}
+                          </button>
+                          {/* 週次配信に載せない（役員向け会議など。AIの目安を人が確定。カレンダーには載る） */}
+                          <button
+                            type="button"
+                            onClick={() => updateCandidate(i, { digest_exclude: !c.digest_exclude, ...(c.digest_exclude ? {} : { weekly_topic: false }) })}
+                            className={`text-[11px] px-1.5 py-0.5 rounded font-medium border transition ${c.digest_exclude ? 'bg-slate-600 text-white border-slate-600' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
+                            title="オンにすると週次LINE配信（今週のお知らせ）に載りません。カレンダーには載ります。役員会議・監査など住民向けでない予定に"
+                          >
+                            🚫 配信に載せない
                           </button>
                           {/* 申込締切（要予約・連続のとき。週次配信の「申込受付中」「締切間近」に使う） */}
                           {(c.category === 'reserve' || c.category === 'recurring' || c.apply_deadline) && (

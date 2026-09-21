@@ -56,6 +56,8 @@ export interface EventCandidate {
   fee: string | null;
   /** 紹介文（住民向け・1〜2文・60字以内。内容説明が無ければ null） */
   description: string | null;
+  /** 週次配信に載せない（役員・委員向けの会議や作業など、一般住民の参加を想定しないもの）。AIの目安で、人が付け外しする */
+  digest_exclude: boolean;
 }
 
 /** イベント種別(category)判定と、連続イベントの集約ルール（プロンプト共通） */
@@ -101,6 +103,9 @@ export const AUDIENCE_FEE_RULE = `- 【対象者 target_audience】「対象 成
 /** 開催場所の表記ルール（プロンプト共通） */
 export const LOCATION_RULE = `- 【開催場所 event_location】「施設名＋部屋名」の形にする（例: 「西金沢地域ケアプラザ 多目的ホール」「西金沢コミュニティハウス 2階」「自治会館1階会議室」）。「多目的ホール」「2階」のように部屋名だけにしない。部屋名しか書かれていない場合は、チラシの発行元・主催・住所欄にある施設名を補って施設名から書く。施設名が本当に分からない場合のみ部屋名だけでよい`;
 
+/** 週次配信から外す目安（プロンプト共通） */
+export const DIGEST_EXCLUDE_RULE = `- 【配信除外 digest_exclude】役員・委員・担当者向けの会議や作業（役員会・合同会議・委員会・実行委員会・監査・選考・打合せ・準備会・発足会など）で、一般住民の参加を想定しないものは true。住民が参加・利用できる催し（訓練・清掃・講座・お祭り・相談会など）は false。カレンダーには載せるが、公式LINEの「今週のお知らせ」からは外すための目安（最終判断は人が行う）`;
+
 /** 紹介文の属性ルール（プロンプト共通） */
 export const DESCRIPTION_RULE = `- 【紹介文 description】住民向けに「何をする催しか・どんな人におすすめか」が分かる紹介文を1〜2文・60字以内で書く（例: 「地元の作品展示と演奏会。お茶を飲みながら気軽に楽しめます。」）。原文の内容説明・見どころ・持ち物などを要約し、日時・場所・対象・費用は繰り返さない（別の項目に入るため）。原文に内容説明が無く日時・場所しか書かれていなければ null`;
 
@@ -125,7 +130,8 @@ const OUTPUT_FORMAT = `【出力形式】以下のJSONのみを出力してく�
       "apply_deadline": "申込締切 YYYY-MM-DD または null（要予約のみ）",
       "target_audience": "対象者（15字以内） または null",
       "fee": "参加費（10字以内。無料なら \"無料\"） または null",
-      "description": "紹介文（1〜2文・60字以内。内容説明が無ければ null）"
+      "description": "紹介文（1〜2文・60字以内。内容説明が無ければ null）",
+      "digest_exclude": false
     }
   ]
 }
@@ -197,6 +203,7 @@ ${TOPIC_RULE}
 ${DEADLINE_ATTR_RULE}
 ${AUDIENCE_FEE_RULE}
 ${DESCRIPTION_RULE}
+${DIGEST_EXCLUDE_RULE}
 ${buildOrganizerHint(organizerNames)}
 【has_details の判定】日時・場所以外の実質的な詳細情報（持ち物・申込方法・費用・対象者・内容説明など）がPDFに書かれていれば true、日付・場所の羅列だけなら false とする。
 【source_text】各イベントに、そのイベント名と開催日が書かれている原文の一節を40字以内でそのまま書き写す（要約・言い換え禁止）。原文に見つからないイベントは出力しない。
@@ -265,6 +272,7 @@ ${TOPIC_RULE}
 ${DEADLINE_ATTR_RULE}
 ${AUDIENCE_FEE_RULE}
 ${DESCRIPTION_RULE}
+${DIGEST_EXCLUDE_RULE}
 ${buildOrganizerHint(organizerNames)}
 【has_details の判定】抽出元記事に「日時・場所以外の実質的な詳細情報」（持ち物、申込方法、費用、対象者、内容の説明など）が書かれていれば true、行事予定表のように日付・場所の羅列だけなら false とする。読者が記事を開いたとき、カードに書いてある以上の情報が得られるかどうかで判断すること。
 【source_text】各イベントに、そのイベント名と開催日が書かれている記事中の一節を40字以内でそのまま書き写す。
@@ -338,6 +346,7 @@ export function parseEventCandidatesFromResponse(
       target_audience: str(e.target_audience)?.slice(0, 30) ?? null,
       fee: str(e.fee)?.slice(0, 20) ?? null,
       description: str(e.description)?.replace(/\s*\n\s*/g, ' ').slice(0, 120) ?? null,
+      digest_exclude: e.digest_exclude === true,
       };
     });
 }
