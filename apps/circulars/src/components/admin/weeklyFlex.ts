@@ -16,11 +16,17 @@
 import type { LineMessage, PublicEventCard } from '@cc-saas/shared';
 import { type Digest, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading } from './weeklyDigestCore';
 
+/**
+ * 配色は「役割別＝リンク先の色」（2026-09-21 決定）:
+ *   今週の予定・一押しのボタン … 回覧板サイトのブルー（押した先がサイト／チラシ）
+ *   申込受付中 … グリーン（申込＝行動が必要なもの。締切の赤が埋もれない）
+ *   レポート … レポート画面の赤
+ */
 const RED = '#c0392b';
 const GREEN = '#2f6f4e';
 const BLUE = '#1d4ed8';
+const SITE_BLUE = '#2563eb';
 const GRAY = '#888888';
-const LINE_GREEN = '#06C755';
 
 export interface FlexBuildOptions {
   /** 一押しのチラシ画像（https・正方形に切り出したもの）。無ければ画像なしの一押しバブルにする */
@@ -43,10 +49,10 @@ const header = (title: string, sub: string, color: string) => ({
   layout: 'vertical',
   backgroundColor: color,
   paddingAll: 'md',
-  contents: [text(title, { color: '#ffffff', weight: 'bold', size: 'md' }), text(sub, { color: '#f4e3e0', size: 'xs' })],
+  contents: [text(title, { color: '#ffffff', weight: 'bold', size: 'md' }), text(sub, { color: '#e8eef8', size: 'xs' })],
 });
 const linkButton = (label: string, url: string) => ({ type: 'button', style: 'link', height: 'sm', action: uri(label, url) });
-const primaryButton = (label: string, url: string, color = LINE_GREEN) => ({
+const primaryButton = (label: string, url: string, color = SITE_BLUE) => ({
   type: 'button',
   style: 'primary',
   color,
@@ -129,7 +135,7 @@ function eventsBubble(d: Digest) {
   return {
     type: 'bubble',
     size: 'mega',
-    header: header('📅 今週の予定', `${md(d.from)}〜${md(d.to)}`, RED),
+    header: header('📅 今週の予定', `${md(d.from)}〜${md(d.to)}`, SITE_BLUE),
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
     footer: { type: 'box', layout: 'vertical', contents: [linkButton('回覧板サイトで全部見る', `${siteUrl()}/`)] },
   };

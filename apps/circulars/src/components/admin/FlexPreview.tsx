@@ -75,7 +75,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
               {t.description && <div className="text-xs text-slate-700 leading-relaxed pt-1">{t.description}</div>}
             </div>
             <div className="px-3 pb-3 pt-2 space-y-1.5">
-              <a href={link.url} target="_blank" rel="noopener noreferrer" className="block text-center rounded-lg py-2 text-xs font-bold text-white" style={{ background: '#06C755' }}>
+              <a href={link.url} target="_blank" rel="noopener noreferrer" className="block text-center rounded-lg py-2 text-xs font-bold text-white" style={{ background: '#2563eb' }}>
                 {link.kind === 'pdf' ? 'チラシを見る' : link.kind === 'article' ? '記事を読む' : '詳しく見る'}
               </a>
               {link.kind !== 'event' && (
@@ -91,7 +91,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
       <div className="flex gap-2 overflow-x-auto pb-1">
         {(d.events.length > 0 || d.urgent.length > 0) && (
           <Bubble>
-            <div className="px-3 py-2 text-white" style={{ background: '#c0392b' }}>
+            <div className="px-3 py-2 text-white" style={{ background: '#2563eb' }}>
               <div className="text-sm font-bold">📅 今週の予定</div>
               <div className="text-[10px] opacity-80">
                 {md(d.from)}〜{md(d.to)}
