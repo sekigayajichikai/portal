@@ -22,7 +22,7 @@ const GRAY = '#888888';
 const LINE_GREEN = '#06C755';
 
 export interface FlexBuildOptions {
-  /** 一押しのチラシ画像（https）。無ければ画像なしの一押しバブルにする */
+  /** 一押しのチラシ画像（https・正方形に切り出したもの）。無ければ画像なしの一押しバブルにする */
   flyerImageUrl: string | null;
 }
 
@@ -98,8 +98,9 @@ function topicBubble(d: Digest, flyerImageUrl: string | null) {
             type: 'image',
             url: flyerImageUrl,
             size: 'full',
-            aspectRatio: '210:297', // A4 縦のチラシをそのまま
-            aspectMode: 'fit',
+            // チラシ上部を正方形に切り出した画像（WeeklyDigest 側で作る）。縦長のままだとカードが高くなりすぎる
+            aspectRatio: '1:1',
+            aspectMode: 'cover',
             backgroundColor: '#f5f5f5',
             action: uri(mainLabel, link.url),
           },

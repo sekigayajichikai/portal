@@ -12,12 +12,18 @@ import { type Digest, md, shortTime, siteUrl, topicLink, audienceFee } from './w
 interface FlexPreviewProps {
   digest: Digest;
   greeting: string;
-  /** 一押しのチラシ画像（data URL か https）。無ければ画像なし */
+  /** 一押しのチラシ画像（上部を正方形に切り出した data URL か https）。無ければ画像なし */
   flyerSrc: string | null;
 }
 
+/**
+ * カード1枚。LINE のカルーセルは全カードの高さが一番高いカードに揃い、フッター（ボタン）は下端に付くので、
+ * ここでも縦方向の flex にして最後の要素（フッター）を下に寄せる
+ */
 const Bubble: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="shrink-0 w-[260px] bg-white rounded-2xl overflow-hidden shadow-sm text-slate-800">{children}</div>
+  <div className="shrink-0 w-[260px] bg-white rounded-2xl overflow-hidden shadow-sm text-slate-800 flex flex-col [&>*:last-child]:mt-auto">
+    {children}
+  </div>
 );
 
 const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; prefix?: string }> = ({ c, when, whenColor, prefix }) => (
@@ -52,9 +58,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
       <div className="flex gap-2 overflow-x-auto pb-1">
         {t && link && (
           <Bubble>
-            {flyerSrc ? (
-              <img src={flyerSrc} alt="" className="w-full bg-slate-100" style={{ aspectRatio: '210/297', objectFit: 'contain' }} />
-            ) : null}
+            {flyerSrc ? <img src={flyerSrc} alt="" className="w-full bg-slate-100" style={{ aspectRatio: '1/1', objectFit: 'cover' }} /> : null}
             <div className="px-3 pt-3 pb-1 space-y-1">
               <div className="text-[10px] font-bold text-red-700">⭐ 今週の一押し</div>
               <div className="text-sm font-bold leading-snug">{t.title}</div>

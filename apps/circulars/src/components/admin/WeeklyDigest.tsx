@@ -582,8 +582,28 @@ export const WeeklyDigest: React.FC = () => {
     loadHistory();
   }, []);
 
-  /** チラシ画像（プレビュー用の data URL） */
-  const flyerSrc = useMemo(() => (flyer ? flyer.toDataURL('image/jpeg', 0.8) : null), [flyer]);
+  /**
+   * カード用のチラシ画像: 上部を正方形に切り出したもの。
+   * 縦長のチラシをそのまま載せるとカードが高くなり、カルーセルの他のカード（高さが揃う）に大きな空白ができるため。
+   * チラシ全体は「チラシを見る」（PDF）で開ける。
+   */
+  const flyerCard = useMemo(() => {
+    if (!flyer) return null;
+    const size = Math.min(flyer.width, flyer.height, 1040);
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, size, size);
+    // 幅いっぱい・上端から正方形ぶんだけ（タイトルと日付が上にあるチラシが多い）
+    const sw = flyer.width;
+    const sh = Math.min(flyer.height, flyer.width);
+    ctx.drawImage(flyer, 0, 0, sw, sh, 0, 0, size, size);
+    return c;
+  }, [flyer]);
+  /** プレビュー用の data URL */
+  const flyerSrc = useMemo(() => (flyerCard ? flyerCard.toDataURL('image/jpeg', 0.8) : null), [flyerCard]);
 
   /**
    * 送るメッセージを組み立てる。Flex のヒーロー画像は https が必要なので、
@@ -591,8 +611,8 @@ export const WeeklyDigest: React.FC = () => {
    */
   const buildMessages = async (): Promise<LineMessage[]> => {
     let flyerImageUrl: string | null = null;
-    if (digest.topic && flyer) {
-      const blob = await new Promise<Blob | null>((resolve) => flyer.toBlob(resolve, 'image/jpeg', 0.85));
+    if (digest.topic && flyerCard) {
+      const blob = await new Promise<Blob | null>((resolve) => flyerCard.toBlob(resolve, 'image/jpeg', 0.85));
       if (blob) flyerImageUrl = await uploadWeeklyImage(blob, baseDate, 'flyer');
     }
     return buildWeeklyMessages(digest, greeting, { flyerImageUrl });
