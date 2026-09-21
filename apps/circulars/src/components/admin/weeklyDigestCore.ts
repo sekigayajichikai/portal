@@ -118,7 +118,16 @@ export interface Digest {
  *   📝 申込受付中 … 最大4件（reserve。締切が14日以内。締切不明は開催7日前を仮締切）
  *   ⏰ 締切間近 … 締切が3日以内のもの（申込受付中から抜き出して先頭に）
  */
-export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDate: string): Digest {
+export interface DigestOptions {
+  /**
+   * ⭐一押しの指定。undefined = 自動（⭐候補のうち直近）、null = 今週は一押しなし、
+   * 予定ID = その予定を一押しにする（⭐が付いていなくてもよい）。
+   * 一押しから外れた予定は、今週の範囲内なら「今週の予定」に普通の行として載る
+   */
+  topicId?: string | null;
+}
+
+export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDate: string, opts: DigestOptions = {}): Digest {
   const from = baseDate;
   // 「配信日から7日間」= 配信日を含めて7日（月曜配信なら日曜まで）。+7 にすると翌週の月曜まで8日間になるので +6
   const to = addDays(baseDate, 6);
@@ -135,9 +144,16 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
     return ta.padStart(5, '0') < tb.padStart(5, '0') ? -1 : ta === tb ? 0 : 1;
   };
 
-  // 一押し: ⭐配信候補のうち、開催が直近（2週間以内優先）のもの
+  // 一押し: 指定があればそれ（null なら無し）。指定が無ければ ⭐配信候補のうち開催が直近（2週間以内優先）のもの
   const topicPool = future.filter((c) => c.weekly_topic).sort(byDate);
-  const topic = topicPool.find((c) => c.event_date! <= applyUntil) ?? topicPool[0] ?? null;
+  let topic: PublicEventCard | null;
+  if (opts.topicId === null) {
+    topic = null;
+  } else if (typeof opts.topicId === 'string') {
+    topic = future.find((c) => c.id === opts.topicId) ?? null;
+  } else {
+    topic = topicPool.find((c) => c.event_date! <= applyUntil) ?? topicPool[0] ?? null;
+  }
 
   // 「申込が必要」= 要予約、または締切が入っているもの（定員制の連続講座など）
   const needsApply = (c: PublicEventCard) => c.category === 'reserve' || !!c.apply_deadline;
@@ -168,6 +184,15 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
     .slice(0, LIMITS.reports);
 
   return { from, to, topic, reports: recentReports, events, apply: applyRest, urgent };
+}
+
+/** 一押しの選択肢（⭐候補を先に、その後は開催日順のその他の予定）。画面のプルダウン用 */
+export function topicChoices(cards: PublicEventCard[], baseDate: string): { starred: PublicEventCard[]; others: PublicEventCard[] } {
+  const until = addDays(baseDate, 28);
+  const future = cards
+    .filter((c) => c.event_date && c.event_date >= baseDate && c.event_date <= until && !c.digest_exclude)
+    .sort((a, b) => (a.event_date! < b.event_date! ? -1 : 1));
+  return { starred: future.filter((c) => c.weekly_topic), others: future.filter((c) => !c.weekly_topic) };
 }
 
 /** 見出し「【関ヶ谷自治会 今週のお知らせ】9/21(月)〜9/27(日)」 */

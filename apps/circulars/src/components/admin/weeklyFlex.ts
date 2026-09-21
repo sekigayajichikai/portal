@@ -51,14 +51,16 @@ const header = (title: string, sub: string, color: string) => ({
   layout: 'vertical',
   backgroundColor: color,
   paddingAll: 'md',
-  contents: [text(title, { color: '#ffffff', weight: 'bold', size: 'md' }), text(sub, { color: '#e8eef8', size: 'xs' })],
+  contents: [text(title, { color: '#ffffff', weight: 'bold', size: 'lg' }), text(sub, { color: '#e8eef8', size: 'sm' })],
 });
-const linkButton = (label: string, url: string) => ({ type: 'button', style: 'link', height: 'sm', action: uri(label, url) });
+// 文字サイズは全体に一段階大きめ（高齢の読み手が多い）。Flex の文字は LINE の文字サイズ設定（特大など）に連動せず固定のため、
+// 見出し lg / 本文 md / 補足 sm を基準にする。ボタンも md（押しやすく）
+const linkButton = (label: string, url: string) => ({ type: 'button', style: 'link', height: 'md', action: uri(label, url) });
 const primaryButton = (label: string, url: string, color = SITE_BLUE) => ({
   type: 'button',
   style: 'primary',
   color,
-  height: 'sm',
+  height: 'md',
   action: uri(label, url),
 });
 
@@ -84,11 +86,11 @@ function eventRow(
 ) {
   const linkable = hasDetailLink(c);
   const lines: unknown[] = [
-    text(opts.whenText, { size: 'sm', color: opts.whenColor ?? BLUE, weight: 'bold' }),
-    text(`${opts.prefix ?? ''}${c.title}`, { size: 'sm', weight: 'bold' }),
+    text(opts.whenText, { size: 'md', color: opts.whenColor ?? BLUE, weight: 'bold' }),
+    text(`${opts.prefix ?? ''}${c.title}`, { size: 'md', weight: 'bold' }),
   ];
-  for (const s of opts.sub ?? []) lines.push(text(s.text, { size: 'xs', color: s.color ?? GRAY, ...(s.bold ? { weight: 'bold' } : {}) }));
-  if (c.event_location) lines.push(text(c.event_location, { size: 'xs', color: GRAY }));
+  for (const s of opts.sub ?? []) lines.push(text(s.text, { size: 'sm', color: s.color ?? GRAY, ...(s.bold ? { weight: 'bold' } : {}) }));
+  if (c.event_location) lines.push(text(c.event_location, { size: 'sm', color: GRAY }));
   return {
     type: 'box',
     layout: 'horizontal',
@@ -101,9 +103,9 @@ function eventRow(
       {
         type: 'box',
         layout: 'vertical',
-        width: '64px',
+        width: '76px',
         flex: 0,
-        contents: [{ type: 'text', text: linkable ? '詳しく ›' : ' ', size: 'sm', weight: 'bold', color: DETAIL_GRAY, align: 'end' }],
+        contents: [{ type: 'text', text: linkable ? '詳しく ›' : ' ', size: 'md', weight: 'bold', color: DETAIL_GRAY, align: 'end' }],
       },
     ],
   };
@@ -114,12 +116,12 @@ function topicBubble(d: Digest, flyerImageUrl: string | null) {
   const t = d.topic!;
   const link = topicLink(t);
   const body: unknown[] = [
-    text(t.title, { weight: 'bold', size: 'md' }),
-    text(`${md(t.event_date!)}${t.event_time ? ` ${t.event_time}` : ''}`, { size: 'sm', color: BLUE, weight: 'bold' }),
+    text(t.title, { weight: 'bold', size: 'lg' }),
+    text(`${md(t.event_date!)}${t.event_time ? ` ${t.event_time}` : ''}`, { size: 'md', color: BLUE, weight: 'bold' }),
   ];
   const place = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
-  if (place) body.push(text(`📍 ${place}`, { size: 'xs', color: '#666666' }));
-  if (t.description) body.push(text(t.description, { size: 'sm', color: '#333333', margin: 'md' }));
+  if (place) body.push(text(`📍 ${place}`, { size: 'sm', color: '#666666' }));
+  if (t.description) body.push(text(t.description, { size: 'md', color: '#333333', margin: 'md' }));
 
   // ボタンは「詳しく見る」1つ。行き先は チラシPDF → 記事 → 予定ページ の順（topicLink）。
   // 一押しはチラシとは限らないので、言葉はリンク先の種類で変えずに汎用にしておく
@@ -211,8 +213,8 @@ function reportBubble(r: Digest['reports'][number]) {
   const url = `${siteUrl()}/?report=${r.id}`;
   const thumb = (r as { thumbnail_url?: string | null }).thumbnail_url || null;
   const brief = ((r as { brief?: string | null }).brief || (r as { summary?: string | null }).summary || '').trim();
-  const body: unknown[] = [text('📰 新しいレポート', { size: 'xs', color: RED, weight: 'bold' }), text(r.title, { weight: 'bold', size: 'md' })];
-  if (brief) body.push(text(brief.slice(0, 80), { size: 'sm', color: '#666666' }));
+  const body: unknown[] = [text('📰 新しいレポート', { size: 'sm', color: RED, weight: 'bold' }), text(r.title, { weight: 'bold', size: 'lg' })];
+  if (brief) body.push(text(brief.slice(0, 80), { size: 'md', color: '#666666' }));
   return {
     type: 'bubble',
     size: 'mega',

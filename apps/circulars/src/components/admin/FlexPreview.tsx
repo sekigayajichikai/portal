@@ -22,7 +22,7 @@ interface FlexPreviewProps {
  * （フッターの無いカードは本文が上から並ぶ＝実物と同じ）
  */
 const Bubble: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="shrink-0 w-[260px] bg-white rounded-2xl overflow-hidden shadow-sm text-slate-800 flex flex-col">{children}</div>
+  <div className="shrink-0 w-[300px] bg-white rounded-2xl overflow-hidden shadow-sm text-slate-800 flex flex-col">{children}</div>
 );
 
 /** 両カード共通の見出し下の案内 */
@@ -37,16 +37,16 @@ const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; pref
   const inner = (
     <>
       <span className="flex-1 min-w-0">
-        <span className={`block text-xs font-bold leading-snug ${whenColor ?? 'text-blue-700'}`}>{when}</span>
-        <span className="block text-xs font-bold leading-snug">
+        <span className={`block text-sm font-bold leading-snug ${whenColor ?? 'text-blue-700'}`}>{when}</span>
+        <span className="block text-sm font-bold leading-snug">
           {prefix}
           {c.title}
         </span>
-        {sub && <span className="block text-[10px] text-slate-600">{sub}</span>}
-        {c.event_location && <span className="block text-[10px] text-slate-400">{c.event_location}</span>}
+        {sub && <span className="block text-xs text-slate-600">{sub}</span>}
+        {c.event_location && <span className="block text-xs text-slate-400">{c.event_location}</span>}
       </span>
       {/* 押せる行だけ「詳しく ›」（本文と同じ大きさの太字・濃いグレー）。枠は固定幅で、押せない行も位置を揃える */}
-      <span className="shrink-0 text-xs font-bold text-slate-600 text-right w-14">{linkable ? '詳しく ›' : ''}</span>
+      <span className="shrink-0 text-sm font-bold text-slate-600 text-right w-16">{linkable ? '詳しく ›' : ''}</span>
     </>
   );
   const cls = 'flex items-center gap-2 py-2 border-b border-slate-100 last:border-0';
@@ -65,7 +65,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
   return (
     <div className="rounded-xl p-3 space-y-2" style={{ background: '#7494c0' }}>
       {/* ① テキスト */}
-      <div className="bg-white rounded-2xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap max-w-[260px] shadow-sm text-slate-800">
+      <div className="bg-white rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap max-w-[260px] shadow-sm text-slate-800">
         {greeting}
       </div>
       {/* ② ⭐一押し（1枚だけの吹き出し。カルーセルと高さを揃えなくて済む） */}
@@ -73,29 +73,29 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
         <div className="flex">
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#b45309' }}>
-              <div className="text-sm font-bold">⭐ 今週の一押し</div>
-              <div className="text-[10px] opacity-80">
+              <div className="text-base font-bold">⭐ 今週の一押し</div>
+              <div className="text-xs opacity-80">
                 {md(d.from)}〜{md(d.to)} のお知らせ
               </div>
             </div>
             {flyerSrc ? <img src={flyerSrc} alt="" className="w-full bg-slate-100" style={{ aspectRatio: '1/1', objectFit: 'cover' }} /> : null}
             <div className="px-3 pt-3 pb-1 space-y-1">
-              <div className="text-sm font-bold leading-snug">{t.title}</div>
-              <div className="text-xs font-bold text-blue-700">
+              <div className="text-base font-bold leading-snug">{t.title}</div>
+              <div className="text-sm font-bold text-blue-700">
                 {md(t.event_date!)}
                 {t.event_time ? ` ${t.event_time}` : ''}
               </div>
               {(t.event_location || t.organizer) && (
-                <div className="text-[10px] text-slate-500">
+                <div className="text-xs text-slate-500">
                   📍 {[t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ')}
                   {audienceFee(t)}
                 </div>
               )}
-              {t.description && <div className="text-xs text-slate-700 leading-relaxed pt-1">{t.description}</div>}
+              {t.description && <div className="text-sm text-slate-700 leading-relaxed pt-1">{t.description}</div>}
             </div>
             <div className="px-3 pb-3 pt-2 mt-auto">
               {/* ボタンは「詳しく見る」1つ（行き先は チラシPDF → 記事 → 予定ページ）。一押しはチラシとは限らないので汎用の言葉に */}
-              <a href={link.url} target="_blank" rel="noopener noreferrer" className="block text-center rounded-lg py-2 text-xs font-bold text-white" style={{ background: '#b45309' }}>
+              <a href={link.url} target="_blank" rel="noopener noreferrer" className="block text-center rounded-lg py-2 text-sm font-bold text-white" style={{ background: '#b45309' }}>
                 詳しく見る
               </a>
             </div>
@@ -107,8 +107,8 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
         {(d.events.length > 0 || d.urgent.length > 0) && (
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2563eb' }}>
-              <div className="text-sm font-bold">📅 今週の予定</div>
-              <div className="text-[10px] opacity-80">
+              <div className="text-base font-bold">📅 今週の予定</div>
+              <div className="text-xs opacity-80">
                 {md(d.from)}〜{md(d.to)}　{ROW_HINT}
               </div>
             </div>
@@ -127,15 +127,15 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
                 <Row key={c.id} c={c} when={`${md(c.event_date!)}${shortTime(c.event_time)}`} />
               ))}
             </div>
-            <div className="px-3 py-2 mt-auto text-center text-xs font-bold text-blue-700">ほかの予定も見る</div>
+            <div className="px-3 py-2 mt-auto text-center text-sm font-bold text-blue-700">ほかの予定も見る</div>
           </Bubble>
         )}
 
         {d.apply.length > 0 && (
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2f6f4e' }}>
-              <div className="text-sm font-bold">📝 申込受付中</div>
-              <div className="text-[10px] opacity-80">締切の近い順　{ROW_HINT}</div>
+              <div className="text-base font-bold">📝 申込受付中</div>
+              <div className="text-xs opacity-80">締切の近い順　{ROW_HINT}</div>
             </div>
             <div className="px-3 pb-2">
               {d.apply.map((c) => (
@@ -158,12 +158,12 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
             <Bubble key={r.id}>
               {thumb && <img src={thumb} alt="" className="w-full object-cover" style={{ aspectRatio: '16/9' }} />}
               <div className="px-3 pt-3 pb-1 space-y-1">
-                <div className="text-[10px] font-bold text-red-700">📰 新しいレポート</div>
-                <div className="text-sm font-bold leading-snug">{r.title}</div>
-                {brief && <div className="text-xs text-slate-500">{brief.slice(0, 80)}</div>}
+                <div className="text-xs font-bold text-red-700">📰 新しいレポート</div>
+                <div className="text-base font-bold leading-snug">{r.title}</div>
+                {brief && <div className="text-sm text-slate-500">{brief.slice(0, 80)}</div>}
               </div>
               <div className="px-3 pb-3 pt-2 mt-auto">
-                <a href={`${siteUrl()}/?report=${r.id}`} target="_blank" rel="noopener noreferrer" className="block text-center rounded-lg py-2 text-xs font-bold text-white" style={{ background: '#c0392b' }}>
+                <a href={`${siteUrl()}/?report=${r.id}`} target="_blank" rel="noopener noreferrer" className="block text-center rounded-lg py-2 text-sm font-bold text-white" style={{ background: '#c0392b' }}>
                   レポートを読む
                 </a>
               </div>

@@ -57,6 +57,7 @@ import {
   shortenUrl,
   buildDigest,
   renderText,
+  topicChoices,
 } from './weeklyDigestCore';
 import { buildGreetingText, buildWeeklyMessages } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
@@ -474,12 +475,22 @@ export const WeeklyDigest: React.FC = () => {
    * ずっと外すものは「今後も載せない」で予定カードの digest_exclude を立てる。
    */
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  /**
+   * ⭐一押しの指定。undefined = 自動、null = 今週は一押しなし、予定ID = その予定。
+   * 配信日を変えたら自動に戻す
+   */
+  const [topicChoice, setTopicChoice] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    setTopicChoice(undefined);
+  }, [baseDate]);
+  const choices = useMemo(() => topicChoices(cards, baseDate), [cards, baseDate]);
+
   /** 拾われた予定の全体（チェック一覧用。digest_exclude のものは最初から入らない） */
-  const fullDigest = useMemo(() => buildDigest(cards, reports, baseDate), [cards, reports, baseDate]);
+  const fullDigest = useMemo(() => buildDigest(cards, reports, baseDate, { topicId: topicChoice }), [cards, reports, baseDate, topicChoice]);
   /** 実際に配信する内容（チェックを外した予定を除いたもの） */
   const digest = useMemo(
-    () => buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate),
-    [cards, reports, baseDate, excluded]
+    () => buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate, { topicId: topicChoice }),
+    [cards, reports, baseDate, excluded, topicChoice]
   );
   const pdf = useMemo(() => topicPdf(digest.topic), [digest.topic]);
 
@@ -785,6 +796,40 @@ export const WeeklyDigest: React.FC = () => {
                 この配信日の範囲に予定がありません。予定カードが登録・公開されているか、配信日を確認してください。
               </p>
             )}
+
+            {/* ⭐一押しを人が選ぶ（自動／なし／任意の予定）。外れた予定は今週の範囲内なら「今週の予定」に普通の行として載る */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <label className="font-bold text-slate-600">⭐ 今週の一押し</label>
+              <select
+                value={topicChoice === undefined ? '__auto' : topicChoice === null ? '__none' : topicChoice}
+                onChange={(e) => setTopicChoice(e.target.value === '__auto' ? undefined : e.target.value === '__none' ? null : e.target.value)}
+                className="text-xs border border-slate-300 rounded-lg px-2 py-1.5 max-w-full"
+              >
+                <option value="__auto">
+                  自動（⭐候補のうち直近{fullDigest.topic && topicChoice === undefined ? `: ${fullDigest.topic.title}` : ''}）
+                </option>
+                <option value="__none">今週は一押しなし</option>
+                {choices.starred.length > 0 && (
+                  <optgroup label="⭐ 配信候補">
+                    {choices.starred.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {md(c.event_date!)} {c.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {choices.others.length > 0 && (
+                  <optgroup label="その他の予定（4週間以内）">
+                    {choices.others.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {md(c.event_date!)} {c.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              {topicChoice === null && <span className="text-slate-500">一押しカードと⭐の段落を出さず、テキスト→カード一覧の2吹き出しで送ります</span>}
+            </div>
 
             {/* 拾われた予定の一覧。チェックを外すとこの週の文面・画像・カードから消える。「今後も載せない」は予定カードに保存 */}
             {digestItems.length > 0 && (
