@@ -30,19 +30,38 @@ import {
   getNewsletters,
   getArticlesByNewsletterId,
   updateEventCard,
+  sendLineMessages,
+  uploadWeeklyImage,
+  recordWeeklyDigestSend,
+  getWeeklyDigestSends,
   type PublicEventCard,
   type Article,
+  type LineMessage,
+  type LineSendMode,
+  type WeeklyDigestSend,
 } from '@cc-saas/shared';
-import { Copy, Check, Download, RefreshCw, Loader2, Send, ExternalLink } from 'lucide-react';
-import { showError, showToast } from '@/components/ui/feedback';
+import { Copy, Check, Download, RefreshCw, Loader2, Send, ExternalLink, MessageCircle, ShieldCheck, Users } from 'lucide-react';
+import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 
+import {
+  type Digest,
+  LIMITS,
+  CHAR_GUIDE,
+  ymd,
+  md,
+  shortTime,
+  audienceFee,
+  topicLink,
+  topicPdf,
+  shortenUrl,
+  buildDigest,
+  renderText,
+} from './weeklyDigestCore';
+import { buildGreetingText, buildWeeklyMessages } from './weeklyFlex';
+import { FlexPreview } from './FlexPreview';
+
 const REPORT_NEWSLETTER_TITLE = '関ヶ谷レポート';
-const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
-/** 件数上限（情報量の抑制） */
-const LIMITS = { topic: 1, reports: 2, events: 6, apply: 4 };
-/** 目安の文字数（LINE で読みやすい上限） */
-const CHAR_GUIDE = 600;
 /** canvas のフォント */
 const FONT = '"Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif';
 
@@ -54,191 +73,6 @@ const IMAGE_MODES: Array<{ key: ImageMode; label: string; hint: string }> = [
   { key: 'hybrid', label: 'チラシ＋今週の予定', hint: '上にチラシと紹介文、下に今週の予定・申込を数行' },
   { key: 'list', label: '文字一覧（従来）', hint: '一押し＋今週の予定・申込を文字だけで一覧' },
 ];
-
-const toDate = (s: string) => new Date(s + 'T00:00:00');
-const ymd = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const addDays = (s: string, n: number) => {
-  const d = toDate(s);
-  d.setDate(d.getDate() + n);
-  return ymd(d);
-};
-const md = (s: string) => {
-  const d = toDate(s);
-  return `${d.getMonth() + 1}/${d.getDate()}(${WEEK[d.getDay()]})`;
-};
-/** "10:00-12:00（10/23も）" → "10:00〜" のように配信向けに短くする */
-const shortTime = (t?: string | null) => {
-  if (!t) return '';
-  const m = t.match(/^(\d{1,2}:\d{2})/);
-  return m ? ` ${m[1]}〜` : '';
-};
-/** 「（65歳以上・無料）」の形で対象者・参加費を添える（両方無ければ空文字） */
-const audienceFee = (c: { target_audience?: string | null; fee?: string | null }) => {
-  const s = [c.target_audience, c.fee].filter(Boolean).join('・');
-  return s ? `（${s}）` : '';
-};
-const siteUrl = () =>
-  ((import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined) || window.location.origin).replace(/\/+$/, '');
-/**
- * 一押しのリンク先（文面の「▶」行とリッチメッセージのタップ先に使う）。
- * 住民がすぐ詳細を見られるよう、間に画面を挟まず直接つなぐ:
- *   1. 由来PDF（チラシ）があれば PDF に直接
- *   2. リンク記事があれば記事の個別ページ（/?article=<記事ID>）に直接
- *   3. どちらも無ければ予定の個別ページ（/?event=<予定ID>）
- */
-const topicLink = (c: PublicEventCard): { url: string; kind: 'pdf' | 'article' | 'event'; label: string } => {
-  if (c.source_pdf_url) return { url: c.source_pdf_url, kind: 'pdf', label: 'チラシ（PDF）' };
-  if (c.linked_article_id) return { url: `${siteUrl()}/?article=${c.linked_article_id}`, kind: 'article', label: '記事' };
-  return { url: `${siteUrl()}/?event=${c.id}`, kind: 'event', label: '予定ページ' };
-};
-/** 一押しの画像に使うPDF（由来PDFが無ければ号の先頭PDFで代用） */
-const topicPdf = (c: PublicEventCard | null): { url: string; fallback: boolean } | null => {
-  if (!c) return null;
-  if (c.source_pdf_url) return { url: c.source_pdf_url, fallback: false };
-  if (c.newsletter_pdf_url) return { url: c.newsletter_pdf_url, fallback: true };
-  return null;
-};
-
-/**
- * 短縮URL（TinyURL）。チラシPDFの直リンクは Supabase Storage のURLで130文字前後になり
- * 文面が長くなるので、配信文では短縮したものに置き換える。キー不要・ブラウザから直接呼べる（CORS対応）。
- * 失敗したときは元のURLをそのまま使う。同じURLは再度問い合わせない。
- */
-const shortUrlCache = new Map<string, string>();
-async function shortenUrl(url: string): Promise<string> {
-  const cached = shortUrlCache.get(url);
-  if (cached) return cached;
-  // localhost 等は短縮サービス側で弾かれるので、そのまま
-  if (/^https?:\/\/(localhost|127\.|192\.168\.)/.test(url)) return url;
-  try {
-    const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`);
-    const text = (await res.text()).trim();
-    if (res.ok && /^https:\/\/tinyurl\.com\/\S+$/.test(text)) {
-      shortUrlCache.set(url, text);
-      return text;
-    }
-  } catch (e) {
-    console.warn('短縮URLの取得に失敗:', e);
-  }
-  return url;
-}
-
-interface Digest {
-  from: string;
-  to: string;
-  topic: PublicEventCard | null;
-  reports: Article[];
-  events: PublicEventCard[];
-  apply: Array<PublicEventCard & { deadline: string; deadlineGuessed: boolean }>;
-  urgent: Array<PublicEventCard & { deadline: string; deadlineGuessed: boolean }>;
-}
-
-/**
- * 配信日を起点に、各セクションの候補を選ぶ（ルールは冒頭コメント参照）
- */
-function buildDigest(cards: PublicEventCard[], reports: Article[], baseDate: string): Digest {
-  const from = baseDate;
-  // 「配信日から7日間」= 配信日を含めて7日（月曜配信なら日曜まで）。+7 にすると翌週の月曜まで8日間になるので +6
-  const to = addDays(baseDate, 6);
-  const applyUntil = addDays(baseDate, 14);
-  const urgentUntil = addDays(baseDate, 3);
-
-  const future = cards.filter((c) => c.event_date && c.event_date >= from);
-  const byDate = (a: PublicEventCard, b: PublicEventCard) => (a.event_date! < b.event_date! ? -1 : 1);
-
-  // 一押し: ⭐配信候補のうち、開催が直近（2週間以内優先）のもの
-  const topicPool = future.filter((c) => c.weekly_topic).sort(byDate);
-  const topic = topicPool.find((c) => c.event_date! <= applyUntil) ?? topicPool[0] ?? null;
-
-  // 「申込が必要」= 要予約、または締切が入っているもの（定員制の連続講座など）
-  const needsApply = (c: PublicEventCard) => c.category === 'reserve' || !!c.apply_deadline;
-
-  // 今週の予定: 申込不要のもので、配信日から7日間に開催
-  const events = future
-    .filter((c) => !needsApply(c) && c.event_date! <= to && c.id !== topic?.id)
-    .sort(byDate)
-    .slice(0, LIMITS.events);
-
-  // 申込受付中: 申込が必要で、締切（不明なら開催7日前）が14日以内
-  const apply = future
-    .filter(needsApply)
-    .map((c) => {
-      const deadlineGuessed = !c.apply_deadline;
-      const deadline = c.apply_deadline || addDays(c.event_date!, -7);
-      return { ...c, deadline, deadlineGuessed };
-    })
-    .filter((c) => c.deadline >= from && c.deadline <= applyUntil)
-    .sort((a, b) => (a.deadline < b.deadline ? -1 : 1));
-  const urgent = apply.filter((c) => c.deadline <= urgentUntil);
-  const applyRest = apply.filter((c) => c.deadline > urgentUntil).slice(0, LIMITS.apply);
-
-  // 新しいレポート: 直近14日に公開（updated_at 基準）
-  const since = addDays(baseDate, -14);
-  const recentReports = reports
-    .filter((r) => (r.updated_at || r.created_at || '').slice(0, 10) >= since)
-    .slice(0, LIMITS.reports);
-
-  return { from, to, topic, reports: recentReports, events, apply: applyRest, urgent };
-}
-
-/** 配信文（プレーンテキスト）を組み立てる。shortUrls は 元URL→短縮URL の対応（取得済みのものだけ） */
-function renderText(d: Digest, shortUrls: Record<string, string> = {}): string {
-  const lines: string[] = [];
-  lines.push(`【関ヶ谷自治会 今週のお知らせ】${md(d.from)}〜${md(d.to)}`);
-
-  if (d.topic) {
-    const t = d.topic;
-    lines.push('', '⭐ 今週の一押し');
-    lines.push(`${md(t.event_date!)}${shortTime(t.event_time)} ${t.title}`);
-    // 紹介文（1〜2文）。タイトルの直下に置く
-    if (t.description) lines.push(t.description);
-    const sub = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
-    if (sub) lines.push(sub);
-    // チラシPDF → 記事 → 予定ページ の順で、いちばん直接的なリンクを付ける
-    const link = topicLink(t);
-    lines.push(
-      `▶ ${link.kind === 'pdf' ? 'チラシを見る' : link.kind === 'article' ? '記事を読む' : '詳しく'}: ${shortUrls[link.url] ?? link.url}`
-    );
-  }
-
-  if (d.reports.length > 0) {
-    lines.push('', '📰 新しいレポート');
-    for (const r of d.reports) {
-      lines.push(`・${r.title}`);
-      lines.push(`  ${siteUrl()}/?report=${r.id}`);
-    }
-  }
-
-  // 場所は「（西金沢地域ケアプラザ 多目的ホール）」のように今週の予定と同じ形で添える
-  const loc = (c: PublicEventCard) => (c.event_location ? `（${c.event_location}）` : '');
-
-  if (d.urgent.length > 0) {
-    lines.push('', '⏰ 締切間近');
-    for (const c of d.urgent) {
-      lines.push(`・${c.title}${loc(c)} 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`);
-    }
-  }
-
-  if (d.events.length > 0) {
-    lines.push('', '📅 今週の予定');
-    for (const c of d.events) {
-      lines.push(`・${md(c.event_date!)}${shortTime(c.event_time)} ${c.title}${loc(c)}`);
-    }
-  }
-
-  if (d.apply.length > 0) {
-    lines.push('', '📝 申込受付中');
-    for (const c of d.apply) {
-      lines.push(
-        `・${c.title}${loc(c)} ${md(c.event_date!)}開催 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`
-      );
-    }
-  }
-
-  lines.push('', '▶ 詳しくは回覧板サイトへ', `${siteUrl()}/`);
-  return lines.join('\n');
-}
 
 // ---------------------------------------------------------------------------
 // 配信画像
@@ -600,6 +434,11 @@ export const WeeklyDigest: React.FC = () => {
   const [savingDesc, setSavingDesc] = useState(false);
   /** 元URL→短縮URL（取得できたものだけ入る） */
   const [shortUrls, setShortUrls] = useState<Record<string, string>>({});
+  /** LINE 送信（Flex）: テキスト吹き出しの文、送信中のモード、直近の結果、履歴 */
+  const [greeting, setGreeting] = useState('');
+  const [sending, setSending] = useState<LineSendMode | null>(null);
+  const [sendNote, setSendNote] = useState<string | null>(null);
+  const [history, setHistory] = useState<WeeklyDigestSend[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const load = async () => {
@@ -730,6 +569,78 @@ export const WeeklyDigest: React.FC = () => {
     a.download = `weekly-${baseDate}-${imageMode}.png`;
     a.click();
   };
+
+  // ---- LINE 送信（Flex） ----
+
+  // テキスト吹き出しの既定文（一押しが変わったら作り直す。手で直した後は「作り直す」で戻す）
+  useEffect(() => {
+    setGreeting(buildGreetingText(digest));
+  }, [digest]);
+
+  const loadHistory = () => getWeeklyDigestSends(8).then(setHistory);
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  /** チラシ画像（プレビュー用の data URL） */
+  const flyerSrc = useMemo(() => (flyer ? flyer.toDataURL('image/jpeg', 0.8) : null), [flyer]);
+
+  /**
+   * 送るメッセージを組み立てる。Flex のヒーロー画像は https が必要なので、
+   * チラシ画像を Storage（newsletter-images/weekly/）に置いてから使う。
+   */
+  const buildMessages = async (): Promise<LineMessage[]> => {
+    let flyerImageUrl: string | null = null;
+    if (digest.topic && flyer) {
+      const blob = await new Promise<Blob | null>((resolve) => flyer.toBlob(resolve, 'image/jpeg', 0.85));
+      if (blob) flyerImageUrl = await uploadWeeklyImage(blob, baseDate, 'flyer');
+    }
+    return buildWeeklyMessages(digest, greeting, { flyerImageUrl });
+  };
+
+  /** validate: 形式チェックのみ / test: 自分にだけ / broadcast: 全員 */
+  const send = async (mode: LineSendMode) => {
+    if (mode === 'broadcast') {
+      const ok = await appConfirm({
+        title: '友だち全員に配信しますか？',
+        message: `${md(digest.from)}〜${md(digest.to)} の「今週のお知らせ」を公式LINEの友だち全員に送ります。取り消しはできません。先に「テスト送信」で見た目を確認してください。`,
+        confirmLabel: '全員に配信する',
+      });
+      if (!ok) return;
+    }
+    setSending(mode);
+    setSendNote(null);
+    try {
+      const messages = await buildMessages();
+      const result = await sendLineMessages(mode, messages);
+      const label = mode === 'validate' ? '形式チェックOK。LINE に送れる内容です' : mode === 'test' ? 'テスト送信しました。自分のLINEで見た目を確認してください' : '友だち全員に配信しました';
+      setSendNote(`✅ ${label}（${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}）`);
+      showToast(label);
+      if (mode !== 'validate') {
+        await recordWeeklyDigestSend({ base_date: baseDate, mode, text: greeting, messages, line_status: result.status });
+        loadHistory();
+      }
+    } catch (e: any) {
+      console.error('LINE 送信エラー:', e);
+      setSendNote(`❌ ${e?.message ?? '送信に失敗しました'}`);
+      showError(e?.message ?? '送信に失敗しました');
+    } finally {
+      setSending(null);
+    }
+  };
+
+  /** Flex JSON をコピー（LINE Developers の Flex Message Simulator に貼って確認する用） */
+  const copyFlexJson = async () => {
+    try {
+      const messages = buildWeeklyMessages(digest, greeting, { flyerImageUrl: null });
+      const flex = messages.find((m) => m.type === 'flex');
+      await navigator.clipboard.writeText(JSON.stringify(flex ?? messages, null, 2));
+      showToast('Flex JSON をコピーしました（チラシ画像は送信時に付きます）');
+    } catch {
+      showError('コピーできませんでした');
+    }
+  };
+  const alreadySentThisWeek = history.find((h) => h.mode === 'broadcast' && h.base_date === baseDate);
 
   const counts = {
     topic: digest.topic ? 1 : 0,
@@ -929,6 +840,109 @@ export const WeeklyDigest: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* LINE に送る（Flex カルーセル） */}
+      {!loading && (
+        <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <MessageCircle size={18} className="text-emerald-600" />
+                LINE に送る（カード形式）
+              </h3>
+              <p className="text-sm text-slate-500 mt-1">
+                短いテキスト＋カード（一押し／今週の予定／申込受付中／レポート）を1回の配信で送ります。まず「テスト送信」で自分のLINEに届く見た目を確認してから「全員に配信」してください。
+              </p>
+            </div>
+          </div>
+
+          {alreadySentThisWeek && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+              ⚠ この配信日（{md(baseDate)}）はすでに全員配信済みです（{new Date(alreadySentThisWeek.sent_at).toLocaleString('ja-JP')}）。二重配信に注意してください。
+            </p>
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-2 mt-4">
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-500">テキスト（吹き出し①・編集できます）</label>
+                  <button onClick={() => setGreeting(buildGreetingText(digest))} className="text-[11px] text-slate-500 hover:text-slate-800" title="自動生成の文に戻す">
+                    作り直す
+                  </button>
+                </div>
+                <textarea
+                  value={greeting}
+                  onChange={(e) => setGreeting(e.target.value)}
+                  rows={4}
+                  className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => send('validate')}
+                  disabled={sending !== null}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
+                  title="送らずに LINE 側で形式だけチェックします"
+                >
+                  {sending === 'validate' ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />} 形式チェック
+                </button>
+                <button
+                  onClick={copyFlexJson}
+                  disabled={sending !== null}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
+                  title="LINE Developers の Flex Message Simulator に貼って本物の見た目を確認できます"
+                >
+                  <Copy size={14} /> Flex JSON をコピー
+                </button>
+                <button
+                  onClick={() => send('test')}
+                  disabled={sending !== null}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
+                  title="自分のLINE（LINE_TEST_USER_ID）にだけ送ります"
+                >
+                  {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（自分に）
+                </button>
+                <button
+                  onClick={() => send('broadcast')}
+                  disabled={sending !== null}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 transition disabled:opacity-50"
+                  title="公式LINEの友だち全員に配信します（確認あり）"
+                >
+                  {sending === 'broadcast' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 全員に配信
+                </button>
+              </div>
+              {sendNote && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 whitespace-pre-wrap">{sendNote}</p>}
+              <p className="text-[11px] text-slate-400">
+                テスト送信と全員配信は、送るたびに公式LINEの通数（無料枠は月200通）を使います。テスト送信は1通です。チラシ画像は送信時に自動でアップロードされます。
+              </p>
+
+              {history.length > 0 && (
+                <div className="pt-1">
+                  <p className="text-xs font-bold text-slate-500 mb-1">配信履歴</p>
+                  <ul className="text-[11px] text-slate-500 space-y-0.5">
+                    {history.map((h) => (
+                      <li key={h.id}>
+                        {new Date(h.sent_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{' '}
+                        <span className={`px-1.5 py-0.5 rounded font-bold ${h.mode === 'broadcast' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
+                          {h.mode === 'broadcast' ? '全員配信' : 'テスト'}
+                        </span>{' '}
+                        配信日 {h.base_date}
+                        {h.line_status && h.line_status >= 300 ? ` （LINE ${h.line_status}）` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-500 block mb-1">見た目のプレビュー（実際の描画はテスト送信で確認）</label>
+              <FlexPreview digest={digest} greeting={greeting} flyerSrc={flyerSrc} />
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white p-5 rounded-2xl shadow border border-slate-200 text-xs text-slate-500 space-y-1">
         <p className="font-bold text-slate-600">組み立てのルール</p>

@@ -165,6 +165,17 @@ CREATE TABLE IF NOT EXISTS event_cards (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 週次配信（今週のお知らせ）の LINE 送信履歴
+CREATE TABLE IF NOT EXISTS weekly_digest_sends (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  base_date DATE NOT NULL,              -- 配信日（週の起点）
+  mode TEXT NOT NULL,                   -- validate / test / broadcast
+  text TEXT,                            -- 送ったテキスト
+  messages JSONB,                       -- 送ったメッセージ全体（Flex JSON 含む）
+  line_status INTEGER,                  -- LINE API の HTTP ステータス
+  sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- =====================================================
 -- 6. いいね（端末IDベース）
 -- =====================================================
