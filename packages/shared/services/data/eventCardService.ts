@@ -36,14 +36,22 @@ export interface EventCard {
   description?: string | null;
   /** 週次配信（今週のお知らせ）に載せない（役員向け会議など）。公開カレンダーには影響しない。列が無い場合はundefined */
   digest_exclude?: boolean | null;
-  /** 一押しカードに載せるチラシ画像の切り出し位置（0=上端〜1=下端。横長チラシなら左〜右）。null は上端 */
+  /** 一押しカードに載せるチラシ画像の切り出し位置（0=上端〜1=下端。横長チラシなら左〜右）。null は上端（旧。hero_crop に置き換え） */
   hero_crop_y?: number | null;
+  /** 一押しカードの画像の切り出し（x,y: 0〜1 の位置、scale: 拡大率 1〜3）。null は上端・等倍 */
+  hero_crop?: { x: number; y: number; scale: number } | null;
 }
 
 /** 公開カレンダー表示用に、出典（リンク記事・由来PDF）を含めたイベントカード */
 export interface PublicEventCard extends EventCard {
-  /** リンク記事（linked_article_id先。無ければnull） */
-  linked_article?: { id: string; title: string; source: string | null } | null;
+  /** リンク記事（linked_article_id先。無ければnull）。thumbnail_url / attachments は一押しカードの写真用 */
+  linked_article?: {
+    id: string;
+    title: string;
+    source: string | null;
+    thumbnail_url?: string | null;
+    attachments?: Array<{ type?: string; url?: string; label?: string }> | null;
+  } | null;
   /** 出典号の元PDF（source_pdf_url が無い場合のフォールバック＝号の先頭PDF） */
   newsletter_pdf_url?: string | null;
   /** 出典PDFの表示名（「にしかぜ」等。source_pdf_urls のlabel/publisherから解決） */
@@ -93,7 +101,7 @@ export async function getPublishedEventCards(
   let query = supabase
     .from('event_cards')
     .select(
-      '*, newsletters!inner(status,source_pdf_url,source_pdf_urls), linked_article:articles!linked_article_id(id,title,source)'
+      '*, newsletters!inner(status,source_pdf_url,source_pdf_urls), linked_article:articles!linked_article_id(id,title,source,thumbnail_url,attachments)'
     );
   // 通常は公開済みのみ。公開プレビュー時はプレビュー対象号（下書き）も含めるため、
   // SQLでは status で絞らずJS側で「公開済み or プレビュー号」を残す。

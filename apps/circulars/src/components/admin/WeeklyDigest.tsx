@@ -53,7 +53,7 @@ import {
   shortTime,
   audienceFee,
   topicLink,
-  topicPdf,
+  topicImageSource,
   shortenUrl,
   buildDigest,
   renderText,
@@ -65,6 +65,8 @@ import {
 } from './weeklyDigestCore';
 import { buildGreetingText, buildWeeklyMessages } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
+import { CropEditor } from './CropEditor';
+import { type HeroCrop, normalizeCrop, drawCropped, loadImageCanvas } from './heroCrop';
 
 const REPORT_NEWSLETTER_TITLE = '関ヶ谷レポート';
 /** canvas のフォント */
@@ -443,8 +445,8 @@ export const WeeklyDigest: React.FC = () => {
   const [savingDesc, setSavingDesc] = useState<string | null>(null);
   /** 一押しごとのリンク先の指定（予定ID → pdf / article / event。無ければ自動） */
   const [linkKinds, setLinkKinds] = useState<Record<string, LinkKind>>({});
-  /** 一押しごとのチラシ切り出し位置（予定ID → 0〜1）。初期値は予定カードの hero_crop_y */
-  const [cropYs, setCropYs] = useState<Record<string, number>>({});
+  /** 一押しごとの画像の切り出し（予定ID → {x,y,scale}）。初期値は予定カードの hero_crop（無ければ旧 hero_crop_y） */
+  const [crops, setCrops] = useState<Record<string, HeroCrop>>({});
   const [savingCrop, setSavingCrop] = useState<string | null>(null);
   /** 元URL→短縮URL（取得できたものだけ入る） */
   const [shortUrls, setShortUrls] = useState<Record<string, string>>({});
@@ -565,9 +567,9 @@ export const WeeklyDigest: React.FC = () => {
       for (const t of digest.topics) if (!(t.id in n)) n[t.id] = t.description ?? '';
       return n;
     });
-    setCropYs((prev) => {
+    setCrops((prev) => {
       const n = { ...prev };
-      for (const t of digest.topics) if (!(t.id in n)) n[t.id] = typeof t.hero_crop_y === 'number' ? t.hero_crop_y : 0;
+      for (const t of digest.topics) if (!(t.id in n)) n[t.id] = normalizeCrop(t.hero_crop, t.hero_crop_y);
       return n;
     });
   }, [topicKey]);
@@ -593,18 +595,18 @@ export const WeeklyDigest: React.FC = () => {
     }
   };
 
-  /** チラシの切り出し位置を予定カードに保存する（次回以降も同じ位置で切り出す） */
+  /** 画像の切り出し（位置と拡大）を予定カードに保存する（次回以降も同じ切り出し） */
   const saveCrop = async (topic: PublicEventCard) => {
-    const y = cropYs[topic.id] ?? 0;
+    const crop = normalizeCrop(crops[topic.id]);
     setSavingCrop(topic.id);
     try {
-      const saved = await updateEventCard(topic.id, { hero_crop_y: y });
-      if (!('hero_crop_y' in saved)) {
-        showError('切り出し位置は保存されませんでした。DBに hero_crop_y 列がありません（sql/migrations/2026-09-22-event-cards-hero-crop.sql）。');
+      const saved = await updateEventCard(topic.id, { hero_crop: crop, hero_crop_y: crop.y });
+      if (!('hero_crop' in saved)) {
+        showError('切り出しは保存されませんでした。DBに hero_crop 列がありません（sql/migrations/2026-09-22-event-cards-hero-crop-json.sql）。');
         return;
       }
-      setCards((prev) => prev.map((c) => (c.id === topic.id ? { ...c, hero_crop_y: y } : c)));
-      showToast('切り出し位置を保存しました');
+      setCards((prev) => prev.map((c) => (c.id === topic.id ? { ...c, hero_crop: crop, hero_crop_y: crop.y } : c)));
+      showToast('切り出しを保存しました');
     } catch (e) {
       console.error(e);
       showError('切り出し位置を保存できませんでした。');
@@ -636,18 +638,18 @@ export const WeeklyDigest: React.FC = () => {
     setText(renderText(digest, { shortUrls, linkKinds }));
   }, [digest, shortUrls, linkKinds]);
 
-  // 一押しごとのチラシ（PDF 1ページ目）を画像化。まだ読んでいない予定だけ
+  // 一押しごとのカード画像の元（チラシPDFの1ページ目、または記事の写真）を canvas に。まだ読んでいない予定だけ
   useEffect(() => {
     let cancelled = false;
     for (const t of digest.topics) {
       if (t.id in flyers) continue;
-      const pdf = topicPdf(t);
-      if (!pdf) {
+      const src = topicImageSource(t);
+      if (!src) {
         setFlyers((prev) => ({ ...prev, [t.id]: null }));
         continue;
       }
       setFlyerStates((prev) => ({ ...prev, [t.id]: 'loading' }));
-      renderPdfFirstPage(pdf.url)
+      (src.kind === 'pdf' ? renderPdfFirstPage(src.url) : loadImageCanvas(src.url))
         .then((c) => {
           if (cancelled) return;
           setFlyers((prev) => ({ ...prev, [t.id]: c }));
@@ -667,7 +669,7 @@ export const WeeklyDigest: React.FC = () => {
 
   /** 配信画像（1040×1040）用: 先頭の一押しのチラシ（全体） */
   const firstFlyer = digest.topics[0] ? (flyers[digest.topics[0].id] ?? null) : null;
-  const firstPdf = digest.topics[0] ? topicPdf(digest.topics[0]) : null;
+  const firstSrc = digest.topics[0] ? topicImageSource(digest.topics[0]) : null;
   const firstFlyerState = digest.topics[0] ? (flyerStates[digest.topics[0].id] ?? 'idle') : 'idle';
 
   useEffect(() => {
@@ -714,27 +716,10 @@ export const WeeklyDigest: React.FC = () => {
     const out: Record<string, HTMLCanvasElement | null> = {};
     for (const t of digest.topics) {
       const flyer = flyers[t.id];
-      if (!flyer) {
-        out[t.id] = null;
-        continue;
-      }
-      const size = Math.min(flyer.width, flyer.height, 1040);
-      const c = document.createElement('canvas');
-      c.width = size;
-      c.height = size;
-      const ctx = c.getContext('2d')!;
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, size, size);
-      const side = Math.min(flyer.width, flyer.height);
-      const y = Math.min(1, Math.max(0, cropYs[t.id] ?? 0));
-      // 縦長なら上下方向、横長なら左右方向にずらす
-      const sx = flyer.width > flyer.height ? (flyer.width - side) * y : 0;
-      const sy = flyer.height > flyer.width ? (flyer.height - side) * y : 0;
-      ctx.drawImage(flyer, sx, sy, side, side, 0, 0, size, size);
-      out[t.id] = c;
+      out[t.id] = flyer ? drawCropped(flyer, normalizeCrop(crops[t.id]), Math.min(flyer.width, flyer.height, 1040)) : null;
     }
     return out;
-  }, [digest.topics, flyers, cropYs]);
+  }, [digest.topics, flyers, crops]);
   /** プレビュー用の data URL（予定ID → dataURL） */
   const flyerSrcs = useMemo(() => {
     const out: Record<string, string | null> = {};
@@ -952,8 +937,10 @@ export const WeeklyDigest: React.FC = () => {
               const kinds = availableLinkKinds(t);
               const currentKind = topicLink(t, linkKinds[t.id]).kind;
               const flyer = flyers[t.id];
-              const cropDirty = (cropYs[t.id] ?? 0) !== (typeof t.hero_crop_y === 'number' ? t.hero_crop_y : 0);
-              const cropAxis = flyer ? (flyer.height > flyer.width ? 'v' : flyer.width > flyer.height ? 'h' : null) : null;
+              const imgSrc = topicImageSource(t);
+              const savedCrop = normalizeCrop(t.hero_crop, t.hero_crop_y);
+              const curCrop = normalizeCrop(crops[t.id]);
+              const cropDirty = curCrop.x !== savedCrop.x || curCrop.y !== savedCrop.y || curCrop.scale !== savedCrop.scale;
               return (
                 <div key={t.id} className={`mt-3 rounded-lg border px-3 py-2 ${t.description ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}>
                   <div className="flex items-center justify-between gap-2 mb-1">
@@ -1000,43 +987,30 @@ export const WeeklyDigest: React.FC = () => {
                       </p>
                     </div>
 
-                    {/* チラシの切り出し位置（正方形にする範囲を上下にずらす） */}
+                    {/* カード画像の切り出し（チラシPDF or 記事の写真。拡大縮小＋ドラッグで位置決め） */}
                     <div className="text-xs">
-                      <p className="font-bold text-slate-600 mb-1">カードに載せるチラシの切り出し位置</p>
+                      <p className="font-bold text-slate-600 mb-1">
+                        カードに載せる画像の切り出し
+                        {imgSrc && (
+                          <span className="ml-2 font-normal text-slate-400">
+                            {imgSrc.kind === 'photo' ? '（記事の写真）' : imgSrc.fallback ? '（出典号の先頭PDF・代用）' : '（チラシPDFの1ページ目）'}
+                          </span>
+                        )}
+                      </p>
                       {flyerStates[t.id] === 'loading' ? (
-                        <p className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> チラシを読み込み中...</p>
+                        <p className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 画像を読み込み中...</p>
                       ) : !flyer ? (
-                        <p className="text-slate-400">{topicPdf(t) ? 'チラシを画像にできませんでした。' : 'この予定にはチラシPDFが無いので、カードは文字だけになります。'}</p>
+                        <p className="text-slate-400">{imgSrc ? '画像を読み込めませんでした。' : 'この予定にはチラシPDFも記事の写真も無いので、カードは文字だけになります。'}</p>
                       ) : (
-                        <div className="flex gap-3 items-start">
-                          {flyerSrcs[t.id] && <img src={flyerSrcs[t.id]!} alt="" className="w-24 h-24 rounded border border-slate-300 object-cover shrink-0" />}
-                          <div className="flex-1 min-w-0">
-                            {cropAxis ? (
-                              <>
-                                <input
-                                  type="range"
-                                  min={0}
-                                  max={100}
-                                  value={Math.round((cropYs[t.id] ?? 0) * 100)}
-                                  onChange={(e) => setCropYs((prev) => ({ ...prev, [t.id]: Number(e.target.value) / 100 }))}
-                                  className="w-full"
-                                />
-                                <div className="flex justify-between text-[11px] text-slate-400">
-                                  <span>{cropAxis === 'v' ? '上端' : '左端'}</span>
-                                  <span>{cropAxis === 'v' ? '下端' : '右端'}</span>
-                                </div>
-                              </>
-                            ) : (
-                              <p className="text-slate-400">正方形のチラシなので、そのまま使います。</p>
-                            )}
-                            <button
-                              onClick={() => saveCrop(t)}
-                              disabled={savingCrop === t.id || !cropDirty}
-                              className="mt-1 px-2 py-1 text-[11px] font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 disabled:opacity-40"
-                            >
-                              {savingCrop === t.id ? '保存しています…' : '位置を保存（次回も同じ位置）'}
-                            </button>
-                          </div>
+                        <div>
+                          <CropEditor source={flyer} value={curCrop} onChange={(c) => setCrops((prev) => ({ ...prev, [t.id]: c }))} />
+                          <button
+                            onClick={() => saveCrop(t)}
+                            disabled={savingCrop === t.id || !cropDirty}
+                            className="mt-1.5 px-2 py-1 text-[11px] font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 disabled:opacity-40"
+                          >
+                            {savingCrop === t.id ? '保存しています…' : '切り出しを保存（次回も同じ）'}
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1126,13 +1100,15 @@ export const WeeklyDigest: React.FC = () => {
                 </div>
                 {needsFlyer && digest.topics[0] && (
                   <p className="text-[11px] text-slate-400 mt-1">
-                    {!firstPdf
-                      ? '⭐一押しに出典PDFが無いため「一押しのみ（文字）」で描いています。'
+                    {!firstSrc
+                      ? '⭐一押しにチラシPDFも記事の写真も無いため「一押しのみ（文字）」で描いています。'
                       : firstFlyerState === 'error'
-                        ? 'チラシPDFを画像にできなかったため「一押しのみ（文字）」で描いています。'
-                        : firstPdf.fallback
-                          ? 'チラシ: 一押しに由来PDFが無いため、出典号の先頭PDFを使っています（内容が合わなければ他の種類を選んでください）。'
-                          : `チラシ: 一押し${digest.topics.length > 1 ? '1' : ''}の由来PDF${digest.topics[0].source_pdf_label ? `（${digest.topics[0].source_pdf_label}）` : ''}の1ページ目。`}
+                        ? '画像を読み込めなかったため「一押しのみ（文字）」で描いています。'
+                        : firstSrc.kind === 'photo'
+                          ? '画像: 一押しの記事の写真。'
+                          : firstSrc.fallback
+                            ? 'チラシ: 一押しに由来PDFが無いため、出典号の先頭PDFを使っています（内容が合わなければ他の種類を選んでください）。'
+                            : `チラシ: 一押し${digest.topics.length > 1 ? '1' : ''}の由来PDF${digest.topics[0].source_pdf_label ? `（${digest.topics[0].source_pdf_label}）` : ''}の1ページ目。`}
                     {digest.topics.length > 1 ? ' 画像は先頭の一押しだけで描きます。' : ''}
                   </p>
                 )}

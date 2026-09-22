@@ -88,6 +88,31 @@ export const topicPdf = (c: PublicEventCard | null): { url: string; fallback: bo
   return null;
 };
 
+/** リンク記事の写真（扉写真 → 画像添付の先頭）。無ければ null */
+export const topicPhoto = (c: PublicEventCard | null): string | null => {
+  const a = c?.linked_article;
+  if (!a) return null;
+  if (a.thumbnail_url) return a.thumbnail_url;
+  const img = (a.attachments ?? []).find((x) => x && x.type === 'image' && x.url);
+  return img?.url ?? null;
+};
+
+/**
+ * 一押しカードに載せる画像の元。優先順:
+ *   1. 由来PDF（チラシ）の1ページ目
+ *   2. リンク記事の写真（記事由来の予定）
+ *   3. 出典号の先頭PDF（代用。内容が合わないこともある）
+ */
+export type TopicImageSource = { kind: 'pdf'; url: string; fallback: boolean } | { kind: 'photo'; url: string };
+export const topicImageSource = (c: PublicEventCard | null): TopicImageSource | null => {
+  if (!c) return null;
+  if (c.source_pdf_url) return { kind: 'pdf', url: c.source_pdf_url, fallback: false };
+  const photo = topicPhoto(c);
+  if (photo) return { kind: 'photo', url: photo };
+  if (c.newsletter_pdf_url) return { kind: 'pdf', url: c.newsletter_pdf_url, fallback: true };
+  return null;
+};
+
 /**
  * 短縮URL（TinyURL）。チラシPDFの直リンクは Supabase Storage のURLで130文字前後になり
  * 文面が長くなるので、配信文では短縮したものに置き換える。キー不要・ブラウザから直接呼べる（CORS対応）。
