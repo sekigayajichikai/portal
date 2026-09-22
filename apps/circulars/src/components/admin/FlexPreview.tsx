@@ -112,7 +112,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
       )}
       {/* ③ カルーセル（今週の予定／申込受付中／レポート） */}
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {(d.events.length > 0 || d.urgent.length > 0) && (
+        {d.events.length > 0 && (
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2563eb' }}>
               <div className="text-base font-bold">📅 今週の予定</div>
@@ -121,16 +121,6 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
               </div>
             </div>
             <div className="px-3">
-              {d.urgent.map((c) => (
-                <Row
-                  key={c.id}
-                  c={c}
-                  prefix="⏰ "
-                  when={`締切 ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`}
-                  whenColor="text-red-700"
-                  sub={`${md(c.event_date!)}開催${audienceFee(c)}`}
-                />
-              ))}
               {d.events.map((c) => (
                 <Row key={c.id} c={c} when={`${md(c.event_date!)}${shortTime(c.event_time)}`} />
               ))}
@@ -139,13 +129,24 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
           </Bubble>
         )}
 
-        {d.apply.length > 0 && (
+        {(d.apply.length > 0 || d.urgent.length > 0) && (
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2f6f4e' }}>
               <div className="text-base font-bold">📝 申込受付中</div>
               <div className="text-xs opacity-80">{ROW_HINT}</div>
             </div>
             <div className="px-3 pb-2">
+              {/* ⏰締切間近（3日以内）を先頭に、その後は締切順 */}
+              {d.urgent.map((c) => (
+                <Row
+                  key={c.id}
+                  c={c}
+                  prefix="⏰ "
+                  when={`締切間近 ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`}
+                  whenColor="text-red-700"
+                  sub={`${md(c.event_date!)}開催${audienceFee(c)}`}
+                />
+              ))}
               {d.apply.map((c) => (
                 <Row
                   key={c.id}

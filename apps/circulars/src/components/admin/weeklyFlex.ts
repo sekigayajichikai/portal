@@ -165,19 +165,9 @@ function topicBubble(d: Digest, opts: FlexBuildOptions) {
   };
 }
 
-/** 今週の予定バブル（⏰締切間近を先頭に） */
+/** 今週の予定バブル（その週に開催されるものだけ。⏰締切間近は申込受付中カードへ） */
 function eventsBubble(d: Digest) {
   const rows: unknown[] = [];
-  for (const c of d.urgent) {
-    rows.push(
-      eventRow(c, {
-        prefix: '⏰ ',
-        whenText: `締切 ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`,
-        whenColor: RED,
-        sub: [{ text: `${md(c.event_date!)}開催${audienceFee(c)}`, color: '#444444' }],
-      })
-    );
-  }
   for (const c of d.events) {
     rows.push(eventRow(c, { whenText: `${md(c.event_date!)}${shortTime(c.event_time)}` }));
   }
@@ -196,16 +186,18 @@ function eventsBubble(d: Digest) {
   };
 }
 
-/** 申込受付中バブル */
+/** 申込受付中バブル（⏰締切間近＝締切3日以内を先頭に、その後に締切順） */
 function applyBubble(d: Digest) {
   const contents: unknown[] = [];
-  d.apply.forEach((c, i) => {
+  const rows = [...d.urgent.map((c) => ({ c, urgent: true })), ...d.apply.map((c) => ({ c, urgent: false }))];
+  rows.forEach(({ c, urgent }, i) => {
     if (i > 0) contents.push(separator());
-    // 今週の予定と同じ行レイアウト（左: 締切 / 中央: タイトル・開催日・場所 / 右端: 詳しく ›）。
+    // 今週の予定と同じ行レイアウト（1行目: 締切 / タイトル・開催日・場所 / 右端: 詳しく ›）。
     // 各行がそれぞれのチラシ（申込方法）に飛ぶ。申込が複数・別PDFでも行ごとに正しい先へ
     contents.push(
       eventRow(c, {
-        whenText: `締切 ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`,
+        prefix: urgent ? '⏰ ' : '',
+        whenText: `${urgent ? '締切間近 ' : '締切 '}${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`,
         whenColor: RED,
         sub: [{ text: `${md(c.event_date!)}開催${audienceFee(c)}`, color: '#444444' }],
       })
@@ -252,8 +244,8 @@ export function buildTopicFlex(d: Digest, opts: FlexBuildOptions): LineMessage |
 /** 今週の予定／申込受付中／レポートのカルーセル。出すものが無ければ null */
 export function buildWeeklyFlex(d: Digest): LineMessage | null {
   const bubbles: unknown[] = [];
-  if (d.events.length > 0 || d.urgent.length > 0) bubbles.push(eventsBubble(d));
-  if (d.apply.length > 0) bubbles.push(applyBubble(d));
+  if (d.events.length > 0) bubbles.push(eventsBubble(d));
+  if (d.apply.length > 0 || d.urgent.length > 0) bubbles.push(applyBubble(d));
   for (const r of d.reports) bubbles.push(reportBubble(r));
   if (bubbles.length === 0) return null;
 
