@@ -53,11 +53,27 @@ export type LinkKind = 'pdf' | 'article' | 'event';
  *   2. リンク記事があれば記事の個別ページ（/?article=<記事ID>）に直接
  *   3. どちらも無ければ予定の個別ページ（/?event=<予定ID>）
  */
-export const topicLink = (c: PublicEventCard): { url: string; kind: LinkKind; label: string } => {
+export const topicLink = (c: PublicEventCard, kind?: LinkKind): { url: string; kind: LinkKind; label: string } => {
+  // 指定があればそれを優先（指定先が無い場合は従来の優先順に落とす）
+  if (kind === 'pdf' && c.source_pdf_url) return { url: c.source_pdf_url, kind: 'pdf', label: 'チラシ（PDF）' };
+  if (kind === 'article' && c.linked_article_id) return { url: `${siteUrl()}/?article=${c.linked_article_id}`, kind: 'article', label: '記事' };
+  if (kind === 'event') return { url: `${siteUrl()}/?event=${c.id}`, kind: 'event', label: '予定ページ' };
   if (c.source_pdf_url) return { url: c.source_pdf_url, kind: 'pdf', label: 'チラシ（PDF）' };
   if (c.linked_article_id) return { url: `${siteUrl()}/?article=${c.linked_article_id}`, kind: 'article', label: '記事' };
   return { url: `${siteUrl()}/?event=${c.id}`, kind: 'event', label: '予定ページ' };
 };
+/** その予定で選べるリンク先の種類 */
+export const availableLinkKinds = (c: PublicEventCard): LinkKind[] => [
+  ...(c.source_pdf_url ? (['pdf'] as LinkKind[]) : []),
+  ...(c.linked_article_id ? (['article'] as LinkKind[]) : []),
+  'event',
+];
+export const LINK_KIND_LABEL: Record<LinkKind, string> = { pdf: 'チラシ（PDF）', article: '記事', event: '予定ページ' };
+/** 元URL→短縮URL の対応と、一押しごとのリンク先指定 */
+export interface TextOptions {
+  shortUrls?: Record<string, string>;
+  linkKinds?: Record<string, LinkKind>;
+}
 /**
  * 「押すと詳しい情報がある」予定か（チラシPDF か リンク記事がある）。
  * 行事予定表から拾っただけの予定（合同会議など）は false で、カードの行をタップなしにする。
@@ -102,7 +118,8 @@ export type ApplyItem = PublicEventCard & { deadline: string; deadlineGuessed: b
 export interface Digest {
   from: string;
   to: string;
-  topic: PublicEventCard | null;
+  /** ⭐今週の一押し（0〜2件、選んだ順） */
+  topics: PublicEventCard[];
   reports: Article[];
   events: PublicEventCard[];
   apply: ApplyItem[];
@@ -118,13 +135,16 @@ export interface Digest {
  *   📝 申込受付中 … 最大4件（reserve。締切が14日以内。締切不明は開催7日前を仮締切）
  *   ⏰ 締切間近 … 締切が3日以内のもの（申込受付中から抜き出して先頭に）
  */
+/** 一押しの最大件数（1枚のカードに縦に並べる） */
+export const MAX_TOPICS = 2;
+
 export interface DigestOptions {
   /**
-   * ⭐一押しの指定。undefined = 自動（⭐候補のうち直近）、null = 今週は一押しなし、
-   * 予定ID = その予定を一押しにする（⭐が付いていなくてもよい）。
+   * ⭐一押しの指定。undefined = 自動（⭐候補のうち直近1件）、[] = 今週は一押しなし、
+   * 予定IDの配列 = その予定たち（選んだ順・最大 MAX_TOPICS。⭐が付いていなくてもよい）。
    * 一押しから外れた予定は、今週の範囲内なら「今週の予定」に普通の行として載る
    */
-  topicId?: string | null;
+  topicIds?: string[] | null;
 }
 
 export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDate: string, opts: DigestOptions = {}): Digest {
@@ -144,23 +164,28 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
     return ta.padStart(5, '0') < tb.padStart(5, '0') ? -1 : ta === tb ? 0 : 1;
   };
 
-  // 一押し: 指定があればそれ（null なら無し）。指定が無ければ ⭐配信候補のうち開催が直近（2週間以内優先）のもの
+  // 一押し: 指定があればそれ（空配列なら無し）。指定が無ければ ⭐配信候補のうち開催が直近（2週間以内優先）の1件
   const topicPool = future.filter((c) => c.weekly_topic).sort(byDate);
-  let topic: PublicEventCard | null;
-  if (opts.topicId === null) {
-    topic = null;
-  } else if (typeof opts.topicId === 'string') {
-    topic = future.find((c) => c.id === opts.topicId) ?? null;
+  let topics: PublicEventCard[];
+  if (Array.isArray(opts.topicIds)) {
+    topics = opts.topicIds
+      .map((id) => future.find((c) => c.id === id))
+      .filter((c): c is PublicEventCard => !!c)
+      .slice(0, MAX_TOPICS);
+  } else if (opts.topicIds === null) {
+    topics = [];
   } else {
-    topic = topicPool.find((c) => c.event_date! <= applyUntil) ?? topicPool[0] ?? null;
+    const auto = topicPool.find((c) => c.event_date! <= applyUntil) ?? topicPool[0] ?? null;
+    topics = auto ? [auto] : [];
   }
+  const topicIdSet = new Set(topics.map((c) => c.id));
 
   // 「申込が必要」= 要予約、または締切が入っているもの（定員制の連続講座など）
   const needsApply = (c: PublicEventCard) => c.category === 'reserve' || !!c.apply_deadline;
 
-  // 今週の予定: 申込不要のもので、配信日から7日間に開催
+  // 今週の予定: 申込不要のもので、配信日から7日間に開催（一押しにした予定は除く）
   const events = future
-    .filter((c) => !needsApply(c) && c.event_date! <= to && c.id !== topic?.id)
+    .filter((c) => !needsApply(c) && c.event_date! <= to && !topicIdSet.has(c.id))
     .sort(byDate)
     .slice(0, LIMITS.events);
 
@@ -183,7 +208,7 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
     .filter((r) => (r.updated_at || r.created_at || '').slice(0, 10) >= since)
     .slice(0, LIMITS.reports);
 
-  return { from, to, topic, reports: recentReports, events, apply: applyRest, urgent };
+  return { from, to, topics, reports: recentReports, events, apply: applyRest, urgent };
 }
 
 /** 一押しの選択肢（⭐候補を先に、その後は開催日順のその他の予定）。画面のプルダウン用 */
@@ -201,24 +226,28 @@ export const digestHeading = (d: Digest) => `【関ヶ谷自治会 今週のお�
 /** 「（西金沢地域ケアプラザ 多目的ホール）」の形の場所 */
 export const loc = (c: PublicEventCard) => (c.event_location ? `（${c.event_location}）` : '');
 
-/** 配信文（プレーンテキスト）を組み立てる。shortUrls は 元URL→短縮URL の対応（取得済みのものだけ） */
-export function renderText(d: Digest, shortUrls: Record<string, string> = {}): string {
+/** 「▶ チラシを見る」などリンク先の種類に応じた行頭 */
+export const linkVerb = (kind: LinkKind) => (kind === 'pdf' ? 'チラシを見る' : kind === 'article' ? '記事を読む' : '詳しく');
+
+/** 配信文（プレーンテキスト）を組み立てる。opts.shortUrls は 元URL→短縮URL の対応（取得済みのものだけ）、opts.linkKinds は一押しごとのリンク先指定 */
+export function renderText(d: Digest, opts: TextOptions = {}): string {
+  const shortUrls = opts.shortUrls ?? {};
   const lines: string[] = [];
   lines.push(digestHeading(d));
 
-  if (d.topic) {
-    const t = d.topic;
+  if (d.topics.length > 0) {
     lines.push('', '⭐ 今週の一押し');
-    lines.push(`${md(t.event_date!)}${shortTime(t.event_time)} ${t.title}`);
-    // 紹介文（1〜2文）。タイトルの直下に置く
-    if (t.description) lines.push(t.description);
-    const sub = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
-    if (sub) lines.push(sub);
-    // チラシPDF → 記事 → 予定ページ の順で、いちばん直接的なリンクを付ける
-    const link = topicLink(t);
-    lines.push(
-      `▶ ${link.kind === 'pdf' ? 'チラシを見る' : link.kind === 'article' ? '記事を読む' : '詳しく'}: ${shortUrls[link.url] ?? link.url}`
-    );
+    d.topics.forEach((t, i) => {
+      if (i > 0) lines.push('');
+      lines.push(`${md(t.event_date!)}${shortTime(t.event_time)} ${t.title}`);
+      // 紹介文（1〜2文）。タイトルの直下に置く
+      if (t.description) lines.push(t.description);
+      const sub = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
+      if (sub) lines.push(sub);
+      // リンク先は指定があればそれ、無ければ チラシPDF → 記事 → 予定ページ の順
+      const link = topicLink(t, opts.linkKinds?.[t.id]);
+      lines.push(`▶ ${linkVerb(link.kind)}: ${shortUrls[link.url] ?? link.url}`);
+    });
   }
 
   if (d.reports.length > 0) {

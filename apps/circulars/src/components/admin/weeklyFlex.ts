@@ -2,7 +2,7 @@
  * 週次配信の LINE メッセージ（テキスト＋Flex カルーセル）を組み立てる
  *
  * 1回の配信 = ① 短いテキスト（見出し＋ひとこと） → ② ⭐一押しカード（1枚） → ③ Flex カルーセル
- *   ② ⭐ 今週の一押し … 見出し帯＋チラシ画像（上部を正方形に）＋タイトル・日時・場所・紹介文＋「詳しく見る」
+ *   ② ⭐ 今週の一押し … 見出し帯＋（最大2件を縦に）チラシ画像（正方形・切り出し位置は人が決める）＋タイトル・日時・場所・紹介文＋「詳しく見る」
  *      （カルーセルは全カードの高さが揃う仕様なので、背の高い一押しは別の吹き出しにする）
  *   ③ カルーセルの中身（該当が無いカードは出さない）:
  *     1. 📅 今週の予定 … 行ごとにタップで詳細（⏰締切間近があれば先頭に）
@@ -14,7 +14,7 @@
  */
 
 import type { LineMessage, PublicEventCard } from '@cc-saas/shared';
-import { type Digest, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading, hasDetailLink } from './weeklyDigestCore';
+import { type Digest, type LinkKind, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading, hasDetailLink } from './weeklyDigestCore';
 
 /**
  * 配色は「役割別＝リンク先の色」（2026-09-21 決定）:
@@ -31,14 +31,19 @@ const AMBER = '#b45309';
 const GRAY = '#888888';
 
 export interface FlexBuildOptions {
-  /** 一押しのチラシ画像（https・正方形に切り出したもの）。無ければ画像なしの一押しバブルにする */
-  flyerImageUrl: string | null;
+  /** 一押しごとのチラシ画像（予定ID → https・正方形に切り出したもの）。無い予定は画像なし */
+  flyerImageUrls: Record<string, string | null>;
+  /** 一押しごとのリンク先の指定（予定ID → pdf / article / event）。無ければ チラシPDF → 記事 → 予定ページ の順 */
+  linkKinds: Record<string, LinkKind>;
 }
 
 /** テキスト吹き出しの既定文（画面で編集できる） */
 export function buildGreetingText(d: Digest): string {
   const lines = [digestHeading(d)];
-  if (d.topic) lines.push(`⭐ 今週の一押しは ${md(d.topic.event_date!)} の「${d.topic.title}」です。`);
+  if (d.topics.length > 0) {
+    const parts = d.topics.map((t) => `${md(t.event_date!)} の「${t.title}」`);
+    lines.push(`⭐ 今週の一押しは ${parts.join(' と ')}です。`);
+  }
   lines.push('今週の予定と申込は、下のカードをスワイプしてご覧ください 👇');
   return lines.join('\n');
 }
@@ -111,45 +116,52 @@ function eventRow(
   };
 }
 
-/** 一押しバブル */
-function topicBubble(d: Digest, flyerImageUrl: string | null) {
-  const t = d.topic!;
-  const link = topicLink(t);
-  const body: unknown[] = [
-    text(t.title, { weight: 'bold', size: 'lg' }),
-    text(`${md(t.event_date!)}${t.event_time ? ` ${t.event_time}` : ''}`, { size: 'md', color: BLUE, weight: 'bold' }),
-  ];
-  const place = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
-  if (place) body.push(text(`📍 ${place}`, { size: 'sm', color: '#666666' }));
-  if (t.description) body.push(text(t.description, { size: 'md', color: '#333333', margin: 'md' }));
-
-  // ボタンは「詳しく見る」1つ。行き先は チラシPDF → 記事 → 予定ページ の順（topicLink）。
-  // 一押しはチラシとは限らないので、言葉はリンク先の種類で変えずに汎用にしておく
-  const mainLabel = '詳しく見る';
-  // ボタンは見出し帯と同じ琥珀色（カードの色を1つに揃える）
-  const footer: unknown[] = [primaryButton(mainLabel, link.url, AMBER)];
+/**
+ * 一押しバブル（1枚のカードに最大2件を縦に並べる）
+ *
+ *   ⭐ 今週の一押し（見出し帯）
+ *   ┌ 画像（正方形・切り出し位置は人が決める）
+ *   │ タイトル / 日時 / 場所 / 紹介文 / [詳しく見る]
+ *   ├──────（2件目があれば区切り線）
+ *   └ 画像 / タイトル / … / [詳しく見る]
+ *
+ * 画像は hero ではなく body の image 部品（複数置けるように）。カルーセルにしないので高さ揃えの空白は出ない。
+ */
+function topicBubble(d: Digest, opts: FlexBuildOptions) {
+  const blocks: unknown[] = [];
+  d.topics.forEach((t, i) => {
+    const link = topicLink(t, opts.linkKinds[t.id]);
+    // ボタンは「詳しく見る」1つ・琥珀色。一押しはチラシとは限らないので言葉は固定
+    const mainLabel = '詳しく見る';
+    const img = opts.flyerImageUrls[t.id] ?? null;
+    const items: unknown[] = [];
+    if (i > 0) items.push({ type: 'separator', margin: 'lg' });
+    if (img) {
+      items.push({
+        type: 'image',
+        url: img,
+        size: 'full',
+        aspectRatio: '1:1',
+        aspectMode: 'cover',
+        backgroundColor: '#f5f5f5',
+        margin: i > 0 ? 'lg' : 'none',
+        action: uri(mainLabel, link.url),
+      });
+    }
+    items.push(text(t.title, { weight: 'bold', size: 'lg', margin: 'md' }));
+    items.push(text(`${md(t.event_date!)}${t.event_time ? ` ${t.event_time}` : ''}`, { size: 'md', color: BLUE, weight: 'bold' }));
+    const place = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
+    if (place) items.push(text(`📍 ${place}`, { size: 'sm', color: '#666666' }));
+    if (t.description) items.push(text(t.description, { size: 'md', color: '#333333', margin: 'md' }));
+    items.push({ ...primaryButton(mainLabel, link.url, AMBER), margin: 'md' });
+    blocks.push({ type: 'box', layout: 'vertical', spacing: 'sm', contents: items });
+  });
 
   return {
     type: 'bubble',
     size: 'mega',
-    // 他のカードと同じく見出し帯を付ける（帯 → チラシ画像 → 本文 → ボタン）
     header: header('⭐ 今週の一押し', `${md(d.from)}〜${md(d.to)} のお知らせ`, AMBER),
-    ...(flyerImageUrl
-      ? {
-          hero: {
-            type: 'image',
-            url: flyerImageUrl,
-            size: 'full',
-            // チラシ上部を正方形に切り出した画像（WeeklyDigest 側で作る）。縦長のままだとカードが高くなりすぎる
-            aspectRatio: '1:1',
-            aspectMode: 'cover',
-            backgroundColor: '#f5f5f5',
-            action: uri(mainLabel, link.url),
-          },
-        }
-      : {}),
-    body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: body },
-    footer: { type: 'box', layout: 'vertical', spacing: 'sm', contents: footer },
+    body: { type: 'box', layout: 'vertical', spacing: 'none', paddingAll: 'lg', contents: blocks },
   };
 }
 
@@ -232,9 +244,9 @@ function reportBubble(r: Digest['reports'][number]) {
  * 残り（今週の予定／申込受付中／レポート）だけをカルーセルにする（高さの近いカード同士で揃う）。
  */
 export function buildTopicFlex(d: Digest, opts: FlexBuildOptions): LineMessage | null {
-  if (!d.topic) return null;
-  const alt = `⭐今週の一押し: ${d.topic.title}（${md(d.topic.event_date!)}）`.slice(0, 400);
-  return { type: 'flex', altText: alt, contents: topicBubble(d, opts.flyerImageUrl) };
+  if (d.topics.length === 0) return null;
+  const alt = `⭐今週の一押し: ${d.topics.map((t) => `${t.title}（${md(t.event_date!)}）`).join('、')}`.slice(0, 400);
+  return { type: 'flex', altText: alt, contents: topicBubble(d, opts) };
 }
 
 /** 今週の予定／申込受付中／レポートのカルーセル。出すものが無ければ null */

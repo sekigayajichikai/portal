@@ -58,6 +58,10 @@ import {
   buildDigest,
   renderText,
   topicChoices,
+  availableLinkKinds,
+  LINK_KIND_LABEL,
+  MAX_TOPICS,
+  type LinkKind,
 } from './weeklyDigestCore';
 import { buildGreetingText, buildWeeklyMessages } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
@@ -224,7 +228,7 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer:
   // フォールバック: チラシが必要なモードでチラシが無い → 一押しのみ。一押し自体が無い → 従来の一覧
   let effective: ImageMode = mode;
   if ((mode === 'flyer' || mode === 'hybrid') && !flyer) effective = 'topic';
-  if ((effective === 'topic' || effective === 'flyer' || effective === 'hybrid') && !d.topic) effective = 'list';
+  if ((effective === 'topic' || effective === 'flyer' || effective === 'hybrid') && d.topics.length === 0) effective = 'list';
 
   // ---- 従来の文字一覧 ----
   if (effective === 'list') {
@@ -238,11 +242,13 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer:
       ctx.fillText(t, 60, y);
       y += (opts.size ?? 36) + 22;
     };
-    if (d.topic) {
+    if (d.topics.length > 0) {
       line('⭐ 今週の一押し', { bold: true, color: '#a93226', size: 40 });
-      line(`${md(d.topic.event_date!)} ${d.topic.title}`, { bold: true, size: 44 });
-      const topicSub = [d.topic.event_location, audienceFee(d.topic)].filter(Boolean).join(' ');
-      if (topicSub) line(topicSub, { color: '#6b665c', size: 32 });
+      for (const t0 of d.topics) {
+        line(`${md(t0.event_date!)} ${t0.title}`, { bold: true, size: 44 });
+        const topicSub = [t0.event_location, audienceFee(t0)].filter(Boolean).join(' ');
+        if (topicSub) line(topicSub, { color: '#6b665c', size: 32 });
+      }
       y += 16;
     }
     if (rows.length > 0) {
@@ -256,7 +262,8 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer:
     return;
   }
 
-  const t = d.topic!;
+  // 一押しが2件あっても配信画像（1040×1040）は先頭の1件で描く
+  const t = d.topics[0];
   const when = `${md(t.event_date!)}${shortTime(t.event_time)}`;
   const place = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ');
   const meta = [t.target_audience, t.fee].filter(Boolean).join('・');
@@ -428,11 +435,17 @@ export const WeeklyDigest: React.FC = () => {
   const [text, setText] = useState('');
   const [copied, setCopied] = useState(false);
   const [imageMode, setImageMode] = useState<ImageMode>('flyer');
-  const [flyer, setFlyer] = useState<HTMLCanvasElement | null>(null);
-  const [flyerState, setFlyerState] = useState<'idle' | 'loading' | 'error'>('idle');
-  /** ⭐一押しの紹介文（この画面でその場で編集・保存する） */
-  const [descDraft, setDescDraft] = useState('');
-  const [savingDesc, setSavingDesc] = useState(false);
+  /** 一押しごとのチラシ（PDF 1ページ目を描いた canvas。予定ID → canvas。null は無し／失敗） */
+  const [flyers, setFlyers] = useState<Record<string, HTMLCanvasElement | null>>({});
+  const [flyerStates, setFlyerStates] = useState<Record<string, 'loading' | 'error' | 'idle'>>({});
+  /** ⭐一押しの紹介文の下書き（予定ID → 文）。この画面でその場で編集・保存する */
+  const [descDrafts, setDescDrafts] = useState<Record<string, string>>({});
+  const [savingDesc, setSavingDesc] = useState<string | null>(null);
+  /** 一押しごとのリンク先の指定（予定ID → pdf / article / event。無ければ自動） */
+  const [linkKinds, setLinkKinds] = useState<Record<string, LinkKind>>({});
+  /** 一押しごとのチラシ切り出し位置（予定ID → 0〜1）。初期値は予定カードの hero_crop_y */
+  const [cropYs, setCropYs] = useState<Record<string, number>>({});
+  const [savingCrop, setSavingCrop] = useState<string | null>(null);
   /** 元URL→短縮URL（取得できたものだけ入る） */
   const [shortUrls, setShortUrls] = useState<Record<string, string>>({});
   /** LINE 送信（Flex）: テキスト吹き出しの文、送信中のモード、直近の結果、履歴 */
@@ -476,28 +489,37 @@ export const WeeklyDigest: React.FC = () => {
    */
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   /**
-   * ⭐一押しの指定。undefined = 自動、null = 今週は一押しなし、予定ID = その予定。
+   * ⭐一押しの指定。undefined = 自動（⭐候補の直近1件）、[] = 今週は一押しなし、配列 = 選んだ予定（順番どおり・最大 MAX_TOPICS）。
    * 配信日を変えたら自動に戻す
    */
-  const [topicChoice, setTopicChoice] = useState<string | null | undefined>(undefined);
+  const [topicIds, setTopicIds] = useState<string[] | undefined>(undefined);
   useEffect(() => {
-    setTopicChoice(undefined);
+    setTopicIds(undefined);
   }, [baseDate]);
   const choices = useMemo(() => topicChoices(cards, baseDate), [cards, baseDate]);
 
   /** 拾われた予定の全体（チェック一覧用。digest_exclude のものは最初から入らない） */
-  const fullDigest = useMemo(() => buildDigest(cards, reports, baseDate, { topicId: topicChoice }), [cards, reports, baseDate, topicChoice]);
+  const fullDigest = useMemo(() => buildDigest(cards, reports, baseDate, { topicIds }), [cards, reports, baseDate, topicIds]);
   /** 実際に配信する内容（チェックを外した予定を除いたもの） */
   const digest = useMemo(
-    () => buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate, { topicId: topicChoice }),
-    [cards, reports, baseDate, excluded, topicChoice]
+    () => buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate, { topicIds }),
+    [cards, reports, baseDate, excluded, topicIds]
   );
-  const pdf = useMemo(() => topicPdf(digest.topic), [digest.topic]);
+  /** いま一押しになっている予定のID（自動のときも含む） */
+  const currentTopicIds = fullDigest.topics.map((t) => t.id);
+  /** 一押しのチェックを切り替える（自動状態からの操作は、いまの自動の1件を起点にする） */
+  const toggleTopic = (id: string) =>
+    setTopicIds((prev) => {
+      const base = prev ?? currentTopicIds;
+      if (base.includes(id)) return base.filter((x) => x !== id);
+      if (base.length >= MAX_TOPICS) return base;
+      return [...base, id];
+    });
 
   /** チェック一覧の行（一押し・締切間近・今週の予定・申込受付中の順） */
   const digestItems = useMemo(() => {
     const rows: Array<{ card: PublicEventCard; section: string }> = [];
-    if (fullDigest.topic) rows.push({ card: fullDigest.topic, section: '⭐ 一押し' });
+    for (const c of fullDigest.topics) rows.push({ card: c, section: '⭐ 一押し' });
     for (const c of fullDigest.urgent) rows.push({ card: c, section: '⏰ 締切間近' });
     for (const c of fullDigest.events) rows.push({ card: c, section: '📅 今週の予定' });
     for (const c of fullDigest.apply) rows.push({ card: c, section: '📝 申込受付中' });
@@ -534,24 +556,31 @@ export const WeeklyDigest: React.FC = () => {
     }
   };
 
-  // 一押しが変わったら紹介文の下書きを入れ替える
+  const topicKey = digest.topics.map((t) => t.id).join(',');
+
+  // 一押しが変わったら、紹介文の下書きと切り出し位置を予定カードの値で初期化する（未設定のものだけ）
   useEffect(() => {
-    setDescDraft(digest.topic?.description ?? '');
-  }, [digest.topic?.id, digest.topic?.description]);
+    setDescDrafts((prev) => {
+      const n = { ...prev };
+      for (const t of digest.topics) if (!(t.id in n)) n[t.id] = t.description ?? '';
+      return n;
+    });
+    setCropYs((prev) => {
+      const n = { ...prev };
+      for (const t of digest.topics) if (!(t.id in n)) n[t.id] = typeof t.hero_crop_y === 'number' ? t.hero_crop_y : 0;
+      return n;
+    });
+  }, [topicKey]);
 
   /** 一押しの紹介文を予定カードに保存し、文面・画像に反映する */
-  const saveDescription = async () => {
-    const topic = digest.topic;
-    if (!topic) return;
-    const description = descDraft.trim() || null;
-    setSavingDesc(true);
+  const saveDescription = async (topic: PublicEventCard) => {
+    const description = (descDrafts[topic.id] ?? '').trim() || null;
+    setSavingDesc(topic.id);
     try {
       const saved = await updateEventCard(topic.id, { description });
       // DBに description 列が無い（マイグレーション未適用）と黙って落ちるので、返ってきた行で確認する
       if (description && !('description' in saved)) {
-        showError(
-          '紹介文は保存されませんでした。DBに紹介文の列がありません（sql/migrations/2026-09-21-event-cards-description.sql を SQL Editor で実行してください）。'
-        );
+        showError('紹介文は保存されませんでした。DBに紹介文の列がありません（sql/migrations/2026-09-21-event-cards-description.sql）。');
         return;
       }
       setCards((prev) => prev.map((c) => (c.id === topic.id ? { ...c, description } : c)));
@@ -560,58 +589,90 @@ export const WeeklyDigest: React.FC = () => {
       console.error('紹介文の保存エラー:', e);
       showError('紹介文を保存できませんでした。');
     } finally {
-      setSavingDesc(false);
+      setSavingDesc(null);
     }
   };
-  const descDirty = descDraft.trim() !== (digest.topic?.description ?? '').trim();
+
+  /** チラシの切り出し位置を予定カードに保存する（次回以降も同じ位置で切り出す） */
+  const saveCrop = async (topic: PublicEventCard) => {
+    const y = cropYs[topic.id] ?? 0;
+    setSavingCrop(topic.id);
+    try {
+      const saved = await updateEventCard(topic.id, { hero_crop_y: y });
+      if (!('hero_crop_y' in saved)) {
+        showError('切り出し位置は保存されませんでした。DBに hero_crop_y 列がありません（sql/migrations/2026-09-22-event-cards-hero-crop.sql）。');
+        return;
+      }
+      setCards((prev) => prev.map((c) => (c.id === topic.id ? { ...c, hero_crop_y: y } : c)));
+      showToast('切り出し位置を保存しました');
+    } catch (e) {
+      console.error(e);
+      showError('切り出し位置を保存できませんでした。');
+    } finally {
+      setSavingCrop(null);
+    }
+  };
+
+  /** 一押しごとのリンク（指定があればそれ、無ければ自動） */
+  const topicLinks = useMemo(() => digest.topics.map((t) => ({ topic: t, link: topicLink(t, linkKinds[t.id]) })), [digest.topics, linkKinds]);
 
   // 一押しのリンクを短縮URLにする（取得できたら文面を作り直す）
-  const link = useMemo(() => (digest.topic ? topicLink(digest.topic) : null), [digest.topic]);
+  const linkUrlsKey = topicLinks.map((x) => x.link.url).join('|');
   useEffect(() => {
-    if (!link || shortUrls[link.url]) return;
     let cancelled = false;
-    shortenUrl(link.url).then((s) => {
-      if (!cancelled && s !== link.url) setShortUrls((prev) => ({ ...prev, [link.url]: s }));
-    });
+    for (const { link } of topicLinks) {
+      if (shortUrls[link.url]) continue;
+      shortenUrl(link.url).then((s) => {
+        if (!cancelled && s !== link.url) setShortUrls((prev) => ({ ...prev, [link.url]: s }));
+      });
+    }
     return () => {
       cancelled = true;
     };
-  }, [link?.url]);
+  }, [linkUrlsKey]);
 
   // データや配信日が変わったら文面を作り直す（手で編集した内容は「作り直す」で上書き）
   useEffect(() => {
-    setText(renderText(digest, shortUrls));
-  }, [digest, shortUrls]);
+    setText(renderText(digest, { shortUrls, linkKinds }));
+  }, [digest, shortUrls, linkKinds]);
 
-  // 一押しのチラシ（PDF 1ページ目）を画像化。URLが変わったときだけ
+  // 一押しごとのチラシ（PDF 1ページ目）を画像化。まだ読んでいない予定だけ
   useEffect(() => {
     let cancelled = false;
-    if (!pdf) {
-      setFlyer(null);
-      setFlyerState('idle');
-      return;
+    for (const t of digest.topics) {
+      if (t.id in flyers) continue;
+      const pdf = topicPdf(t);
+      if (!pdf) {
+        setFlyers((prev) => ({ ...prev, [t.id]: null }));
+        continue;
+      }
+      setFlyerStates((prev) => ({ ...prev, [t.id]: 'loading' }));
+      renderPdfFirstPage(pdf.url)
+        .then((c) => {
+          if (cancelled) return;
+          setFlyers((prev) => ({ ...prev, [t.id]: c }));
+          setFlyerStates((prev) => ({ ...prev, [t.id]: 'idle' }));
+        })
+        .catch((e) => {
+          console.error('チラシPDFの画像化エラー:', e);
+          if (cancelled) return;
+          setFlyers((prev) => ({ ...prev, [t.id]: null }));
+          setFlyerStates((prev) => ({ ...prev, [t.id]: 'error' }));
+        });
     }
-    setFlyerState('loading');
-    renderPdfFirstPage(pdf.url)
-      .then((c) => {
-        if (cancelled) return;
-        setFlyer(c);
-        setFlyerState('idle');
-      })
-      .catch((e) => {
-        console.error('チラシPDFの画像化エラー:', e);
-        if (cancelled) return;
-        setFlyer(null);
-        setFlyerState('error');
-      });
     return () => {
       cancelled = true;
     };
-  }, [pdf?.url]);
+  }, [topicKey]);
+
+  /** 配信画像（1040×1040）用: 先頭の一押しのチラシ（全体） */
+  const firstFlyer = digest.topics[0] ? (flyers[digest.topics[0].id] ?? null) : null;
+  const firstPdf = digest.topics[0] ? topicPdf(digest.topics[0]) : null;
+  const firstFlyerState = digest.topics[0] ? (flyerStates[digest.topics[0].id] ?? 'idle') : 'idle';
 
   useEffect(() => {
-    if (canvasRef.current) drawImage(canvasRef.current, digest, imageMode, flyer);
-  }, [digest, imageMode, flyer]);
+    if (canvasRef.current) drawImage(canvasRef.current, digest, imageMode, firstFlyer);
+  }, [digest, imageMode, firstFlyer]);
 
   const copy = async () => {
     try {
@@ -645,39 +706,57 @@ export const WeeklyDigest: React.FC = () => {
   }, []);
 
   /**
-   * カード用のチラシ画像: 上部を正方形に切り出したもの。
-   * 縦長のチラシをそのまま載せるとカードが高くなり、カルーセルの他のカード（高さが揃う）に大きな空白ができるため。
-   * チラシ全体は「チラシを見る」（PDF）で開ける。
+   * カード用のチラシ画像: チラシから正方形を切り出したもの（予定ID → canvas）。
+   * 縦長のチラシをそのまま載せるとカードが高くなりすぎるため。切り出し位置（0=上端〜1=下端）は人が決められる。
+   * チラシ全体は「詳しく見る」（PDF）で開ける。
    */
-  const flyerCard = useMemo(() => {
-    if (!flyer) return null;
-    const size = Math.min(flyer.width, flyer.height, 1040);
-    const c = document.createElement('canvas');
-    c.width = size;
-    c.height = size;
-    const ctx = c.getContext('2d')!;
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, size, size);
-    // 幅いっぱい・上端から正方形ぶんだけ（タイトルと日付が上にあるチラシが多い）
-    const sw = flyer.width;
-    const sh = Math.min(flyer.height, flyer.width);
-    ctx.drawImage(flyer, 0, 0, sw, sh, 0, 0, size, size);
-    return c;
-  }, [flyer]);
-  /** プレビュー用の data URL */
-  const flyerSrc = useMemo(() => (flyerCard ? flyerCard.toDataURL('image/jpeg', 0.8) : null), [flyerCard]);
+  const flyerCards = useMemo(() => {
+    const out: Record<string, HTMLCanvasElement | null> = {};
+    for (const t of digest.topics) {
+      const flyer = flyers[t.id];
+      if (!flyer) {
+        out[t.id] = null;
+        continue;
+      }
+      const size = Math.min(flyer.width, flyer.height, 1040);
+      const c = document.createElement('canvas');
+      c.width = size;
+      c.height = size;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, size, size);
+      const side = Math.min(flyer.width, flyer.height);
+      const y = Math.min(1, Math.max(0, cropYs[t.id] ?? 0));
+      // 縦長なら上下方向、横長なら左右方向にずらす
+      const sx = flyer.width > flyer.height ? (flyer.width - side) * y : 0;
+      const sy = flyer.height > flyer.width ? (flyer.height - side) * y : 0;
+      ctx.drawImage(flyer, sx, sy, side, side, 0, 0, size, size);
+      out[t.id] = c;
+    }
+    return out;
+  }, [digest.topics, flyers, cropYs]);
+  /** プレビュー用の data URL（予定ID → dataURL） */
+  const flyerSrcs = useMemo(() => {
+    const out: Record<string, string | null> = {};
+    for (const [id, c] of Object.entries(flyerCards)) out[id] = c ? c.toDataURL('image/jpeg', 0.8) : null;
+    return out;
+  }, [flyerCards]);
 
   /**
-   * 送るメッセージを組み立てる。Flex のヒーロー画像は https が必要なので、
-   * チラシ画像を Storage（newsletter-images/weekly/）に置いてから使う。
+   * 送るメッセージを組み立てる。Flex の画像は https が必要なので、
+   * 一押しごとのチラシ画像を Storage（newsletter-images/weekly/）に置いてから使う。
    */
   const buildMessages = async (): Promise<LineMessage[]> => {
-    let flyerImageUrl: string | null = null;
-    if (digest.topic && flyerCard) {
-      const blob = await new Promise<Blob | null>((resolve) => flyerCard.toBlob(resolve, 'image/jpeg', 0.85));
-      if (blob) flyerImageUrl = await uploadWeeklyImage(blob, baseDate, 'flyer');
+    const flyerImageUrls: Record<string, string | null> = {};
+    for (let i = 0; i < digest.topics.length; i++) {
+      const t = digest.topics[i];
+      const card = flyerCards[t.id];
+      flyerImageUrls[t.id] = null;
+      if (!card) continue;
+      const blob = await new Promise<Blob | null>((resolve) => card.toBlob(resolve, 'image/jpeg', 0.85));
+      if (blob) flyerImageUrls[t.id] = await uploadWeeklyImage(blob, baseDate, `flyer-${i + 1}`);
     }
-    return buildWeeklyMessages(digest, greeting, { flyerImageUrl });
+    return buildWeeklyMessages(digest, greeting, { flyerImageUrls, linkKinds });
   };
 
   /** validate: 形式チェックのみ / test: 自分にだけ / broadcast: 全員 */
@@ -714,7 +793,7 @@ export const WeeklyDigest: React.FC = () => {
   /** Flex JSON をコピー（LINE Developers の Flex Message Simulator に貼って確認する用） */
   const copyFlexJson = async () => {
     try {
-      const messages = buildWeeklyMessages(digest, greeting, { flyerImageUrl: null });
+      const messages = buildWeeklyMessages(digest, greeting, { flyerImageUrls: {}, linkKinds });
       const flex = messages.filter((m) => m.type === 'flex');
       // Flex Message Simulator は1メッセージずつ貼るので、複数あれば配列で（一押し → カルーセル の順）
       await navigator.clipboard.writeText(JSON.stringify(flex.length === 1 ? flex[0] : flex, null, 2));
@@ -726,7 +805,7 @@ export const WeeklyDigest: React.FC = () => {
   const alreadySentThisWeek = history.find((h) => h.mode === 'broadcast' && h.base_date === baseDate);
 
   const counts = {
-    topic: digest.topic ? 1 : 0,
+    topic: digest.topics.length,
     reports: digest.reports.length,
     urgent: digest.urgent.length,
     events: digest.events.length,
@@ -775,7 +854,7 @@ export const WeeklyDigest: React.FC = () => {
             {/* 内訳（何が何件入ったか） */}
             <div className="flex flex-wrap gap-2 mt-4 text-xs">
               {[
-                ['⭐ 一押し', counts.topic, LIMITS.topic],
+                ['⭐ 一押し', counts.topic, MAX_TOPICS],
                 ['📰 レポート', counts.reports, LIMITS.reports],
                 ['⏰ 締切間近', counts.urgent, null],
                 ['📅 予定', counts.events, LIMITS.events],
@@ -797,38 +876,41 @@ export const WeeklyDigest: React.FC = () => {
               </p>
             )}
 
-            {/* ⭐一押しを人が選ぶ（自動／なし／任意の予定）。外れた予定は今週の範囲内なら「今週の予定」に普通の行として載る */}
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-              <label className="font-bold text-slate-600">⭐ 今週の一押し</label>
-              <select
-                value={topicChoice === undefined ? '__auto' : topicChoice === null ? '__none' : topicChoice}
-                onChange={(e) => setTopicChoice(e.target.value === '__auto' ? undefined : e.target.value === '__none' ? null : e.target.value)}
-                className="text-xs border border-slate-300 rounded-lg px-2 py-1.5 max-w-full"
-              >
-                <option value="__auto">
-                  自動（⭐候補のうち直近{fullDigest.topic && topicChoice === undefined ? `: ${fullDigest.topic.title}` : ''}）
-                </option>
-                <option value="__none">今週は一押しなし</option>
-                {choices.starred.length > 0 && (
-                  <optgroup label="⭐ 配信候補">
-                    {choices.starred.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {md(c.event_date!)} {c.title}
-                      </option>
-                    ))}
-                  </optgroup>
+            {/* ⭐一押しを人が選ぶ（最大2件・チェックした順）。外れた予定は今週の範囲内なら「今週の予定」に普通の行として載る */}
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="font-bold text-slate-700">⭐ 今週の一押し（最大{MAX_TOPICS}件・チェックした順）</span>
+                <span className="text-slate-500">
+                  {topicIds === undefined ? '自動: ⭐候補のうち直近の1件' : topicIds.length === 0 ? '今週は一押しなし（テキスト→カード一覧の2吹き出し）' : `${topicIds.length}件を選択中`}
+                </span>
+                {topicIds !== undefined && (
+                  <button onClick={() => setTopicIds(undefined)} className="text-slate-500 hover:text-slate-800 underline">
+                    自動に戻す
+                  </button>
                 )}
-                {choices.others.length > 0 && (
-                  <optgroup label="その他の予定（4週間以内）">
-                    {choices.others.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {md(c.event_date!)} {c.title}
-                      </option>
-                    ))}
-                  </optgroup>
+                {topicIds === undefined && currentTopicIds.length > 0 && (
+                  <button onClick={() => setTopicIds([])} className="text-slate-500 hover:text-slate-800 underline">
+                    今週は一押しなし
+                  </button>
                 )}
-              </select>
-              {topicChoice === null && <span className="text-slate-500">一押しカードと⭐の段落を出さず、テキスト→カード一覧の2吹き出しで送ります</span>}
+              </div>
+              <div className="grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
+                {[...choices.starred.map((c) => ({ c, star: true })), ...choices.others.map((c) => ({ c, star: false }))].map(({ c, star }) => {
+                  const on = currentTopicIds.includes(c.id);
+                  const order = currentTopicIds.indexOf(c.id);
+                  const disabled = !on && currentTopicIds.length >= MAX_TOPICS;
+                  return (
+                    <label key={c.id} className={`flex items-center gap-1.5 cursor-pointer select-none ${disabled ? 'opacity-40' : ''} ${on ? 'text-slate-800 font-bold' : 'text-slate-600'}`}>
+                      <input type="checkbox" checked={on} disabled={disabled} onChange={() => toggleTopic(c.id)} />
+                      {on && <span className="text-[10px] px-1 rounded bg-amber-500 text-white">{order + 1}</span>}
+                      <span className="truncate">
+                        {star ? '⭐ ' : ''}
+                        {md(c.event_date!)} {c.title}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
 
             {/* 拾われた予定の一覧。チェックを外すとこの週の文面・画像・カードから消える。「今後も載せない」は予定カードに保存 */}
@@ -863,37 +945,105 @@ export const WeeklyDigest: React.FC = () => {
                 </ul>
               </div>
             )}
-            {/* ⭐一押しの紹介文（ここで入力して保存すると予定カードに保存され、文面・画像に載る） */}
-            {digest.topic && (
-              <div className={`mt-3 rounded-lg border px-3 py-2 ${digest.topic.description ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}>
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <label className="text-xs font-bold text-slate-600">
-                    ⭐ 一押し「{digest.topic.title}」の紹介文（1〜2文）
-                  </label>
-                  <button
-                    onClick={saveDescription}
-                    disabled={savingDesc || !descDirty}
-                    className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 transition disabled:opacity-40"
-                  >
-                    {savingDesc ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                    {savingDesc ? '保存しています…' : '紹介文を保存'}
-                  </button>
+            {/* ⭐一押しごとの設定: 紹介文（予定カードに保存）／リンク先／チラシの切り出し位置 */}
+            {digest.topics.map((t, i) => {
+              const draft = descDrafts[t.id] ?? '';
+              const dirty = draft.trim() !== (t.description ?? '').trim();
+              const kinds = availableLinkKinds(t);
+              const currentKind = topicLink(t, linkKinds[t.id]).kind;
+              const flyer = flyers[t.id];
+              const cropDirty = (cropYs[t.id] ?? 0) !== (typeof t.hero_crop_y === 'number' ? t.hero_crop_y : 0);
+              const cropAxis = flyer ? (flyer.height > flyer.width ? 'v' : flyer.width > flyer.height ? 'h' : null) : null;
+              return (
+                <div key={t.id} className={`mt-3 rounded-lg border px-3 py-2 ${t.description ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="text-xs font-bold text-slate-600">
+                      ⭐ 一押し{digest.topics.length > 1 ? `${i + 1}` : ''}「{t.title}」の紹介文（1〜2文）
+                    </label>
+                    <button
+                      onClick={() => saveDescription(t)}
+                      disabled={savingDesc === t.id || !dirty}
+                      className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 transition disabled:opacity-40"
+                    >
+                      {savingDesc === t.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                      {savingDesc === t.id ? '保存しています…' : '紹介文を保存'}
+                    </button>
+                  </div>
+                  <textarea
+                    value={draft}
+                    onChange={(e) => setDescDrafts((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                    rows={2}
+                    placeholder="例: 地元の作品展示と演奏会。お茶を飲みながら気軽に楽しめます。"
+                    className="w-full text-sm border border-slate-300 rounded-lg px-2 py-1.5 resize-none leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    {t.description
+                      ? '保存すると予定カードにも残り、次回以降もこの紹介文が使われます。'
+                      : 'まだ紹介文がありません。ここで入力して保存すると、文面と画像に載ります（予定カードにも保存されます）。'}{' '}
+                    {draft.length} 文字
+                  </p>
+
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    {/* リンク先（チラシPDF／記事／予定ページ。無いものは出ない） */}
+                    <div className="text-xs">
+                      <p className="font-bold text-slate-600 mb-1">「詳しく見る」のリンク先</p>
+                      <div className="flex flex-wrap gap-2">
+                        {kinds.map((k) => (
+                          <label key={k} className={`flex items-center gap-1 px-2 py-1 rounded-full border cursor-pointer ${currentKind === k ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300'}`}>
+                            <input type="radio" name={`link-${t.id}`} className="hidden" checked={currentKind === k} onChange={() => setLinkKinds((prev) => ({ ...prev, [t.id]: k }))} />
+                            {LINK_KIND_LABEL[k]}
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        文面の「▶」とカードのボタン・画像のタップ先に使います。{kinds.length === 1 ? 'チラシも記事も無いので予定ページだけです。' : '指定しなければ チラシPDF → 記事 → 予定ページ の順です。'}
+                      </p>
+                    </div>
+
+                    {/* チラシの切り出し位置（正方形にする範囲を上下にずらす） */}
+                    <div className="text-xs">
+                      <p className="font-bold text-slate-600 mb-1">カードに載せるチラシの切り出し位置</p>
+                      {flyerStates[t.id] === 'loading' ? (
+                        <p className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> チラシを読み込み中...</p>
+                      ) : !flyer ? (
+                        <p className="text-slate-400">{topicPdf(t) ? 'チラシを画像にできませんでした。' : 'この予定にはチラシPDFが無いので、カードは文字だけになります。'}</p>
+                      ) : (
+                        <div className="flex gap-3 items-start">
+                          {flyerSrcs[t.id] && <img src={flyerSrcs[t.id]!} alt="" className="w-24 h-24 rounded border border-slate-300 object-cover shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            {cropAxis ? (
+                              <>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  value={Math.round((cropYs[t.id] ?? 0) * 100)}
+                                  onChange={(e) => setCropYs((prev) => ({ ...prev, [t.id]: Number(e.target.value) / 100 }))}
+                                  className="w-full"
+                                />
+                                <div className="flex justify-between text-[11px] text-slate-400">
+                                  <span>{cropAxis === 'v' ? '上端' : '左端'}</span>
+                                  <span>{cropAxis === 'v' ? '下端' : '右端'}</span>
+                                </div>
+                              </>
+                            ) : (
+                              <p className="text-slate-400">正方形のチラシなので、そのまま使います。</p>
+                            )}
+                            <button
+                              onClick={() => saveCrop(t)}
+                              disabled={savingCrop === t.id || !cropDirty}
+                              className="mt-1 px-2 py-1 text-[11px] font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 disabled:opacity-40"
+                            >
+                              {savingCrop === t.id ? '保存しています…' : '位置を保存（次回も同じ位置）'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <textarea
-                  value={descDraft}
-                  onChange={(e) => setDescDraft(e.target.value)}
-                  rows={2}
-                  placeholder="例: 地元の作品展示と演奏会。お茶を飲みながら気軽に楽しめます。"
-                  className="w-full text-sm border border-slate-300 rounded-lg px-2 py-1.5 resize-none leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  {digest.topic.description
-                    ? '保存すると予定カードにも残り、次回以降もこの紹介文が使われます。'
-                    : 'まだ紹介文がありません。ここで入力して保存すると、文面と画像に載ります（予定カードにも保存されます）。'}
-                  {' '}{descDraft.length} 文字
-                </p>
-              </div>
-            )}
+              );
+            })}
 
             <div className="grid gap-4 lg:grid-cols-2 mt-4">
               {/* 文面 */}
@@ -905,7 +1055,7 @@ export const WeeklyDigest: React.FC = () => {
                       {text.length} 文字{text.length > CHAR_GUIDE ? `（目安 ${CHAR_GUIDE} 文字を超えています。項目を削ると読みやすくなります）` : ''}
                     </span>
                     <button
-                      onClick={() => setText(renderText(digest, shortUrls))}
+                      onClick={() => setText(renderText(digest, { shortUrls, linkKinds }))}
                       className="text-[11px] text-slate-500 hover:text-slate-800"
                       title="自動生成の文面に戻す"
                     >
@@ -926,15 +1076,15 @@ export const WeeklyDigest: React.FC = () => {
                   rows={22}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                 />
-                {link && (
-                  <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 flex-wrap">
-                    一押しのリンク先（{link.label}に直接）:
+                {topicLinks.map(({ topic: t, link }) => (
+                  <p key={t.id} className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 flex-wrap">
+                    一押し「{t.title}」のリンク先（{link.label}に直接）:
                     <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline inline-flex items-center gap-0.5 break-all">
                       {shortUrls[link.url] ?? link.url} <ExternalLink size={10} />
                     </a>
-                    {shortUrls[link.url] ? '（短縮URL。リッチメッセージのタップ先にも使えます）' : '（短縮URLを取得中か、取得できませんでした。元のURLのままです）'}
+                    {shortUrls[link.url] ? '（短縮URL）' : '（短縮URLを取得中か、取得できませんでした）'}
                   </p>
-                )}
+                ))}
               </div>
 
               {/* 画像 */}
@@ -968,21 +1118,22 @@ export const WeeklyDigest: React.FC = () => {
                 </div>
                 <div className="relative">
                   <canvas ref={canvasRef} className="w-full max-w-md rounded-lg border border-slate-200" />
-                  {needsFlyer && flyerState === 'loading' && (
+                  {needsFlyer && firstFlyerState === 'loading' && (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg text-xs text-slate-500 gap-1.5 max-w-md">
                       <Loader2 size={14} className="animate-spin" /> チラシを画像にしています...
                     </div>
                   )}
                 </div>
-                {needsFlyer && digest.topic && (
+                {needsFlyer && digest.topics[0] && (
                   <p className="text-[11px] text-slate-400 mt-1">
-                    {!pdf
+                    {!firstPdf
                       ? '⭐一押しに出典PDFが無いため「一押しのみ（文字）」で描いています。'
-                      : flyerState === 'error'
+                      : firstFlyerState === 'error'
                         ? 'チラシPDFを画像にできなかったため「一押しのみ（文字）」で描いています。'
-                        : pdf.fallback
+                        : firstPdf.fallback
                           ? 'チラシ: 一押しに由来PDFが無いため、出典号の先頭PDFを使っています（内容が合わなければ他の種類を選んでください）。'
-                          : `チラシ: 一押しの由来PDF${digest.topic.source_pdf_label ? `（${digest.topic.source_pdf_label}）` : ''}の1ページ目。`}
+                          : `チラシ: 一押し${digest.topics.length > 1 ? '1' : ''}の由来PDF${digest.topics[0].source_pdf_label ? `（${digest.topics[0].source_pdf_label}）` : ''}の1ページ目。`}
+                    {digest.topics.length > 1 ? ' 画像は先頭の一押しだけで描きます。' : ''}
                   </p>
                 )}
               </div>
@@ -1088,7 +1239,7 @@ export const WeeklyDigest: React.FC = () => {
 
             <div>
               <label className="text-xs font-bold text-slate-500 block mb-1">見た目のプレビュー（実際の描画はテスト送信で確認）</label>
-              <FlexPreview digest={digest} greeting={greeting} flyerSrc={flyerSrc} />
+              <FlexPreview digest={digest} greeting={greeting} flyerSrcs={flyerSrcs} linkKinds={linkKinds} />
             </div>
           </div>
         </div>

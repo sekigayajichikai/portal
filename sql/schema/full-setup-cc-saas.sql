@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS event_cards (
   fee TEXT,                           -- 参加費（例: 無料 / 400円/回）
   description TEXT,                   -- 紹介文（1〜2文。週次配信の一押し・予定ページに表示）
   digest_exclude BOOLEAN DEFAULT FALSE, -- 週次配信に載せない（役員向け会議など）
+  hero_crop_y REAL,                   -- 一押しカードのチラシ画像の切り出し位置（0=上端〜1=下端）
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

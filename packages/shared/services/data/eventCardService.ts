@@ -36,6 +36,8 @@ export interface EventCard {
   description?: string | null;
   /** 週次配信（今週のお知らせ）に載せない（役員向け会議など）。公開カレンダーには影響しない。列が無い場合はundefined */
   digest_exclude?: boolean | null;
+  /** 一押しカードに載せるチラシ画像の切り出し位置（0=上端〜1=下端。横長チラシなら左〜右）。null は上端 */
+  hero_crop_y?: number | null;
 }
 
 /** 公開カレンダー表示用に、出典（リンク記事・由来PDF）を含めたイベントカード */
