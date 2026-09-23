@@ -22,6 +22,8 @@ export type RichMenuOp =
   | 'unlink_test'
   | 'link_users'
   | 'unlink_users'
+  | 'link_admins'
+  | 'unlink_admins'
   | 'alias_list'
   | 'alias_set'
   | 'alias_delete';

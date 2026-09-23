@@ -453,6 +453,21 @@ export const RichMenuManager: React.FC = () => {
                 自分の反映を解除
               </button>
               <button
+                onClick={() => withLine('admins', async () => { const r = await richMenuApi('link_admins', { richMenuId: lineId }); showToast(`管理者 ${r.line?.linked ?? ''} 人に反映しました`); })}
+                disabled={!!busy || !lineId}
+                className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-white bg-teal-700 rounded-lg hover:bg-teal-800 disabled:opacity-50"
+                title="LINE_ADMIN_USER_IDS に登録した管理者（DX委員など）にだけ紐づけます"
+              >
+                {busy === 'admins' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 管理者だけに反映
+              </button>
+              <button
+                onClick={() => withLine('unadmins', async () => { const r = await richMenuApi('unlink_admins'); showToast(`管理者 ${r.line?.linked ?? ''} 人の紐づけを解除しました（既定に戻ります）`); })}
+                disabled={!!busy}
+                className="px-3 py-2 text-xs text-slate-600 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 disabled:opacity-50"
+              >
+                管理者の反映を解除
+              </button>
+              <button
                 onClick={async () => {
                   if (!lineId) return;
                   if (!(await appConfirm({ title: '友だち全員の既定メニューにしますか？', message: `「${def.name}」が、個別に紐づけていない全員に表示されます。`, confirmLabel: '全員の既定にする' }))) return;

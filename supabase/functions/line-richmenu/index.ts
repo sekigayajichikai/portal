@@ -16,11 +16,14 @@
  *   unlink_test     … 自分の紐づけを解除（既定に戻る）
  *   link_users      … { richMenuId, userIds[] } 複数ユーザーに一括で紐づけ（500人ずつ）
  *   unlink_users    … { userIds[] } 一括解除
+ *   link_admins     … { richMenuId } 管理者（LINE_ADMIN_USER_IDS）にだけ紐づけ
+ *   unlink_admins   … 管理者の紐づけを解除
  *   alias_list      … エイリアス（タブ切替用の別名）一覧
  *   alias_set       … { aliasId, richMenuId } エイリアスを作る／付け替える
  *   alias_delete    … { aliasId }
  *
  * 必要なシークレット: APP_TOKEN_SECRET / LINE_CHANNEL_ACCESS_TOKEN / LINE_TEST_USER_ID（link_test 用）
+ *                   / LINE_ADMIN_USER_IDS（link_admins 用。カンマ区切りのユーザーID）
  * 仕様: docs/リッチメニュー.md
  */
 
@@ -118,10 +121,22 @@ Deno.serve(async (req: Request) => {
         r = await lineFetch(token, 'DELETE', `${API}/user/${testUser}/richmenu`);
         break;
       case 'link_users':
-      case 'unlink_users': {
-        const ids: string[] = Array.isArray(p.userIds) ? p.userIds.filter((u: unknown) => typeof u === 'string' && /^U[0-9a-f]{32}$/.test(u)) : [];
-        if (ids.length === 0) return jsonResponse({ error: '有効なユーザーID（Uで始まる33文字）がありません' }, 400);
-        if (op === 'link_users' && !p.richMenuId) return jsonResponse({ error: 'richMenuId は必須です' }, 400);
+      case 'unlink_users':
+      case 'link_admins':
+      case 'unlink_admins': {
+        // 管理者（DX委員など）のIDは LINE_ADMIN_USER_IDS（カンマ区切り）にサーバー側で持つ
+        const isAdminOp = op === 'link_admins' || op === 'unlink_admins';
+        const source: unknown[] = isAdminOp
+          ? (Deno.env.get('LINE_ADMIN_USER_IDS') ?? '').split(/[\s,]+/)
+          : Array.isArray(p.userIds)
+            ? p.userIds
+            : [];
+        const ids: string[] = source.filter((u: unknown): u is string => typeof u === 'string' && /^U[0-9a-f]{32}$/.test(u));
+        if (ids.length === 0) {
+          return jsonResponse({ error: isAdminOp ? 'LINE_ADMIN_USER_IDS が設定されていません（管理者のユーザーIDをカンマ区切りで Secrets に）' : '有効なユーザーID（Uで始まる33文字）がありません' }, isAdminOp ? 500 : 400);
+        }
+        const isLink = op === 'link_users' || op === 'link_admins';
+        if (isLink && !p.richMenuId) return jsonResponse({ error: 'richMenuId は必須です' }, 400);
         let done = 0;
         let last: { ok: boolean; status: number; data: unknown } = { ok: true, status: 200, data: {} };
         for (let i = 0; i < ids.length; i += 500) {
@@ -129,8 +144,8 @@ Deno.serve(async (req: Request) => {
           last = await lineFetch(
             token,
             'POST',
-            `${API}/richmenu/bulk/${op === 'link_users' ? 'link' : 'unlink'}`,
-            JSON.stringify(op === 'link_users' ? { richMenuId: p.richMenuId, userIds: chunk } : { userIds: chunk })
+            `${API}/richmenu/bulk/${isLink ? 'link' : 'unlink'}`,
+            JSON.stringify(isLink ? { richMenuId: p.richMenuId, userIds: chunk } : { userIds: chunk })
           );
           if (!last.ok) break;
           done += chunk.length;
