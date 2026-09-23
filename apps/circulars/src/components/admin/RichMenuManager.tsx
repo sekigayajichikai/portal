@@ -103,7 +103,14 @@ export const RichMenuManager: React.FC = () => {
     loadLine();
   }, []);
 
-  // 定義が変わるたびに画像を描く（手持ち画像を選んでいるときはそれを表示）
+  /**
+   * 表示・登録に使う画像の元:
+   *   手持ちの画像（選んだ直後） ＞ Storage に保存した画像（useSavedImage） ＞ 定義から自動生成
+   * 保存済みメニューを開いたときは Storage の画像を使う（保存したのに自動生成に戻ってしまわないように）。
+   * タイルや色を直したら「自動生成に切り替え」で作り直せる。
+   */
+  const [useSavedImage, setUseSavedImage] = useState(false);
+  const savedImageUrl = useSavedImage && current?.image_url ? current.image_url : null;
   const preview = useMemo(() => renderRichMenu(def), [def]);
   useEffect(() => {
     const c = canvasRef.current;
@@ -111,14 +118,25 @@ export const RichMenuManager: React.FC = () => {
     c.width = RM_W / 4;
     c.height = RM_H / 4;
     const ctx = c.getContext('2d')!;
-    if (customImage) {
+    let cancelled = false;
+    const src = customImage ? URL.createObjectURL(customImage) : savedImageUrl;
+    if (src) {
       const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0, c.width, c.height);
-      img.src = URL.createObjectURL(customImage);
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        if (!cancelled) ctx.drawImage(img, 0, 0, c.width, c.height);
+      };
+      img.onerror = () => {
+        if (!cancelled) ctx.drawImage(preview, 0, 0, c.width, c.height);
+      };
+      img.src = src;
     } else {
       ctx.drawImage(preview, 0, 0, c.width, c.height);
     }
-  }, [preview, customImage]);
+    return () => {
+      cancelled = true;
+    };
+  }, [preview, customImage, savedImageUrl]);
 
   const update = (patch: Partial<RichMenuDef>) => setDef((d) => ({ ...d, ...patch }));
   const updateTile = (i: number, patch: Partial<Tile>) => setDef((d) => ({ ...d, tiles: d.tiles.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
@@ -135,6 +153,8 @@ export const RichMenuManager: React.FC = () => {
     setDef(d);
     setBaseline(JSON.stringify(d));
     setCustomImage(null);
+    // 保存済みなら Storage の画像をそのまま表示・使用する
+    setUseSavedImage(!!row?.image_url);
   };
   const dirty = JSON.stringify(def) !== baseline || !!customImage;
   const switchRole = async (r: MenuRole) => {
@@ -159,11 +179,18 @@ export const RichMenuManager: React.FC = () => {
     return { label: 'LINE登録済み', cls: 'bg-emerald-50 text-emerald-700' };
   };
 
-  /** 画像 Blob（手持ち画像があればそれ、無ければ生成） */
+  /** 画像 Blob（手持ちの画像 ＞ Storage に保存した画像 ＞ 自動生成） */
   const imageBlob = async (): Promise<Blob> => {
     if (customImage) {
       if (customImage.size > 1024 * 1024) throw new Error('画像は1MB以内にしてください');
       return customImage;
+    }
+    if (savedImageUrl) {
+      const res = await fetch(savedImageUrl);
+      if (!res.ok) throw new Error('保存した画像を読み込めませんでした');
+      const blob = await res.blob();
+      if (blob.size > 1024 * 1024) throw new Error('保存した画像が1MBを超えています');
+      return blob;
     }
     return canvasToUploadBlob(preview);
   };
@@ -181,6 +208,8 @@ export const RichMenuManager: React.FC = () => {
       setDef(definition);
       setBaseline(JSON.stringify(definition));
       setCustomImage(null);
+      // 以後は Storage に保存した画像を表示・使用する
+      setUseSavedImage(!!row.image_url);
       await loadSaved();
       showToast('保存しました');
       return row;
@@ -411,7 +440,12 @@ export const RichMenuManager: React.FC = () => {
           <div className="space-y-3">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-slate-500">画像（2500×1686・自動生成）</label>
+                <label className="text-xs font-bold text-slate-500">
+                  画像（2500×1686）
+                  <span className="ml-1 font-normal text-slate-400">
+                    {customImage ? '手持ちの画像' : savedImageUrl ? '保存した画像（Storage）' : '定義から自動生成'}
+                  </span>
+                </label>
                 <label className="flex items-center gap-1 text-xs text-slate-600 cursor-pointer">
                   <ImageIcon size={14} />
                   手持ちの画像を使う
@@ -419,14 +453,29 @@ export const RichMenuManager: React.FC = () => {
                 </label>
               </div>
               <canvas ref={canvasRef} className="w-full rounded-lg border border-slate-200" />
-              {customImage && (
+              {customImage ? (
                 <p className="text-[11px] text-slate-500 mt-1">
-                  {customImage.name}（{Math.round(customImage.size / 1024)}KB）を使います。タップ領域はレイアウトの設定どおり。{' '}
+                  {customImage.name}（{Math.round(customImage.size / 1024)}KB）を使います。「保存」で Storage に置かれ、以後はその画像が表示されます。{' '}
                   <button onClick={() => setCustomImage(null)} className="text-blue-600 hover:underline">
-                    自動生成に戻す
+                    取り消す
                   </button>
                 </p>
-              )}
+              ) : savedImageUrl ? (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  保存した画像を表示しています。タイルや色を直した内容を画像に反映するには{' '}
+                  <button onClick={() => setUseSavedImage(false)} className="text-blue-600 hover:underline">
+                    自動生成に切り替える
+                  </button>
+                  （次の「保存」で画像も置き換わります）。
+                </p>
+              ) : current?.image_url ? (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  定義から自動生成した画像を表示しています。{' '}
+                  <button onClick={() => setUseSavedImage(true)} className="text-blue-600 hover:underline">
+                    保存した画像に戻す
+                  </button>
+                </p>
+              ) : null}
               <div className="mt-2 bg-[#c9a7e6] text-center text-xs py-1.5 rounded text-slate-700">{def.chatBarText || 'メニュー'} ▾</div>
             </div>
 
