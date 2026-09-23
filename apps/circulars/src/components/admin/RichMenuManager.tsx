@@ -19,11 +19,13 @@ import {
   type SavedRichMenu,
   type LineRichMenu,
 } from '@cc-saas/shared';
-import { LayoutGrid, Loader2, Save, Upload, Trash2, Star, UserCheck, Users, RefreshCw, Plus, Image as ImageIcon } from 'lucide-react';
+import { LayoutGrid, Loader2, Save, Upload, Trash2, Star, UserCheck, Users, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 import {
   type RichMenuDef,
   type Tile,
+  type MenuRole,
+  ROLES,
   DEFAULT_COLORS,
   BOSAI_COLORS,
   PROMO_COLORS,
@@ -48,7 +50,17 @@ const blankTile = (): Tile => ({ icon: '📌', label: '', action: { type: 'uri',
 function defForTemplate(template: RichMenuDef['template'], base?: RichMenuDef): RichMenuDef {
   const n = TEMPLATES.find((t) => t.key === template)!.tiles;
   const tiles = Array.from({ length: n }, (_, i) => base?.tiles[i] ?? blankTile());
-  return { name: base?.name ?? '新しいメニュー', chatBarText: base?.chatBarText ?? 'メニューを開く', template, colors: base?.colors ?? DEFAULT_COLORS, tabs: base?.tabs ?? null, tiles };
+  return { role: base?.role, name: base?.name ?? '新しいメニュー', chatBarText: base?.chatBarText ?? 'メニューを開く', template, colors: base?.colors ?? DEFAULT_COLORS, tabs: base?.tabs ?? null, tiles };
+}
+
+/** 保存行の役割（definition.role。無い旧データは名前から推定） */
+function roleOf(m: SavedRichMenu): MenuRole | null {
+  const r = (m.definition as RichMenuDef | null)?.role;
+  if (r === 'normal' || r === 'promo' || r === 'bosai') return r;
+  if (/登録促進/.test(m.name)) return 'promo';
+  if (/防災/.test(m.name)) return 'bosai';
+  if (/通常/.test(m.name)) return 'normal';
+  return null;
 }
 
 export const RichMenuManager: React.FC = () => {
@@ -58,8 +70,12 @@ export const RichMenuManager: React.FC = () => {
   /** 既定が LINE公式アカウント管理画面（GUI）のメニューで、API からは読めない状態 */
   const [defaultManagedElsewhere, setDefaultManagedElsewhere] = useState(false);
   const [aliases, setAliases] = useState<Array<{ richMenuAliasId: string; richMenuId: string }>>([]);
+  /** いま開いている役割タブ。役割ごとに保存メニューは1つ */
+  const [role, setRole] = useState<MenuRole>('normal');
   const [current, setCurrent] = useState<SavedRichMenu | null>(null);
   const [def, setDef] = useState<RichMenuDef>(SAMPLE_DEFS.normal);
+  /** 保存済み（またはサンプル）と比べるための基準。タブ移動時の未保存チェック用 */
+  const [baseline, setBaseline] = useState<string>(JSON.stringify(SAMPLE_DEFS.normal));
   const [customImage, setCustomImage] = useState<File | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [lineLoading, setLineLoading] = useState(false);
@@ -107,15 +123,40 @@ export const RichMenuManager: React.FC = () => {
   const update = (patch: Partial<RichMenuDef>) => setDef((d) => ({ ...d, ...patch }));
   const updateTile = (i: number, patch: Partial<Tile>) => setDef((d) => ({ ...d, tiles: d.tiles.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
 
-  const pickSaved = (m: SavedRichMenu) => {
-    setCurrent(m);
-    setDef(m.definition as RichMenuDef);
+  /** 役割ごとの保存行（同じ役割が複数あれば updated_at が新しいもの。saved は新しい順） */
+  const savedFor = (r: MenuRole) => saved.find((m) => roleOf(m) === r) ?? null;
+
+  /** タブ（役割）を開く: 保存行があればそれ、無ければサンプル */
+  const openRole = (r: MenuRole, rows: SavedRichMenu[] = saved) => {
+    const row = rows.find((m) => roleOf(m) === r) ?? null;
+    const d: RichMenuDef = row ? { ...(row.definition as RichMenuDef), role: r } : SAMPLE_DEFS[r];
+    setRole(r);
+    setCurrent(row);
+    setDef(d);
+    setBaseline(JSON.stringify(d));
     setCustomImage(null);
   };
-  const newFromSample = (key: keyof typeof SAMPLE_DEFS) => {
-    setCurrent(null);
-    setDef(SAMPLE_DEFS[key]);
-    setCustomImage(null);
+  const dirty = JSON.stringify(def) !== baseline || !!customImage;
+  const switchRole = async (r: MenuRole) => {
+    if (r === role) return;
+    if (dirty && !(await appConfirm({ title: '保存していない変更があります', message: `「${ROLES.find((x) => x.key === role)?.label}」の変更を捨てて移動しますか？`, confirmLabel: '移動する' }))) return;
+    openRole(r);
+  };
+  // 保存済み一覧を読み込んだら、開いているタブに保存行があれば差し替える（初回表示用）
+  useEffect(() => {
+    if (saved.length === 0) return;
+    const row = savedFor(role);
+    if (row && (!current || current.id !== row.id) && !dirty) openRole(role, saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saved]);
+
+  /** タブに出す状態バッジ */
+  const roleBadge = (r: MenuRole): { label: string; cls: string } => {
+    const row = savedFor(r);
+    if (!row) return { label: '未作成', cls: 'bg-slate-100 text-slate-400' };
+    if (!row.line_rich_menu_id) return { label: '保存済み', cls: 'bg-slate-100 text-slate-600' };
+    if (defaultId && row.line_rich_menu_id === defaultId) return { label: '★ 既定', cls: 'bg-amber-100 text-amber-800' };
+    return { label: 'LINE登録済み', cls: 'bg-emerald-50 text-emerald-700' };
   };
 
   /** 画像 Blob（手持ち画像があればそれ、無ければ生成） */
@@ -134,8 +175,12 @@ export const RichMenuManager: React.FC = () => {
       const blob = await imageBlob();
       const key = (current?.id ?? `new-${Date.now()}`).toString();
       const image_url = await uploadRichMenuImage(blob, key);
-      const row = await saveRichMenu({ ...(current ? { id: current.id, line_rich_menu_id: current.line_rich_menu_id, alias_id: current.alias_id } : {}), name: def.name, definition: def, image_url });
+      const definition: RichMenuDef = { ...def, role };
+      const row = await saveRichMenu({ ...(current ? { id: current.id, line_rich_menu_id: current.line_rich_menu_id, alias_id: current.alias_id } : {}), name: def.name, definition, image_url });
       setCurrent(row);
+      setDef(definition);
+      setBaseline(JSON.stringify(definition));
+      setCustomImage(null);
       await loadSaved();
       showToast('保存しました');
       return row;
@@ -205,39 +250,33 @@ export const RichMenuManager: React.FC = () => {
               リッチメニュー
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              公式LINEの下に出るメニューを作り、LINE に登録して「自分だけに反映」で確かめてから「全員の既定にする」か、特定の人にだけ紐づけます。
+              公式LINEの下に出るメニューを3つの役割（通常／登録促進／防災訓練タブ）ごとに1つ作り、LINE に登録して「自分だけに反映」で確かめてから「全員の既定にする」か、特定の人にだけ紐づけます。
             </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => newFromSample('normal')} className="flex items-center gap-1 px-3 py-1.5 text-xs text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200">
-              <Plus size={14} /> 6タイル（通常）
-            </button>
-            <button onClick={() => newFromSample('promo')} className="flex items-center gap-1 px-3 py-1.5 text-xs text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200">
-              <Plus size={14} /> 登録促進
-            </button>
-            <button onClick={() => newFromSample('bosai')} className="flex items-center gap-1 px-3 py-1.5 text-xs text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200">
-              <Plus size={14} /> 防災訓練タブ
-            </button>
           </div>
         </div>
 
-        {/* 保存済み */}
-        {saved.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-4">
-            {saved.map((m) => (
+        {/* 役割タブ（通常／登録促進／防災訓練タブ）。役割ごとに保存メニューは1つ。バッジで状態が分かる */}
+        <div className="mt-4 border-b border-slate-200 flex gap-1">
+          {ROLES.map((r) => {
+            const badge = roleBadge(r.key);
+            const active = role === r.key;
+            return (
               <button
-                key={m.id}
-                onClick={() => pickSaved(m)}
-                className={`text-xs px-3 py-1.5 rounded-full border ${current?.id === m.id ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-slate-600 border-slate-300 hover:border-teal-400'}`}
-                title={m.line_rich_menu_id ? `LINE 登録済み: ${m.line_rich_menu_id}` : '未登録'}
+                key={r.key}
+                onClick={() => switchRole(r.key)}
+                title={r.hint}
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition ${active ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
               >
-                {m.line_rich_menu_id === defaultId && defaultId ? '★ ' : ''}
-                {m.name}
-                {m.line_rich_menu_id ? '' : '（未登録）'}
+                {r.label}
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${badge.cls}`}>{badge.label}</span>
               </button>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
+        <p className="text-xs text-slate-500 mt-2">
+          {ROLES.find((r) => r.key === role)?.hint}。{current ? '保存済みの内容を編集しています。' : 'まだ保存していません（サンプルが入っています）。'}
+          {dirty && <span className="text-amber-700 font-bold ml-1">未保存の変更があります</span>}
+        </p>
 
         <div className="grid gap-6 lg:grid-cols-2 mt-5">
           {/* エディタ */}
@@ -536,8 +575,10 @@ export const RichMenuManager: React.FC = () => {
             onClick={async () => {
               if (!(await appConfirm({ title: `保存した「${current.name}」を削除しますか？`, message: 'この画面の保存だけを消します。LINE 側に登録済みなら先に上の一覧から削除してください。', confirmLabel: '削除する' }))) return;
               await deleteSavedRichMenu(current.id);
-              setCurrent(null);
-              await loadSaved();
+              // 削除後はこのタブをサンプル表示（未作成）に戻す
+              const rows = await getSavedRichMenus();
+              setSaved(rows);
+              openRole(role, rows);
             }}
             className="mt-2 text-slate-400 hover:text-red-600"
           >

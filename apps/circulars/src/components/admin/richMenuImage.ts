@@ -30,7 +30,17 @@ export interface TabsDef {
   aliases: [string, string];
 }
 
+/** メニューの役割（管理画面のタブ。役割ごとに保存メニューは1つ） */
+export type MenuRole = 'normal' | 'promo' | 'bosai';
+export const ROLES: Array<{ key: MenuRole; label: string; hint: string }> = [
+  { key: 'normal', label: '通常メニュー', hint: '登録済みの人に出す。いまの6タイル' },
+  { key: 'promo', label: '登録促進', hint: '未登録の人（全員の既定）に出す' },
+  { key: 'bosai', label: '防災訓練タブ', hint: '対象者にだけ、通常メニューとタブで切り替え' },
+];
+
 export interface RichMenuDef {
+  /** 役割（definition JSON の中に持つ。無い旧データは名前から推定） */
+  role?: MenuRole;
   name: string;
   chatBarText: string;
   template: 'grid3x2' | 'promo';
@@ -83,6 +93,7 @@ export const TEMPLATES: Array<{ key: RichMenuDef['template']; label: string; til
 /** サンプル定義 */
 export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
   normal: {
+    role: 'normal',
     name: '通常メニュー',
     chatBarText: 'メニューを開く',
     template: 'grid3x2',
@@ -98,6 +109,7 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
     ],
   },
   promo: {
+    role: 'promo',
     name: '登録促進メニュー',
     chatBarText: '会員登録はこちら',
     template: 'promo',
@@ -116,6 +128,7 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
     ],
   },
   bosai: {
+    role: 'bosai',
     name: '防災訓練タブ',
     chatBarText: 'メニューを開く',
     template: 'grid3x2',
