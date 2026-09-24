@@ -55,7 +55,7 @@ const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; pref
   );
   const cls = 'flex items-center gap-2 py-2 border-b border-slate-100 last:border-0';
   return linkable ? (
-    <a href={topicLink(c).url} target="_blank" rel="noopener noreferrer" className={`${cls} hover:bg-slate-50`}>
+    <a href={topicLink(c)!.url} target="_blank" rel="noopener noreferrer" className={`${cls} hover:bg-slate-50`}>
       {inner}
     </a>
   ) : (
@@ -101,10 +101,12 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
                       )}
                       {t.description && <div className="text-sm text-slate-700 leading-relaxed pt-1">{t.description}</div>}
                     </div>
-                    {/* ボタンは「詳しく見る」1つ（行き先は指定があればそれ、無ければ チラシPDF → 記事 → 予定ページ） */}
-                    <a href={link.url} target="_blank" rel="noopener noreferrer" className="block text-center rounded-lg py-2 mt-2 text-sm font-bold text-white" style={{ background: '#b45309' }}>
-                      詳しく見る
-                    </a>
+                    {/* ボタンは「詳しく見る」1つ（行き先は指定があればそれ、無ければ チラシPDF → 記事）。どちらも無ければボタン無し */}
+                    {link && (
+                      <a href={link.url} target="_blank" rel="noopener noreferrer" className="block text-center rounded-lg py-2 mt-2 text-sm font-bold text-white" style={{ background: '#b45309' }}>
+                        詳しく見る
+                      </a>
+                    )}
                   </div>
                 );
               })}

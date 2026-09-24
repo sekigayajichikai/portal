@@ -103,7 +103,7 @@ function eventRow(
     layout: 'horizontal',
     spacing: 'sm',
     alignItems: 'center',
-    ...(linkable ? { action: uri('詳しく', topicLink(c).url) } : {}),
+    ...(linkable ? { action: uri('詳しく', topicLink(c)!.url) } : {}),
     contents: [
       { type: 'box', layout: 'vertical', flex: 1, spacing: 'xs', contents: lines },
       // 押せる行だけ「詳しく ›」（本文と同じ大きさの太字・濃いグレー）。矢印単体より大きく、文字で意味が分かる
@@ -132,6 +132,7 @@ function eventRow(
 function topicBubble(d: Digest, opts: FlexBuildOptions) {
   const blocks: unknown[] = [];
   d.topics.forEach((t, i) => {
+    // リンク先は チラシPDF → 記事。どちらも無ければ画像もボタンも押せない（カルーセルの行と同じ扱い）
     const link = topicLink(t, opts.linkKinds[t.id]);
     // ボタンは「詳しく見る」1つ・琥珀色。一押しはチラシとは限らないので言葉は固定
     const mainLabel = '詳しく見る';
@@ -148,7 +149,7 @@ function topicBubble(d: Digest, opts: FlexBuildOptions) {
         aspectMode: 'cover',
         backgroundColor: '#f5f5f5',
         margin: i > 0 ? 'lg' : 'none',
-        action: uri(mainLabel, link.url),
+        ...(link ? { action: uri(mainLabel, link.url) } : {}),
       });
     }
     items.push(text(t.title, { weight: 'bold', size: 'lg', margin: 'md' }));
@@ -156,7 +157,7 @@ function topicBubble(d: Digest, opts: FlexBuildOptions) {
     const place = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
     if (place) items.push(text(`📍 ${place}`, { size: 'sm', color: '#666666' }));
     if (t.description) items.push(text(t.description, { size: 'md', color: '#333333', margin: 'md' }));
-    items.push({ ...primaryButton(mainLabel, link.url, AMBER), margin: 'md' });
+    if (link) items.push({ ...primaryButton(mainLabel, link.url, AMBER), margin: 'md' });
     blocks.push({ type: 'box', layout: 'vertical', spacing: 'sm', contents: items });
   });
 

@@ -10,5 +10,7 @@ SQL は Supabase ダッシュボードの SQL Editor に貼り付けて手動実
 | `storage/pending-images-setup.sql` | 抽出画像の一時保管テーブル |
 | `archive/` | 旧環境向けの統合スクリプトや dev/prod の重複版。現在は使わない |
 
+最近のマイグレーション: `2026-09-24-weekly-digest-drafts.sql`（週次配信の下書き。2026-09-24 に Supabase MCP で本番適用済み）。
+
 適用済みかどうかは、アプリの登録処理が「未追加の列を外して再試行」するため、動作からは分かりにくい。
 確認するときは各マイグレーション末尾の `SELECT column_name ...` を SQL Editor で実行する。

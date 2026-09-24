@@ -179,6 +179,18 @@ CREATE TABLE IF NOT EXISTS weekly_digest_sends (
   sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 週次配信の下書き（配信日ごとに1行。画面から自動保存。2026-09-24）
+CREATE TABLE IF NOT EXISTS weekly_digest_drafts (
+  base_date DATE PRIMARY KEY,                 -- 配信日（週の起点）
+  topic_ids JSONB,                            -- null=自動 / []=一押しなし / ["予定ID",...]
+  excluded_ids JSONB NOT NULL DEFAULT '[]',   -- この週だけ外した予定ID
+  link_kinds JSONB NOT NULL DEFAULT '{}',     -- 予定ID → 'pdf' | 'article'
+  greeting TEXT,                              -- 吹き出し①の文（手で直したときだけ）
+  text TEXT,                                  -- コピー用の文面（手で直したときだけ）
+  image_mode TEXT,                            -- flyer / topic / hybrid / list
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
 -- LINE リッチメニューの定義（管理画面で作成）
 CREATE TABLE IF NOT EXISTS line_rich_menus (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

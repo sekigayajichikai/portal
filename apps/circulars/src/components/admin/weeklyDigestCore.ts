@@ -45,30 +45,35 @@ export const audienceFee = (c: { target_audience?: string | null; fee?: string |
 export const siteUrl = () =>
   ((import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined) || window.location.origin).replace(/\/+$/, '');
 
-export type LinkKind = 'pdf' | 'article' | 'event';
+export type LinkKind = 'pdf' | 'article';
+/** 選べるリンク先の並び（画面のラジオもこの順） */
+export const LINK_KINDS: LinkKind[] = ['pdf', 'article'];
+export interface TopicLink {
+  url: string;
+  kind: LinkKind;
+  label: string;
+}
 /**
- * 予定のリンク先（文面の「▶」行・リッチメッセージのタップ先・Flex の行タップに使う）。
+ * 予定のリンク先（文面の「▶」行・一押しカードのボタン・Flex の行タップに使う）。
  * 住民がすぐ詳細を見られるよう、間に画面を挟まず直接つなぐ:
  *   1. 由来PDF（チラシ）があれば PDF に直接
  *   2. リンク記事があれば記事の個別ページ（/?article=<記事ID>）に直接
- *   3. どちらも無ければ予定の個別ページ（/?event=<予定ID>）
+ *   3. どちらも無ければ **リンク無し（null）**。予定ページ（/?event=）はカードと同じ情報しか無いので使わない（2026-09-24）
  */
-export const topicLink = (c: PublicEventCard, kind?: LinkKind): { url: string; kind: LinkKind; label: string } => {
+export const topicLink = (c: PublicEventCard, kind?: LinkKind): TopicLink | null => {
   // 指定があればそれを優先（指定先が無い場合は従来の優先順に落とす）
   if (kind === 'pdf' && c.source_pdf_url) return { url: c.source_pdf_url, kind: 'pdf', label: 'チラシ（PDF）' };
   if (kind === 'article' && c.linked_article_id) return { url: `${siteUrl()}/?article=${c.linked_article_id}`, kind: 'article', label: '記事' };
-  if (kind === 'event') return { url: `${siteUrl()}/?event=${c.id}`, kind: 'event', label: '予定ページ' };
   if (c.source_pdf_url) return { url: c.source_pdf_url, kind: 'pdf', label: 'チラシ（PDF）' };
   if (c.linked_article_id) return { url: `${siteUrl()}/?article=${c.linked_article_id}`, kind: 'article', label: '記事' };
-  return { url: `${siteUrl()}/?event=${c.id}`, kind: 'event', label: '予定ページ' };
+  return null;
 };
-/** その予定で選べるリンク先の種類 */
+/** その予定で選べるリンク先の種類（無ければ空） */
 export const availableLinkKinds = (c: PublicEventCard): LinkKind[] => [
   ...(c.source_pdf_url ? (['pdf'] as LinkKind[]) : []),
   ...(c.linked_article_id ? (['article'] as LinkKind[]) : []),
-  'event',
 ];
-export const LINK_KIND_LABEL: Record<LinkKind, string> = { pdf: 'チラシ（PDF）', article: '記事', event: '予定ページ' };
+export const LINK_KIND_LABEL: Record<LinkKind, string> = { pdf: 'チラシ（PDF）', article: '記事' };
 /** 元URL→短縮URL の対応と、一押しごとのリンク先指定 */
 export interface TextOptions {
   shortUrls?: Record<string, string>;
@@ -252,7 +257,7 @@ export const digestHeading = (d: Digest) => `【関ヶ谷自治会 今週のお�
 export const loc = (c: PublicEventCard) => (c.event_location ? `（${c.event_location}）` : '');
 
 /** 「▶ チラシを見る」などリンク先の種類に応じた行頭 */
-export const linkVerb = (kind: LinkKind) => (kind === 'pdf' ? 'チラシを見る' : kind === 'article' ? '記事を読む' : '詳しく');
+export const linkVerb = (kind: LinkKind) => (kind === 'pdf' ? 'チラシを見る' : '記事を読む');
 
 /** 配信文（プレーンテキスト）を組み立てる。opts.shortUrls は 元URL→短縮URL の対応（取得済みのものだけ）、opts.linkKinds は一押しごとのリンク先指定 */
 export function renderText(d: Digest, opts: TextOptions = {}): string {
@@ -269,9 +274,9 @@ export function renderText(d: Digest, opts: TextOptions = {}): string {
       if (t.description) lines.push(t.description);
       const sub = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
       if (sub) lines.push(sub);
-      // リンク先は指定があればそれ、無ければ チラシPDF → 記事 → 予定ページ の順
+      // リンク先は指定があればそれ、無ければ チラシPDF → 記事 の順。どちらも無ければ▶行は出さない
       const link = topicLink(t, opts.linkKinds?.[t.id]);
-      lines.push(`▶ ${linkVerb(link.kind)}: ${shortUrls[link.url] ?? link.url}`);
+      if (link) lines.push(`▶ ${linkVerb(link.kind)}: ${shortUrls[link.url] ?? link.url}`);
     });
   }
 

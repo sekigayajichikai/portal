@@ -6,7 +6,8 @@
  * 生成した文面は編集してからコピーし、LINE公式アカウントに貼って配信する（送信自体は手動）。
  *
  * 構成と件数上限（情報量が増えすぎないように固定）:
- *   ⭐ 今週の一押し … 1件（⭐配信候補のうち直近のもの。紹介文と、チラシPDF／記事／予定ページへの直リンクを添える）
+ *   ⭐ 今週の一押し … 最大2件（⭐配信候補のうち直近のもの、または人が選ぶ。紹介文と、チラシPDF／記事への直リンクを添える。どちらも無ければリンク無し）
+ *   人が決めたこと（一押しの選択・外した予定・リンク先・手で直した文・画像の種類）は配信日ごとの下書き（weekly_digest_drafts）に自動保存する
  *   📰 新しいレポート … 最大2件（直近14日に公開されたレポート）
  *   📅 今週の予定 … 最大6件（open / recurring / 種別なし。配信日から7日間）
  *   📝 申込受付中 … 最大4件（reserve。締切が14日以内。締切不明は開催7日前を仮締切）
@@ -34,13 +35,20 @@ import {
   uploadWeeklyImage,
   recordWeeklyDigestSend,
   getWeeklyDigestSends,
+  getArticleById,
+  convertPdfUrlToBase64,
+  generateEventDescriptionWithGemini,
+  hasGeminiEventAccess,
+  getWeeklyDigestDraft,
+  saveWeeklyDigestDraft,
+  deleteWeeklyDigestDraft,
   type PublicEventCard,
   type Article,
   type LineMessage,
   type LineSendMode,
   type WeeklyDigestSend,
 } from '@cc-saas/shared';
-import { Copy, Check, Download, RefreshCw, Loader2, Send, ExternalLink, MessageCircle, ShieldCheck, Users } from 'lucide-react';
+import { Copy, Check, Download, RefreshCw, Loader2, Send, ExternalLink, MessageCircle, ShieldCheck, Users, Sparkles, Trash2 } from 'lucide-react';
 import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 
@@ -60,6 +68,7 @@ import {
   topicChoices,
   availableLinkKinds,
   LINK_KIND_LABEL,
+  LINK_KINDS,
   MAX_TOPICS,
   type LinkKind,
 } from './weeklyDigestCore';
@@ -453,8 +462,20 @@ export const WeeklyDigest: React.FC = () => {
   /** ⭐一押しの紹介文の下書き（予定ID → 文）。この画面でその場で編集・保存する */
   const [descDrafts, setDescDrafts] = useState<Record<string, string>>({});
   const [savingDesc, setSavingDesc] = useState<string | null>(null);
-  /** 一押しごとのリンク先の指定（予定ID → pdf / article / event。無ければ自動） */
+  /** AI（Gemini）で紹介文を作っている最中の予定ID */
+  const [generatingDesc, setGeneratingDesc] = useState<string | null>(null);
+  /** 一押しごとのリンク先の指定（予定ID → pdf / article。無ければ自動） */
   const [linkKinds, setLinkKinds] = useState<Record<string, LinkKind>>({});
+  /** 文面・吹き出しを手で直したか（立っていると自動生成で上書きしない。下書きにも残す） */
+  const [textEdited, setTextEdited] = useState(false);
+  const [greetingEdited, setGreetingEdited] = useState(false);
+  /** 下書き（配信日ごと）の状態と最後に保存した時刻 */
+  const [draftState, setDraftState] = useState<'loading' | 'idle' | 'saving' | 'saved' | 'error'>('loading');
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  /** 最後に読み込んだ／保存した下書きのスナップショット（同じ内容なら保存しない） */
+  const lastDraftRef = useRef<string>('');
+  /** DBに下書きの行があるか（既定のままなら行を作らない） */
+  const hasDraftRowRef = useRef(false);
   /** 一押しごとの画像の切り出し（予定ID → {x,y,scale}）。初期値は予定カードの hero_crop（無ければ旧 hero_crop_y） */
   const [crops, setCrops] = useState<Record<string, HeroCrop>>({});
   const [savingCrop, setSavingCrop] = useState<string | null>(null);
@@ -505,9 +526,128 @@ export const WeeklyDigest: React.FC = () => {
    * 配信日を変えたら自動に戻す
    */
   const [topicIds, setTopicIds] = useState<string[] | undefined>(undefined);
+
+  /** 下書きとして保存する項目をひとまとめに（比較用のスナップショットにも使う） */
+  const draftBody = useMemo(
+    () => ({
+      topic_ids: topicIds ?? null,
+      excluded_ids: Array.from(excluded).sort(),
+      link_kinds: linkKinds as Record<string, string>,
+      greeting: greetingEdited ? greeting : null,
+      text: textEdited ? text : null,
+      image_mode: imageMode,
+    }),
+    [topicIds, excluded, linkKinds, greeting, greetingEdited, text, textEdited, imageMode]
+  );
+  const DEFAULT_DRAFT_KEY = JSON.stringify({ topic_ids: null, excluded_ids: [], link_kinds: {}, greeting: null, text: null, image_mode: 'flyer' });
+
+  // 配信日が変わったら、その日の下書きを読み込む（無ければ自動＝既定に戻す）
   useEffect(() => {
+    let cancelled = false;
+    setDraftState('loading');
+    setDraftSavedAt(null);
+    // まず既定に戻す（下書きがあれば直後に上書きされる）
     setTopicIds(undefined);
+    setExcluded(new Set());
+    setLinkKinds({});
+    setTextEdited(false);
+    setGreetingEdited(false);
+    setImageMode('flyer');
+    lastDraftRef.current = DEFAULT_DRAFT_KEY;
+    hasDraftRowRef.current = false;
+    getWeeklyDigestDraft(baseDate)
+      .then((d) => {
+        if (cancelled) return;
+        if (d) {
+          const topic = Array.isArray(d.topic_ids) ? (d.topic_ids as string[]) : undefined;
+          const ex = Array.isArray(d.excluded_ids) ? (d.excluded_ids as string[]) : [];
+          const lk = (d.link_kinds && typeof d.link_kinds === 'object' ? d.link_kinds : {}) as Record<string, LinkKind>;
+          const mode = (['flyer', 'topic', 'hybrid', 'list'] as ImageMode[]).includes(d.image_mode as ImageMode) ? (d.image_mode as ImageMode) : 'flyer';
+          setTopicIds(topic);
+          setExcluded(new Set(ex));
+          setLinkKinds(lk);
+          setImageMode(mode);
+          if (d.greeting != null) {
+            setGreeting(d.greeting);
+            setGreetingEdited(true);
+          }
+          if (d.text != null) {
+            setText(d.text);
+            setTextEdited(true);
+          }
+          lastDraftRef.current = JSON.stringify({
+            topic_ids: topic ?? null,
+            excluded_ids: [...ex].sort(),
+            link_kinds: lk,
+            greeting: d.greeting ?? null,
+            text: d.text ?? null,
+            image_mode: mode,
+          });
+          hasDraftRowRef.current = true;
+          setDraftSavedAt(d.updated_at ?? null);
+          setDraftState('saved');
+        } else {
+          setDraftState('idle');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDraftState('idle');
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseDate]);
+
+  // 下書きの項目が変わったら 1.5 秒後に自動保存（読み込み中・内容が同じ・既定のまま行が無いときは保存しない）
+  useEffect(() => {
+    if (draftState === 'loading') return;
+    const key = JSON.stringify(draftBody);
+    if (key === lastDraftRef.current) return;
+    if (key === DEFAULT_DRAFT_KEY && !hasDraftRowRef.current) return;
+    const timer = setTimeout(async () => {
+      setDraftState('saving');
+      try {
+        await saveWeeklyDigestDraft({ base_date: baseDate, ...draftBody });
+        lastDraftRef.current = key;
+        hasDraftRowRef.current = true;
+        setDraftSavedAt(new Date().toISOString());
+        setDraftState('saved');
+      } catch (e) {
+        console.warn('下書きの自動保存に失敗:', e);
+        setDraftState('error');
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftBody, draftState === 'loading']);
+
+  /** 下書きを捨てて自動（既定）に戻す */
+  const discardDraft = async () => {
+    const ok = await appConfirm({
+      title: `${md(baseDate)} の下書きを捨てますか？`,
+      message: '一押しの選択・この週だけ外した予定・リンク先・手で直した文が消え、自動で組み立てた状態に戻ります。紹介文と画像の切り出し（予定カードに保存したもの）は残ります。',
+      confirmLabel: '下書きを捨てる',
+    });
+    if (!ok) return;
+    try {
+      if (hasDraftRowRef.current) await deleteWeeklyDigestDraft(baseDate);
+      hasDraftRowRef.current = false;
+      lastDraftRef.current = DEFAULT_DRAFT_KEY;
+      setTopicIds(undefined);
+      setExcluded(new Set());
+      setLinkKinds({});
+      setTextEdited(false);
+      setGreetingEdited(false);
+      setImageMode('flyer');
+      setDraftSavedAt(null);
+      setDraftState('idle');
+      showToast('下書きを捨てました');
+    } catch (e) {
+      console.error(e);
+      showError('下書きを捨てられませんでした。');
+    }
+  };
   const choices = useMemo(() => topicChoices(cards, baseDate), [cards, baseDate]);
 
   /** 拾われた予定の全体（チェック一覧用。digest_exclude のものは最初から入らない） */
@@ -605,6 +745,52 @@ export const WeeklyDigest: React.FC = () => {
     }
   };
 
+  /**
+   * 一押しの紹介文を AI（Gemini・無料枠）で作って下書き欄に入れる。保存はしない（人が読んで直してから「紹介文を保存」）。
+   * 手がかりは チラシPDF（あれば添付）＞ リンク記事の本文。号PDFの代用は使わない（号全体を読ませると的外れになる）
+   */
+  const generateDescription = async (topic: PublicEventCard) => {
+    setGeneratingDesc(topic.id);
+    try {
+      let articleText: string | null = null;
+      if (topic.linked_article_id) {
+        try {
+          const a = await getArticleById(topic.linked_article_id);
+          articleText = a?.content || a?.summary || null;
+        } catch (e) {
+          console.warn('記事本文の取得に失敗（紹介文はタイトル等から作る）:', e);
+        }
+      }
+      let pdfBase64: string | null = null;
+      if (topic.source_pdf_url) {
+        try {
+          pdfBase64 = await convertPdfUrlToBase64(topic.source_pdf_url);
+        } catch (e) {
+          console.warn('チラシPDFの取得に失敗（紹介文は記事・タイトルから作る）:', e);
+        }
+      }
+      const description = await generateEventDescriptionWithGemini({
+        title: topic.title,
+        eventDate: topic.event_date ?? '',
+        eventTime: topic.event_time,
+        location: topic.event_location,
+        organizer: topic.organizer,
+        targetAudience: topic.target_audience,
+        fee: topic.fee,
+        articleText,
+        pdfBase64,
+      });
+      setDescDrafts((prev) => ({ ...prev, [topic.id]: description }));
+      showToast('紹介文を作りました。読んで直してから「紹介文を保存」を押してください');
+    } catch (e) {
+      console.error('紹介文の生成エラー:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(/429|RESOURCE_EXHAUSTED|quota/i.test(msg) ? 'AIの無料枠の回数制限にかかりました。1分ほど待ってからもう一度押してください。' : `紹介文を作れませんでした。${msg}`);
+    } finally {
+      setGeneratingDesc(null);
+    }
+  };
+
   /** 画像の切り出し（位置と拡大）を予定カードに保存する（次回以降も同じ切り出し） */
   const saveCrop = async (topic: PublicEventCard) => {
     // 枠の形が未指定なら、いま表示している既定（元画像の向きで決めたもの）を確定して保存する
@@ -627,15 +813,15 @@ export const WeeklyDigest: React.FC = () => {
     }
   };
 
-  /** 一押しごとのリンク（指定があればそれ、無ければ自動） */
+  /** 一押しごとのリンク（指定があればそれ、無ければ自動。チラシも記事も無ければ null） */
   const topicLinks = useMemo(() => digest.topics.map((t) => ({ topic: t, link: topicLink(t, linkKinds[t.id]) })), [digest.topics, linkKinds]);
 
   // 一押しのリンクを短縮URLにする（取得できたら文面を作り直す）
-  const linkUrlsKey = topicLinks.map((x) => x.link.url).join('|');
+  const linkUrlsKey = topicLinks.map((x) => x.link?.url ?? '').join('|');
   useEffect(() => {
     let cancelled = false;
     for (const { link } of topicLinks) {
-      if (shortUrls[link.url]) continue;
+      if (!link || shortUrls[link.url]) continue;
       shortenUrl(link.url).then((s) => {
         if (!cancelled && s !== link.url) setShortUrls((prev) => ({ ...prev, [link.url]: s }));
       });
@@ -645,10 +831,11 @@ export const WeeklyDigest: React.FC = () => {
     };
   }, [linkUrlsKey]);
 
-  // データや配信日が変わったら文面を作り直す（手で編集した内容は「作り直す」で上書き）
+  // データや配信日が変わったら文面を作り直す（手で直した後は上書きしない。「作り直す」で自動に戻す）
   useEffect(() => {
+    if (textEdited) return;
     setText(renderText(digest, { shortUrls, linkKinds }));
-  }, [digest, shortUrls, linkKinds]);
+  }, [digest, shortUrls, linkKinds, textEdited]);
 
   /** 読み込み失敗の理由（予定ID → メッセージ）。「もう一度読み込む」で消す */
   const [flyerErrors, setFlyerErrors] = useState<Record<string, string>>({});
@@ -724,10 +911,11 @@ export const WeeklyDigest: React.FC = () => {
 
   // ---- LINE 送信（Flex） ----
 
-  // テキスト吹き出しの既定文（一押しが変わったら作り直す。手で直した後は「作り直す」で戻す）
+  // テキスト吹き出しの既定文（一押しが変わったら作り直す。手で直した後は上書きしない。「作り直す」で戻す）
   useEffect(() => {
+    if (greetingEdited) return;
     setGreeting(buildGreetingText(digest));
-  }, [digest]);
+  }, [digest, greetingEdited]);
 
   const loadHistory = () => getWeeklyDigestSends(8).then(setHistory);
   useEffect(() => {
@@ -865,6 +1053,21 @@ export const WeeklyDigest: React.FC = () => {
             </button>
           </div>
         </div>
+        {/* 下書きの状態（配信日ごとに自動保存。一押しの選択・外した予定・リンク先・手で直した文・画像の種類） */}
+        <div className="flex flex-wrap items-center justify-end gap-2 mt-1 text-[11px] text-slate-400">
+          <span className="flex items-center gap-1">
+            {draftState === 'loading' && (<><Loader2 size={11} className="animate-spin" /> 下書きを確認中…</>)}
+            {draftState === 'saving' && (<><Loader2 size={11} className="animate-spin" /> 下書きを保存中…</>)}
+            {draftState === 'saved' && (<><Check size={11} className="text-emerald-600" /> 下書きを保存済み{draftSavedAt ? `（${new Date(draftSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）` : ''}</>)}
+            {draftState === 'idle' && '下書きは変更すると自動で保存されます（この配信日の下書きはまだありません）'}
+            {draftState === 'error' && <span className="text-red-600">下書きを保存できませんでした（sql/migrations/2026-09-24-weekly-digest-drafts.sql が未適用かもしれません）</span>}
+          </span>
+          {(draftState === 'saved' || draftState === 'error') && (
+            <button onClick={discardDraft} className="flex items-center gap-1 text-slate-500 hover:text-red-600" title="この配信日の下書きを消して、自動で組み立てた状態に戻す">
+              <Trash2 size={11} /> 下書きを捨てる
+            </button>
+          )}
+        </div>
 
         {loading ? (
           <div className="flex items-center gap-2 text-slate-400 text-sm py-10 justify-center">
@@ -971,7 +1174,7 @@ export const WeeklyDigest: React.FC = () => {
               const draft = descDrafts[t.id] ?? '';
               const dirty = draft.trim() !== (t.description ?? '').trim();
               const kinds = availableLinkKinds(t);
-              const currentKind = topicLink(t, linkKinds[t.id]).kind;
+              const currentKind = topicLink(t, linkKinds[t.id])?.kind ?? null;
               const flyer = flyers[t.id];
               const imgSrc = topicImageSource(t);
               const savedCrop = normalizeCrop(t.hero_crop, t.hero_crop_y);
@@ -983,14 +1186,27 @@ export const WeeklyDigest: React.FC = () => {
                     <label className="text-xs font-bold text-slate-600">
                       ⭐ 一押し{digest.topics.length > 1 ? `${i + 1}` : ''}「{t.title}」の紹介文（1〜2文）
                     </label>
-                    <button
-                      onClick={() => saveDescription(t)}
-                      disabled={savingDesc === t.id || !dirty}
-                      className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 transition disabled:opacity-40"
-                    >
-                      {savingDesc === t.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                      {savingDesc === t.id ? '保存しています…' : '紹介文を保存'}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {hasGeminiEventAccess() && (
+                        <button
+                          onClick={() => generateDescription(t)}
+                          disabled={generatingDesc !== null || savingDesc === t.id}
+                          className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 transition disabled:opacity-40"
+                          title={`AI（Gemini 無料枠）が${t.source_pdf_url ? 'チラシPDF' : t.linked_article_id ? 'リンク記事' : 'タイトルと情報'}から1〜2文の紹介文を作ります。読んで直してから保存してください`}
+                        >
+                          {generatingDesc === t.id ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                          {generatingDesc === t.id ? '作っています…' : 'AIで紹介文を作る'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => saveDescription(t)}
+                        disabled={savingDesc === t.id || !dirty}
+                        className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 transition disabled:opacity-40"
+                      >
+                        {savingDesc === t.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        {savingDesc === t.id ? '保存しています…' : '紹介文を保存'}
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     value={draft}
@@ -1002,17 +1218,17 @@ export const WeeklyDigest: React.FC = () => {
                   <p className="text-[11px] text-slate-400 mt-1">
                     {t.description
                       ? '保存すると予定カードにも残り、次回以降もこの紹介文が使われます。'
-                      : 'まだ紹介文がありません。ここで入力して保存すると、文面と画像に載ります（予定カードにも保存されます）。'}{' '}
-                    {draft.length} 文字
+                      : 'まだ紹介文がありません。ここで入力（または「AIで紹介文を作る」）して保存すると、文面と画像に載ります（予定カードにも保存されます）。'}{' '}
+                    {hasGeminiEventAccess() && 'AIの文は必ず読んで直してから保存してください。'} {draft.length} 文字
                   </p>
 
                   <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                    {/* リンク先（チラシPDF／記事／予定ページ。無いものは出ない） */}
+                    {/* リンク先（チラシPDF／記事。予定ページはカードと同じ情報しか無いので使わない） */}
                     <div className="text-xs">
                       <p className="font-bold text-slate-600 mb-1">「詳しく見る」のリンク先</p>
                       <div className="flex flex-wrap gap-2">
-                        {/* 3種類を常に並べ、この予定に無いものはグレーアウト（押せない） */}
-                        {(['pdf', 'article', 'event'] as LinkKind[]).map((k) => {
+                        {/* 2種類を常に並べ、この予定に無いものはグレーアウト（押せない） */}
+                        {LINK_KINDS.map((k) => {
                           const available = kinds.includes(k);
                           const on = currentKind === k;
                           return (
@@ -1034,7 +1250,9 @@ export const WeeklyDigest: React.FC = () => {
                         })}
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1">
-                        文面の「▶」とカードのボタン・画像のタップ先に使います。グレーはこの予定に無いもの。{kinds.length === 1 ? 'チラシも記事も無いので予定ページだけです。' : '指定しなければ チラシPDF → 記事 → 予定ページ の順です。'}
+                        {kinds.length === 0
+                          ? 'この予定にはチラシも記事も無いので、「詳しく見る」ボタンは付きません（文面の▶行も出ません）。カードの文字だけで伝わるよう紹介文を書いてください。'
+                          : `文面の「▶」とカードのボタン・画像のタップ先に使います。グレーはこの予定に無いもの。${kinds.length === 2 ? '指定しなければ チラシPDF → 記事 の順です。' : ''}`}
                       </p>
                     </div>
 
@@ -1093,11 +1311,14 @@ export const WeeklyDigest: React.FC = () => {
                       {text.length} 文字{text.length > CHAR_GUIDE ? `（目安 ${CHAR_GUIDE} 文字を超えています。項目を削ると読みやすくなります）` : ''}
                     </span>
                     <button
-                      onClick={() => setText(renderText(digest, { shortUrls, linkKinds }))}
-                      className="text-[11px] text-slate-500 hover:text-slate-800"
-                      title="自動生成の文面に戻す"
+                      onClick={() => {
+                        setTextEdited(false);
+                        setText(renderText(digest, { shortUrls, linkKinds }));
+                      }}
+                      className={`text-[11px] hover:text-slate-800 ${textEdited ? 'text-amber-700 font-bold' : 'text-slate-500'}`}
+                      title="自動生成の文面に戻す（手で直した内容は消えます）"
                     >
-                      作り直す
+                      {textEdited ? '手で直した文面（作り直す）' : '作り直す'}
                     </button>
                     <button
                       onClick={copy}
@@ -1110,19 +1331,28 @@ export const WeeklyDigest: React.FC = () => {
                 </div>
                 <textarea
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    setTextEdited(true);
+                  }}
                   rows={22}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                 />
-                {topicLinks.map(({ topic: t, link }) => (
-                  <p key={t.id} className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 flex-wrap">
-                    一押し「{t.title}」のリンク先（{link.label}に直接）:
-                    <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline inline-flex items-center gap-0.5 break-all">
-                      {shortUrls[link.url] ?? link.url} <ExternalLink size={10} />
-                    </a>
-                    {shortUrls[link.url] ? '（短縮URL）' : '（短縮URLを取得中か、取得できませんでした）'}
-                  </p>
-                ))}
+                {topicLinks.map(({ topic: t, link }) =>
+                  link ? (
+                    <p key={t.id} className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 flex-wrap">
+                      一押し「{t.title}」のリンク先（{link.label}に直接）:
+                      <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline inline-flex items-center gap-0.5 break-all">
+                        {shortUrls[link.url] ?? link.url} <ExternalLink size={10} />
+                      </a>
+                      {shortUrls[link.url] ? '（短縮URL）' : '（短縮URLを取得中か、取得できませんでした）'}
+                    </p>
+                  ) : (
+                    <p key={t.id} className="text-[11px] text-slate-400 mt-1">
+                      一押し「{t.title}」はチラシも記事も無いので、リンク（▶行・ボタン）は付きません。
+                    </p>
+                  )
+                )}
               </div>
 
               {/* 画像 */}
@@ -1208,13 +1438,23 @@ export const WeeklyDigest: React.FC = () => {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-slate-500">テキスト（吹き出し①・編集できます）</label>
-                  <button onClick={() => setGreeting(buildGreetingText(digest))} className="text-[11px] text-slate-500 hover:text-slate-800" title="自動生成の文に戻す">
-                    作り直す
+                  <button
+                    onClick={() => {
+                      setGreetingEdited(false);
+                      setGreeting(buildGreetingText(digest));
+                    }}
+                    className={`text-[11px] hover:text-slate-800 ${greetingEdited ? 'text-amber-700 font-bold' : 'text-slate-500'}`}
+                    title="自動生成の文に戻す（手で直した内容は消えます）"
+                  >
+                    {greetingEdited ? '手で直した文（作り直す）' : '作り直す'}
                   </button>
                 </div>
                 <textarea
                   value={greeting}
-                  onChange={(e) => setGreeting(e.target.value)}
+                  onChange={(e) => {
+                    setGreeting(e.target.value);
+                    setGreetingEdited(true);
+                  }}
                   rows={4}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                 />

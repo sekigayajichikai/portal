@@ -5,6 +5,7 @@
 ## 現状（2026-09-07）
 - **カレンダー予定（イベント候補）抽出: Gemini Flash（既定 gemini-3.6-flash、無料枠プロジェクトのキー）**（B案を実施。`geminiService.ts` の `GEMINI_EVENT_MODEL`）。
   失敗時は Claude（`CLAUDE_MODEL`）にフォールバック。切替は `VITE_EVENT_AI_PROVIDER`（既定 gemini）。
+- **週次配信の一押しの紹介文生成（2026-09-24）も同じ Gemini**（`generateEventDescriptionWithGemini`、無料枠。チラシPDF 1ページ ≈ 258 tokens ＋ 短い出力）。人がボタンを押したときだけ呼ぶので月に数回〜十数回。フォールバックは無し（失敗したら手入力）。
 - 記事化（PDF→記事）・メタデータ抽出などは引き続き Claude。モデル定数は `claudeService.ts` の `CLAUDE_MODEL`（Haiku 4.5）。
 - 抽出結果は人が確認ダイアログで承認するため、多少モデルが弱くても実害は小さい。
 

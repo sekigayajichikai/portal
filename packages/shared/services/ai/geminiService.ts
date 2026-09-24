@@ -535,3 +535,110 @@ export async function extractEventCandidatesWithGemini(
   });
   return parseEventCandidatesFromResponse(extractGeminiText(res), articles.length);
 }
+
+// =====================================================
+// 週次配信 ⭐一押しの紹介文（1〜2文）を Gemini で作る
+//
+// 週次配信の画面「AIで紹介文を作る」から呼ぶ。生成した文は下書き欄に入るだけで、
+// 人が読んで直してから「紹介文を保存」する（docs/週次配信.md）。
+// モデル・キー・プロキシはイベント抽出と同じ（GEMINI_EVENT_MODEL、無料枠）。
+// =====================================================
+
+export interface EventDescriptionInput {
+  title: string;
+  eventDate: string;
+  eventTime?: string | null;
+  location?: string | null;
+  organizer?: string | null;
+  targetAudience?: string | null;
+  fee?: string | null;
+  /** 抽出時に拾った原文（記事もPDFも無いときの手がかり） */
+  sourceText?: string | null;
+  /** リンク記事の本文（あれば）。長すぎる分は切る */
+  articleText?: string | null;
+  /** 由来PDF（チラシ）の Base64（データURLプレフィックスなし）。あれば最優先の手がかり */
+  pdfBase64?: string | null;
+}
+
+/** 紹介文の上限（LINE のカードで 2〜3 行に収まる長さ） */
+const DESCRIPTION_MAX_CHARS = 70;
+/** 記事本文をプロンプトに載せる上限（文字） */
+const ARTICLE_TEXT_LIMIT = 4000;
+
+/**
+ * 一押しの紹介文（1〜2文・60字以内を目標）を Gemini で生成する
+ *
+ * @returns 整形済みの紹介文（改行なし。70字を超えたら文の区切りで切る）
+ * @throws Gemini が使えない／応答が空／API エラー
+ */
+export async function generateEventDescriptionWithGemini(input: EventDescriptionInput): Promise<string> {
+  if (!hasGeminiEventAccess()) {
+    throw new Error('Gemini が利用できません（APIキー/プロキシ未設定）');
+  }
+  const meta = [
+    `タイトル: ${input.title}`,
+    `開催日: ${input.eventDate}${input.eventTime ? ` ${input.eventTime}` : ''}`,
+    input.location ? `場所: ${input.location}` : null,
+    input.organizer ? `主催: ${input.organizer}` : null,
+    input.targetAudience ? `対象: ${input.targetAudience}` : null,
+    input.fee ? `費用: ${input.fee}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const hints: string[] = [];
+  if (input.pdfBase64) hints.push('添付のチラシPDFを読んで内容をつかんでください。');
+  if (input.articleText?.trim()) {
+    hints.push(`関連記事の本文:\n"""\n${input.articleText.trim().slice(0, ARTICLE_TEXT_LIMIT)}\n"""`);
+  }
+  if (!input.pdfBase64 && !input.articleText?.trim() && input.sourceText?.trim()) {
+    hints.push(`回覧板に載っていた原文:\n"""\n${input.sourceText.trim().slice(0, ARTICLE_TEXT_LIMIT)}\n"""`);
+  }
+
+  const prompt = `あなたは自治会の広報担当です。公式LINEの「今週の一押し」カードに載せる、この予定の紹介文を1つ書いてください。
+
+## 予定の情報（カードに別掲されるので紹介文では繰り返さない）
+${meta}
+
+${hints.length > 0 ? `## 手がかり\n${hints.join('\n\n')}\n` : '## 手がかり\n（チラシも記事もありません。タイトルと情報から分かる範囲で書いてください。推測で具体的な内容を作らないこと）\n'}
+## 書き方
+- 住民向けに、やさしい敬体（です・ます）で、1〜2文・合計60字以内。
+- 「何をする会か」「誰向けか」「気軽に参加できる点」を優先。日時・場所・主催・費用は書かない（カードに出ます）。
+- 絵文字・記号・題名・引用符・前置きは付けず、紹介文の本文だけを1行で出力。
+- 手がかりに無いこと（人数・料理名・景品など）は書かない。`;
+
+  const parts: unknown[] = [];
+  if (input.pdfBase64) parts.push({ inlineData: { mimeType: 'application/pdf', data: input.pdfBase64 } });
+  parts.push({ text: prompt });
+
+  const body = {
+    contents: [{ role: 'user', parts }],
+    generationConfig: { responseMimeType: 'text/plain', temperature: 0.4 },
+  };
+  let res: GeminiGenerateResponse;
+  try {
+    res = await callGeminiGenerate(body);
+  } catch (e) {
+    // 無料枠のモデルは一時的な 503（高負荷）を返すことがあるので、少し待って1回だけやり直す
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/\b503\b|overloaded|UNAVAILABLE/i.test(msg)) throw e;
+    await new Promise((r) => setTimeout(r, 2500));
+    res = await callGeminiGenerate(body);
+  }
+  return tidyDescription(extractGeminiText(res));
+}
+
+/** 生成文を1行に整え、長すぎれば文の区切りで切る */
+function tidyDescription(raw: string): string {
+  let s = raw
+    .replace(/\r?\n+/g, ' ')
+    .replace(/^["「『]+|["」』]+$/g, '')
+    .replace(/^紹介文[:：]\s*/, '')
+    .trim();
+  if (s.length > DESCRIPTION_MAX_CHARS) {
+    const cut = s.slice(0, DESCRIPTION_MAX_CHARS);
+    const last = cut.lastIndexOf('。');
+    s = last >= 20 ? cut.slice(0, last + 1) : `${cut.replace(/[、,。]$/, '')}…`;
+  }
+  return s;
+}
