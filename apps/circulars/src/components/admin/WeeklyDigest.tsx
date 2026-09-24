@@ -1011,15 +1011,30 @@ export const WeeklyDigest: React.FC = () => {
                     <div className="text-xs">
                       <p className="font-bold text-slate-600 mb-1">「詳しく見る」のリンク先</p>
                       <div className="flex flex-wrap gap-2">
-                        {kinds.map((k) => (
-                          <label key={k} className={`flex items-center gap-1 px-2 py-1 rounded-full border cursor-pointer ${currentKind === k ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300'}`}>
-                            <input type="radio" name={`link-${t.id}`} className="hidden" checked={currentKind === k} onChange={() => setLinkKinds((prev) => ({ ...prev, [t.id]: k }))} />
-                            {LINK_KIND_LABEL[k]}
-                          </label>
-                        ))}
+                        {/* 3種類を常に並べ、この予定に無いものはグレーアウト（押せない） */}
+                        {(['pdf', 'article', 'event'] as LinkKind[]).map((k) => {
+                          const available = kinds.includes(k);
+                          const on = currentKind === k;
+                          return (
+                            <label
+                              key={k}
+                              className={`flex items-center gap-1 px-2 py-1 rounded-full border ${
+                                !available
+                                  ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed line-through'
+                                  : on
+                                    ? 'bg-slate-700 text-white border-slate-700 cursor-pointer'
+                                    : 'bg-white text-slate-600 border-slate-300 cursor-pointer hover:border-slate-400'
+                              }`}
+                              title={!available ? (k === 'pdf' ? 'この予定にはチラシPDFがありません' : 'この予定にはリンク記事がありません') : ''}
+                            >
+                              <input type="radio" name={`link-${t.id}`} className="hidden" disabled={!available} checked={on} onChange={() => available && setLinkKinds((prev) => ({ ...prev, [t.id]: k }))} />
+                              {LINK_KIND_LABEL[k]}
+                            </label>
+                          );
+                        })}
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1">
-                        文面の「▶」とカードのボタン・画像のタップ先に使います。{kinds.length === 1 ? 'チラシも記事も無いので予定ページだけです。' : '指定しなければ チラシPDF → 記事 → 予定ページ の順です。'}
+                        文面の「▶」とカードのボタン・画像のタップ先に使います。グレーはこの予定に無いもの。{kinds.length === 1 ? 'チラシも記事も無いので予定ページだけです。' : '指定しなければ チラシPDF → 記事 → 予定ページ の順です。'}
                       </p>
                     </div>
 
