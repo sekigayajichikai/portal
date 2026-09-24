@@ -176,12 +176,15 @@ CREATE TABLE IF NOT EXISTS weekly_digest_sends (
   text TEXT,                            -- 送ったテキスト
   messages JSONB,                       -- 送ったメッセージ全体（Flex JSON 含む）
   line_status INTEGER,                  -- LINE API の HTTP ステータス
+  draft_id UUID,                        -- 送信元の下書き（weekly_digest_drafts.id、任意）
   sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 週次配信の下書き（配信日ごとに1行。画面から自動保存。2026-09-24）
+-- 週次配信の下書き（配信日ごとに複数。画面から自動保存。2026-09-24）
 CREATE TABLE IF NOT EXISTS weekly_digest_drafts (
-  base_date DATE PRIMARY KEY,                 -- 配信日（週の起点）
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  base_date DATE NOT NULL,                    -- 配信日（週の起点）
+  name TEXT,                                  -- 下書きの名前（空なら「配信日の下書き」と表示）
   topic_ids JSONB,                            -- null=自動 / []=一押しなし / ["予定ID",...]
   excluded_ids JSONB NOT NULL DEFAULT '[]',   -- この週だけ外した予定ID
   link_kinds JSONB NOT NULL DEFAULT '{}',     -- 予定ID → 'pdf' | 'article'
@@ -190,6 +193,7 @@ CREATE TABLE IF NOT EXISTS weekly_digest_drafts (
   image_mode TEXT,                            -- flyer / topic / hybrid / list
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_weekly_digest_drafts_date ON weekly_digest_drafts (base_date DESC, updated_at DESC);
 
 -- LINE リッチメニューの定義（管理画面で作成）
 CREATE TABLE IF NOT EXISTS line_rich_menus (

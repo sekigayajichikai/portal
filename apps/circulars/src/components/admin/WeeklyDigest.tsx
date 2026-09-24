@@ -39,17 +39,19 @@ import {
   convertPdfUrlToBase64,
   generateEventDescriptionWithGemini,
   hasGeminiEventAccess,
-  getWeeklyDigestDraft,
+  listWeeklyDigestDrafts,
   saveWeeklyDigestDraft,
+  renameWeeklyDigestDraft,
   deleteWeeklyDigestDraft,
+  type WeeklyDigestDraft,
   type PublicEventCard,
   type Article,
   type LineMessage,
   type LineSendMode,
   type WeeklyDigestSend,
 } from '@cc-saas/shared';
-import { Copy, Check, Download, RefreshCw, Loader2, Send, ExternalLink, MessageCircle, ShieldCheck, Users, Sparkles, Trash2 } from 'lucide-react';
-import { showError, showToast, appConfirm } from '@/components/ui/feedback';
+import { Copy, Check, Download, RefreshCw, Loader2, Send, ExternalLink, MessageCircle, ShieldCheck, Users, Sparkles, Trash2, Pencil, Files } from 'lucide-react';
+import { showError, showToast, appConfirm, appPrompt } from '@/components/ui/feedback';
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 
 import {
@@ -469,13 +471,19 @@ export const WeeklyDigest: React.FC = () => {
   /** 文面・吹き出しを手で直したか（立っていると自動生成で上書きしない。下書きにも残す） */
   const [textEdited, setTextEdited] = useState(false);
   const [greetingEdited, setGreetingEdited] = useState(false);
-  /** 下書き（配信日ごと）の状態と最後に保存した時刻 */
+  /** 下書き（配信日ごとに複数）: 一覧、いま開いている下書きの id と名前、保存状態、最後に保存した時刻 */
+  const [drafts, setDrafts] = useState<WeeklyDigestDraft[]>([]);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState<string | null>(null);
   const [draftState, setDraftState] = useState<'loading' | 'idle' | 'saving' | 'saved' | 'error'>('loading');
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   /** 最後に読み込んだ／保存した下書きのスナップショット（同じ内容なら保存しない） */
   const lastDraftRef = useRef<string>('');
-  /** DBに下書きの行があるか（既定のままなら行を作らない） */
-  const hasDraftRowRef = useRef(false);
+  /** 自動保存のタイマーから見るための現在値（state だと古い値を掴むため） */
+  const draftIdRef = useRef<string | null>(null);
+  const draftNameRef = useRef<string | null>(null);
+  /** 一覧から選んだ下書き（配信日が違うときは配信日を変えてから開く） */
+  const pendingDraftRef = useRef<WeeklyDigestDraft | null>(null);
   /** 一押しごとの画像の切り出し（予定ID → {x,y,scale}）。初期値は予定カードの hero_crop（無ければ旧 hero_crop_y） */
   const [crops, setCrops] = useState<Record<string, HeroCrop>>({});
   const [savingCrop, setSavingCrop] = useState<string | null>(null);
@@ -541,12 +549,11 @@ export const WeeklyDigest: React.FC = () => {
   );
   const DEFAULT_DRAFT_KEY = JSON.stringify({ topic_ids: null, excluded_ids: [], link_kinds: {}, greeting: null, text: null, image_mode: 'flyer' });
 
-  // 配信日が変わったら、その日の下書きを読み込む（無ければ自動＝既定に戻す）
-  useEffect(() => {
-    let cancelled = false;
-    setDraftState('loading');
-    setDraftSavedAt(null);
-    // まず既定に戻す（下書きがあれば直後に上書きされる）
+  /** 下書きの表示名（名前が無ければ「配信日の下書き」） */
+  const draftLabel = (d: Pick<WeeklyDigestDraft, 'base_date' | 'name'>) => d.name?.trim() || `${md(d.base_date)} の下書き`;
+
+  /** 画面を「自動＝既定」に戻し、開いている下書きを無しにする（配信日はそのまま） */
+  const resetToDefaults = () => {
     setTopicIds(undefined);
     setExcluded(new Set());
     setLinkKinds({});
@@ -554,41 +561,75 @@ export const WeeklyDigest: React.FC = () => {
     setGreetingEdited(false);
     setImageMode('flyer');
     lastDraftRef.current = DEFAULT_DRAFT_KEY;
-    hasDraftRowRef.current = false;
-    getWeeklyDigestDraft(baseDate)
-      .then((d) => {
+    draftIdRef.current = null;
+    draftNameRef.current = null;
+    setDraftId(null);
+    setDraftName(null);
+    setDraftSavedAt(null);
+  };
+
+  /** 下書きの内容を画面に反映し、それを「開いている下書き」にする */
+  const applyDraft = (d: WeeklyDigestDraft) => {
+    const topic = Array.isArray(d.topic_ids) ? (d.topic_ids as string[]) : undefined;
+    const ex = Array.isArray(d.excluded_ids) ? (d.excluded_ids as string[]) : [];
+    const lk = (d.link_kinds && typeof d.link_kinds === 'object' ? d.link_kinds : {}) as Record<string, LinkKind>;
+    const mode = (['flyer', 'topic', 'hybrid', 'list'] as ImageMode[]).includes(d.image_mode as ImageMode) ? (d.image_mode as ImageMode) : 'flyer';
+    setTopicIds(topic);
+    setExcluded(new Set(ex));
+    setLinkKinds(lk);
+    setImageMode(mode);
+    if (d.greeting != null) {
+      setGreeting(d.greeting);
+      setGreetingEdited(true);
+    } else {
+      setGreetingEdited(false);
+    }
+    if (d.text != null) {
+      setText(d.text);
+      setTextEdited(true);
+    } else {
+      setTextEdited(false);
+    }
+    lastDraftRef.current = JSON.stringify({
+      topic_ids: topic ?? null,
+      excluded_ids: [...ex].sort(),
+      link_kinds: lk,
+      greeting: d.greeting ?? null,
+      text: d.text ?? null,
+      image_mode: mode,
+    });
+    draftIdRef.current = d.id;
+    draftNameRef.current = d.name;
+    setDraftId(d.id);
+    setDraftName(d.name);
+    setDraftSavedAt(d.updated_at ?? null);
+    setDraftState('saved');
+  };
+
+  /** 下書きの一覧を読み直す（返り値は最新の一覧） */
+  const refreshDrafts = async () => {
+    const list = await listWeeklyDigestDrafts();
+    setDrafts(list);
+    return list;
+  };
+
+  // 配信日が変わったら: 一覧から選んだ下書きがあればそれを、無ければその日のいちばん新しい下書きを開く（無ければ自動＝既定）
+  useEffect(() => {
+    let cancelled = false;
+    setDraftState('loading');
+    resetToDefaults();
+    const pending = pendingDraftRef.current;
+    pendingDraftRef.current = null;
+    if (pending && pending.base_date === baseDate) {
+      applyDraft(pending);
+      return;
+    }
+    refreshDrafts()
+      .then((list) => {
         if (cancelled) return;
-        if (d) {
-          const topic = Array.isArray(d.topic_ids) ? (d.topic_ids as string[]) : undefined;
-          const ex = Array.isArray(d.excluded_ids) ? (d.excluded_ids as string[]) : [];
-          const lk = (d.link_kinds && typeof d.link_kinds === 'object' ? d.link_kinds : {}) as Record<string, LinkKind>;
-          const mode = (['flyer', 'topic', 'hybrid', 'list'] as ImageMode[]).includes(d.image_mode as ImageMode) ? (d.image_mode as ImageMode) : 'flyer';
-          setTopicIds(topic);
-          setExcluded(new Set(ex));
-          setLinkKinds(lk);
-          setImageMode(mode);
-          if (d.greeting != null) {
-            setGreeting(d.greeting);
-            setGreetingEdited(true);
-          }
-          if (d.text != null) {
-            setText(d.text);
-            setTextEdited(true);
-          }
-          lastDraftRef.current = JSON.stringify({
-            topic_ids: topic ?? null,
-            excluded_ids: [...ex].sort(),
-            link_kinds: lk,
-            greeting: d.greeting ?? null,
-            text: d.text ?? null,
-            image_mode: mode,
-          });
-          hasDraftRowRef.current = true;
-          setDraftSavedAt(d.updated_at ?? null);
-          setDraftState('saved');
-        } else {
-          setDraftState('idle');
-        }
+        const latest = list.find((d) => d.base_date === baseDate);
+        if (latest) applyDraft(latest);
+        else setDraftState('idle');
       })
       .catch(() => {
         if (!cancelled) setDraftState('idle');
@@ -599,20 +640,27 @@ export const WeeklyDigest: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseDate]);
 
-  // 下書きの項目が変わったら 1.5 秒後に自動保存（読み込み中・内容が同じ・既定のまま行が無いときは保存しない）
+  // 下書きの項目が変わったら 1.5 秒後に自動保存（読み込み中・内容が同じ・既定のまま下書きが無いときは保存しない）
   useEffect(() => {
     if (draftState === 'loading') return;
     const key = JSON.stringify(draftBody);
     if (key === lastDraftRef.current) return;
-    if (key === DEFAULT_DRAFT_KEY && !hasDraftRowRef.current) return;
+    if (key === DEFAULT_DRAFT_KEY && !draftIdRef.current) return;
     const timer = setTimeout(async () => {
       setDraftState('saving');
       try {
-        await saveWeeklyDigestDraft({ base_date: baseDate, ...draftBody });
+        const isNew = !draftIdRef.current;
+        // 新規のときの名前は「下書き1」「下書き2」…（同じ配信日の件数＋1）
+        const name = isNew ? `下書き${drafts.filter((d) => d.base_date === baseDate).length + 1}` : draftNameRef.current;
+        const row = await saveWeeklyDigestDraft({ id: draftIdRef.current ?? undefined, base_date: baseDate, name, ...draftBody });
         lastDraftRef.current = key;
-        hasDraftRowRef.current = true;
-        setDraftSavedAt(new Date().toISOString());
+        draftIdRef.current = row.id;
+        draftNameRef.current = row.name;
+        setDraftId(row.id);
+        setDraftName(row.name);
+        setDraftSavedAt(row.updated_at ?? new Date().toISOString());
         setDraftState('saved');
+        refreshDrafts().catch(() => {});
       } catch (e) {
         console.warn('下書きの自動保存に失敗:', e);
         setDraftState('error');
@@ -622,26 +670,69 @@ export const WeeklyDigest: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftBody, draftState === 'loading']);
 
-  /** 下書きを捨てて自動（既定）に戻す */
+  /** 一覧から下書きを開く（配信日が違えば配信日を変え、そのあと開く） */
+  const openDraft = (d: WeeklyDigestDraft) => {
+    if (d.id === draftIdRef.current) return;
+    if (d.base_date !== baseDate) {
+      pendingDraftRef.current = d;
+      setBaseDate(d.base_date);
+      return;
+    }
+    setDraftState('loading');
+    resetToDefaults();
+    applyDraft(d);
+  };
+
+  /** この配信日で新しい下書きを始める（最初の変更で保存される） */
+  const newDraft = () => {
+    setDraftState('loading');
+    resetToDefaults();
+    setDraftState('idle');
+  };
+
+  /** 下書きの名前を変える */
+  const renameDraft = async () => {
+    if (!draftIdRef.current) return;
+    const name = await appPrompt({ title: '下書きの名前', message: '例: A案、チラシ強め、10/5 用', defaultValue: draftNameRef.current ?? '', confirmLabel: '変更' });
+    if (name == null) return;
+    try {
+      await renameWeeklyDigestDraft(draftIdRef.current, name.trim());
+      draftNameRef.current = name.trim();
+      setDraftName(name.trim());
+      refreshDrafts().catch(() => {});
+    } catch (e) {
+      console.error(e);
+      showError('名前を変えられませんでした。');
+    }
+  };
+
+  /** いまの内容で下書きを複製し、複製の方を開く */
+  const duplicateDraft = async () => {
+    try {
+      const name = `${draftNameRef.current?.trim() || `下書き`} のコピー`;
+      const row = await saveWeeklyDigestDraft({ base_date: baseDate, name, ...draftBody });
+      applyDraft(row);
+      refreshDrafts().catch(() => {});
+      showToast(`「${name}」を作りました。こちらを編集しています`);
+    } catch (e) {
+      console.error(e);
+      showError('複製できませんでした。');
+    }
+  };
+
+  /** 開いている下書きを削除して自動（既定）に戻す */
   const discardDraft = async () => {
     const ok = await appConfirm({
-      title: `${md(baseDate)} の下書きを捨てますか？`,
+      title: `「${draftName?.trim() || `${md(baseDate)} の下書き`}」を捨てますか？`,
       message: '一押しの選択・この週だけ外した予定・リンク先・手で直した文が消え、自動で組み立てた状態に戻ります。紹介文と画像の切り出し（予定カードに保存したもの）は残ります。',
       confirmLabel: '下書きを捨てる',
     });
     if (!ok) return;
     try {
-      if (hasDraftRowRef.current) await deleteWeeklyDigestDraft(baseDate);
-      hasDraftRowRef.current = false;
-      lastDraftRef.current = DEFAULT_DRAFT_KEY;
-      setTopicIds(undefined);
-      setExcluded(new Set());
-      setLinkKinds({});
-      setTextEdited(false);
-      setGreetingEdited(false);
-      setImageMode('flyer');
-      setDraftSavedAt(null);
+      if (draftIdRef.current) await deleteWeeklyDigestDraft(draftIdRef.current);
+      resetToDefaults();
       setDraftState('idle');
+      refreshDrafts().catch(() => {});
       showToast('下書きを捨てました');
     } catch (e) {
       console.error(e);
@@ -987,7 +1078,7 @@ export const WeeklyDigest: React.FC = () => {
       setSendNote(`✅ ${label}（${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}）`);
       showToast(label);
       if (mode !== 'validate') {
-        await recordWeeklyDigestSend({ base_date: baseDate, mode, text: greeting, messages, line_status: result.status });
+        await recordWeeklyDigestSend({ base_date: baseDate, mode, text: greeting, messages, line_status: result.status, draft_id: draftId });
         loadHistory();
       }
     } catch (e: any) {
@@ -1053,19 +1144,56 @@ export const WeeklyDigest: React.FC = () => {
             </button>
           </div>
         </div>
-        {/* 下書きの状態（配信日ごとに自動保存。一押しの選択・外した予定・リンク先・手で直した文・画像の種類） */}
-        <div className="flex flex-wrap items-center justify-end gap-2 mt-1 text-[11px] text-slate-400">
-          <span className="flex items-center gap-1">
+        {/* 下書き（配信日ごとに複数。一押しの選択・外した予定・リンク先・手で直した文・画像の種類を自動保存） */}
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 mt-2 text-[11px] text-slate-500">
+          <label className="flex items-center gap-1">
+            <span className="text-slate-500">下書き</span>
+            <select
+              value={draftId ?? 'new'}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === 'new') newDraft();
+                else {
+                  const d = drafts.find((x) => x.id === v);
+                  if (d) openDraft(d);
+                }
+              }}
+              className="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white max-w-[280px]"
+              title="開く下書きを選ぶ。配信日が違う下書きを選ぶと配信日も変わります"
+            >
+              <option value="new">＋ 新しい下書き（{md(baseDate)} 配信）</option>
+              {Array.from(new Set(drafts.map((d) => d.base_date))).map((date) => (
+                <optgroup key={date} label={`${md(date)} 配信`}>
+                  {drafts
+                    .filter((d) => d.base_date === date)
+                    .map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {draftLabel(d)}（更新 {new Date(d.updated_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <span className="flex items-center gap-1 text-slate-400">
             {draftState === 'loading' && (<><Loader2 size={11} className="animate-spin" /> 下書きを確認中…</>)}
-            {draftState === 'saving' && (<><Loader2 size={11} className="animate-spin" /> 下書きを保存中…</>)}
-            {draftState === 'saved' && (<><Check size={11} className="text-emerald-600" /> 下書きを保存済み{draftSavedAt ? `（${new Date(draftSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）` : ''}</>)}
-            {draftState === 'idle' && '下書きは変更すると自動で保存されます（この配信日の下書きはまだありません）'}
-            {draftState === 'error' && <span className="text-red-600">下書きを保存できませんでした（sql/migrations/2026-09-24-weekly-digest-drafts.sql が未適用かもしれません）</span>}
+            {draftState === 'saving' && (<><Loader2 size={11} className="animate-spin" /> 保存中…</>)}
+            {draftState === 'saved' && (<><Check size={11} className="text-emerald-600" /> 保存済み{draftSavedAt ? `（${new Date(draftSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）` : ''}</>)}
+            {draftState === 'idle' && '新しい下書き。変更すると自動で保存されます'}
+            {draftState === 'error' && <span className="text-red-600">保存できませんでした（sql/migrations/2026-09-24-weekly-digest-drafts*.sql が未適用かもしれません）</span>}
           </span>
-          {(draftState === 'saved' || draftState === 'error') && (
-            <button onClick={discardDraft} className="flex items-center gap-1 text-slate-500 hover:text-red-600" title="この配信日の下書きを消して、自動で組み立てた状態に戻す">
-              <Trash2 size={11} /> 下書きを捨てる
-            </button>
+          {draftId && (
+            <>
+              <button onClick={renameDraft} className="flex items-center gap-1 hover:text-slate-800" title="この下書きの名前を変える">
+                <Pencil size={11} /> 名前を変える
+              </button>
+              <button onClick={duplicateDraft} className="flex items-center gap-1 hover:text-slate-800" title="いまの内容で別の下書きを作る（A案・B案の比較用）">
+                <Files size={11} /> 複製
+              </button>
+              <button onClick={discardDraft} className="flex items-center gap-1 hover:text-red-600" title="この下書きを消して、自動で組み立てた状態に戻す">
+                <Trash2 size={11} /> 捨てる
+              </button>
+            </>
           )}
         </div>
 

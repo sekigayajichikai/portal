@@ -98,6 +98,8 @@ export interface WeeklyDigestSend {
   text: string | null;
   messages: unknown;
   line_status: number | null;
+  /** 送信元の下書き（weekly_digest_drafts.id。無ければ null） */
+  draft_id?: string | null;
   sent_at: string;
 }
 
