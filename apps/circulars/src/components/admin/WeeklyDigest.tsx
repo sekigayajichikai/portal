@@ -87,11 +87,21 @@ const IMAGE_MODES: Array<{ key: ImageMode; label: string; hint: string }> = [
 
 /** PDFの1ページ目を canvas に描いたもの（URLごとにキャッシュ） */
 const flyerCache = new Map<string, HTMLCanvasElement>();
+/** 読み込み中の Promise（同じPDFを同時に2回描かないため。開発モードの二重実行やメモリ節約） */
+const flyerInflight = new Map<string, Promise<HTMLCanvasElement>>();
 
 /** PDF 1ページ目を最大 1400px の canvas にレンダリングする（PdfThumbnail と同じ pdf.js 設定） */
-async function renderPdfFirstPage(url: string): Promise<HTMLCanvasElement> {
+function renderPdfFirstPage(url: string): Promise<HTMLCanvasElement> {
   const cached = flyerCache.get(url);
-  if (cached) return cached;
+  if (cached) return Promise.resolve(cached);
+  const inflight = flyerInflight.get(url);
+  if (inflight) return inflight;
+  const p = renderPdfFirstPageUncached(url).finally(() => flyerInflight.delete(url));
+  flyerInflight.set(url, p);
+  return p;
+}
+
+async function renderPdfFirstPageUncached(url: string): Promise<HTMLCanvasElement> {
   const pdfjsLib = await import('pdfjs-dist');
   const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
   pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -638,9 +648,27 @@ export const WeeklyDigest: React.FC = () => {
     setText(renderText(digest, { shortUrls, linkKinds }));
   }, [digest, shortUrls, linkKinds]);
 
-  // 一押しごとのカード画像の元（チラシPDFの1ページ目、または記事の写真）を canvas に。まだ読んでいない予定だけ
+  /** 読み込み失敗の理由（予定ID → メッセージ）。「もう一度読み込む」で消す */
+  const [flyerErrors, setFlyerErrors] = useState<Record<string, string>>({});
+  const [flyerReload, setFlyerReload] = useState(0);
+  /** 失敗した予定の画像をもう一度読み込む */
+  const retryFlyer = (id: string) => {
+    setFlyers((prev) => {
+      const n = { ...prev };
+      delete n[id];
+      return n;
+    });
+    setFlyerErrors((prev) => {
+      const n = { ...prev };
+      delete n[id];
+      return n;
+    });
+    setFlyerReload((x) => x + 1);
+  };
+
+  // 一押しごとのカード画像の元（チラシPDFの1ページ目、または記事の写真）を canvas に。まだ読んでいない予定だけ。
+  // 途中でキャンセルすると「読み込み中」のまま止まることがあるので、結果は常に保存する（表示中でない予定に入っても害はない）
   useEffect(() => {
-    let cancelled = false;
     for (const t of digest.topics) {
       if (t.id in flyers) continue;
       const src = topicImageSource(t);
@@ -651,21 +679,18 @@ export const WeeklyDigest: React.FC = () => {
       setFlyerStates((prev) => ({ ...prev, [t.id]: 'loading' }));
       (src.kind === 'pdf' ? renderPdfFirstPage(src.url) : loadImageCanvas(src.url))
         .then((c) => {
-          if (cancelled) return;
           setFlyers((prev) => ({ ...prev, [t.id]: c }));
           setFlyerStates((prev) => ({ ...prev, [t.id]: 'idle' }));
         })
         .catch((e) => {
-          console.error('チラシPDFの画像化エラー:', e);
-          if (cancelled) return;
+          console.error('カード画像の読み込みエラー:', e);
           setFlyers((prev) => ({ ...prev, [t.id]: null }));
           setFlyerStates((prev) => ({ ...prev, [t.id]: 'error' }));
+          setFlyerErrors((prev) => ({ ...prev, [t.id]: e?.message ? String(e.message) : String(e) }));
         });
     }
-    return () => {
-      cancelled = true;
-    };
-  }, [topicKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topicKey, flyerReload]);
 
   /** 配信画像（1040×1040）用: 先頭の一押しのチラシ（全体） */
   const firstFlyer = digest.topics[0] ? (flyers[digest.topics[0].id] ?? null) : null;
@@ -1000,7 +1025,20 @@ export const WeeklyDigest: React.FC = () => {
                       {flyerStates[t.id] === 'loading' ? (
                         <p className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 画像を読み込み中...</p>
                       ) : !flyer ? (
-                        <p className="text-slate-400">{imgSrc ? '画像を読み込めませんでした。' : 'この予定にはチラシPDFも記事の写真も無いので、カードは文字だけになります。'}</p>
+                        imgSrc ? (
+                          <div className="text-slate-500 space-y-1">
+                            <p>
+                              画像を読み込めませんでした。{' '}
+                              <button onClick={() => retryFlyer(t.id)} className="text-blue-600 hover:underline font-bold">
+                                もう一度読み込む
+                              </button>
+                            </p>
+                            {flyerErrors[t.id] && <p className="text-[11px] text-slate-400 break-all">理由: {flyerErrors[t.id]}</p>}
+                            <p className="text-[11px] text-slate-400">PCのメモリが足りないときやPDFが大きいときに起きることがあります。それでも駄目なら、画像なしのカードで送れます。</p>
+                          </div>
+                        ) : (
+                          <p className="text-slate-400">この予定にはチラシPDFも記事の写真も無いので、カードは文字だけになります。</p>
+                        )
                       ) : (
                         <div>
                           <CropEditor source={flyer} value={curCrop} onChange={(c) => setCrops((prev) => ({ ...prev, [t.id]: c }))} />
