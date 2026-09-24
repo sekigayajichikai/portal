@@ -459,7 +459,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
           <div className="flex-1">
             <h1 className={`text-2xl font-bold flex items-center gap-2 ${isSimpleMode ? 'text-slate-800' : ''}`}>
               <FileText size={24} />
-              <span>関ヶ谷自治会<br className="sm:hidden" />電子回覧板</span>
+              <span>関ヶ谷自治会<br className="sm:hidden" />ポータル</span>
             </h1>
           </div>
           {/* 文字サイズ切替 */}

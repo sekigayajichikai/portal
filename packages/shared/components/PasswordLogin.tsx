@@ -59,8 +59,8 @@ export const PasswordLogin: React.FC = () => {
       <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
         {/* ヘッダー */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">CC-SaaS</h1>
-          <p className="text-gray-600">自治会向け多機能Webアプリ</p>
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">関ヶ谷自治会ポータル</h1>
+          <p className="text-gray-600">管理画面にログイン</p>
         </div>
 
         {/* ログインフォーム */}

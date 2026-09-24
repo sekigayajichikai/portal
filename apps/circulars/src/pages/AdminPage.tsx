@@ -41,7 +41,7 @@ function AdminContent() {
             <FileText size={18} />
           </div>
           <span className="text-xl font-bold text-slate-800 tracking-tight">
-            電子回覧板
+            関ヶ谷ポータル 管理
           </span>
         </div>
         <div className="flex items-center gap-1">
