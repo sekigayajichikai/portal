@@ -12,8 +12,10 @@ import { type Digest, type LinkKind, md, shortTime, siteUrl, topicLink, audience
 interface FlexPreviewProps {
   digest: Digest;
   greeting: string;
-  /** 一押しごとのチラシ画像（予定ID → 正方形に切り出した data URL か https）。無ければ画像なし */
+  /** 一押しごとのチラシ画像（予定ID → 枠に切り出した data URL か https）。無ければ画像なし */
   flyerSrcs: Record<string, string | null>;
+  /** 一押しごとの画像枠の形（予定ID → '1:1' | '4:3' | '16:9'）。無ければ 1:1 */
+  flyerAspects?: Record<string, '1:1' | '4:3' | '16:9'>;
   /** 一押しごとのリンク先の指定 */
   linkKinds: Record<string, LinkKind>;
 }
@@ -61,7 +63,7 @@ const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; pref
   );
 };
 
-export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, flyerSrcs, linkKinds }) => {
+export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, flyerSrcs, flyerAspects, linkKinds }) => {
   return (
     <div className="rounded-xl p-3 space-y-2" style={{ background: '#7494c0' }}>
       {/* ① テキスト */}
@@ -84,7 +86,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
                 const src = flyerSrcs[t.id] ?? null;
                 return (
                   <div key={t.id} className={i > 0 ? 'mt-4 pt-4 border-t border-slate-200' : ''}>
-                    {src && <img src={src} alt="" className="w-full bg-slate-100 rounded" style={{ aspectRatio: '1/1', objectFit: 'cover' }} />}
+                    {src && <img src={src} alt="" className="w-full bg-slate-100 rounded" style={{ aspectRatio: (flyerAspects?.[t.id] ?? '1:1').replace(':', '/'), objectFit: 'cover' }} />}
                     <div className="pt-2 space-y-1">
                       <div className="text-base font-bold leading-snug">{t.title}</div>
                       <div className="text-sm font-bold text-blue-700">

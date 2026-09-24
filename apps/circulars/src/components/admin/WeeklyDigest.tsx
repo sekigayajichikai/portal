@@ -66,7 +66,7 @@ import {
 import { buildGreetingText, buildWeeklyMessages } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
 import { CropEditor } from './CropEditor';
-import { type HeroCrop, normalizeCrop, drawCropped, loadImageCanvas } from './heroCrop';
+import { type HeroCrop, type CropAspect, normalizeCrop, resolveCrop, drawCropped, loadImageCanvas } from './heroCrop';
 
 const REPORT_NEWSLETTER_TITLE = '関ヶ谷レポート';
 /** canvas のフォント */
@@ -607,7 +607,9 @@ export const WeeklyDigest: React.FC = () => {
 
   /** 画像の切り出し（位置と拡大）を予定カードに保存する（次回以降も同じ切り出し） */
   const saveCrop = async (topic: PublicEventCard) => {
-    const crop = normalizeCrop(crops[topic.id]);
+    // 枠の形が未指定なら、いま表示している既定（元画像の向きで決めたもの）を確定して保存する
+    const flyer = flyers[topic.id];
+    const crop = flyer ? resolveCrop(normalizeCrop(crops[topic.id]), flyer.width, flyer.height) : normalizeCrop(crops[topic.id]);
     setSavingCrop(topic.id);
     try {
       const saved = await updateEventCard(topic.id, { hero_crop: crop, hero_crop_y: crop.y });
@@ -741,7 +743,16 @@ export const WeeklyDigest: React.FC = () => {
     const out: Record<string, HTMLCanvasElement | null> = {};
     for (const t of digest.topics) {
       const flyer = flyers[t.id];
-      out[t.id] = flyer ? drawCropped(flyer, normalizeCrop(crops[t.id]), Math.min(flyer.width, flyer.height, 1040)) : null;
+      out[t.id] = flyer ? drawCropped(flyer, resolveCrop(normalizeCrop(crops[t.id]), flyer.width, flyer.height), Math.min(flyer.width, 1040)) : null;
+    }
+    return out;
+  }, [digest.topics, flyers, crops]);
+  /** 一押しごとの画像枠の形（Flex の aspectRatio とプレビューに使う） */
+  const flyerAspects = useMemo(() => {
+    const out: Record<string, CropAspect> = {};
+    for (const t of digest.topics) {
+      const flyer = flyers[t.id];
+      if (flyer) out[t.id] = resolveCrop(normalizeCrop(crops[t.id]), flyer.width, flyer.height).aspect;
     }
     return out;
   }, [digest.topics, flyers, crops]);
@@ -766,7 +777,7 @@ export const WeeklyDigest: React.FC = () => {
       const blob = await new Promise<Blob | null>((resolve) => card.toBlob(resolve, 'image/jpeg', 0.85));
       if (blob) flyerImageUrls[t.id] = await uploadWeeklyImage(blob, baseDate, `flyer-${i + 1}`);
     }
-    return buildWeeklyMessages(digest, greeting, { flyerImageUrls, linkKinds });
+    return buildWeeklyMessages(digest, greeting, { flyerImageUrls, flyerAspects, linkKinds });
   };
 
   /** validate: 形式チェックのみ / test: 自分にだけ / broadcast: 全員 */
@@ -803,7 +814,7 @@ export const WeeklyDigest: React.FC = () => {
   /** Flex JSON をコピー（LINE Developers の Flex Message Simulator に貼って確認する用） */
   const copyFlexJson = async () => {
     try {
-      const messages = buildWeeklyMessages(digest, greeting, { flyerImageUrls: {}, linkKinds });
+      const messages = buildWeeklyMessages(digest, greeting, { flyerImageUrls: {}, flyerAspects, linkKinds });
       const flex = messages.filter((m) => m.type === 'flex');
       // Flex Message Simulator は1メッセージずつ貼るので、複数あれば配列で（一押し → カルーセル の順）
       await navigator.clipboard.writeText(JSON.stringify(flex.length === 1 ? flex[0] : flex, null, 2));
@@ -965,7 +976,7 @@ export const WeeklyDigest: React.FC = () => {
               const imgSrc = topicImageSource(t);
               const savedCrop = normalizeCrop(t.hero_crop, t.hero_crop_y);
               const curCrop = normalizeCrop(crops[t.id]);
-              const cropDirty = curCrop.x !== savedCrop.x || curCrop.y !== savedCrop.y || curCrop.scale !== savedCrop.scale;
+              const cropDirty = curCrop.x !== savedCrop.x || curCrop.y !== savedCrop.y || curCrop.scale !== savedCrop.scale || (curCrop.aspect ?? null) !== (savedCrop.aspect ?? null);
               return (
                 <div key={t.id} className={`mt-3 rounded-lg border px-3 py-2 ${t.description ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}>
                   <div className="flex items-center justify-between gap-2 mb-1">
@@ -1253,7 +1264,7 @@ export const WeeklyDigest: React.FC = () => {
 
             <div>
               <label className="text-xs font-bold text-slate-500 block mb-1">見た目のプレビュー（実際の描画はテスト送信で確認）</label>
-              <FlexPreview digest={digest} greeting={greeting} flyerSrcs={flyerSrcs} linkKinds={linkKinds} />
+              <FlexPreview digest={digest} greeting={greeting} flyerSrcs={flyerSrcs} flyerAspects={flyerAspects} linkKinds={linkKinds} />
             </div>
           </div>
         </div>

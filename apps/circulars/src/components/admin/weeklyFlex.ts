@@ -31,8 +31,10 @@ const AMBER = '#b45309';
 const GRAY = '#888888';
 
 export interface FlexBuildOptions {
-  /** 一押しごとのチラシ画像（予定ID → https・正方形に切り出したもの）。無い予定は画像なし */
+  /** 一押しごとのチラシ画像（予定ID → https・枠に切り出したもの）。無い予定は画像なし */
   flyerImageUrls: Record<string, string | null>;
+  /** 一押しごとの画像枠の形（予定ID → '1:1' | '4:3' | '16:9'）。無ければ 1:1 */
+  flyerAspects?: Record<string, '1:1' | '4:3' | '16:9'>;
   /** 一押しごとのリンク先の指定（予定ID → pdf / article / event）。無ければ チラシPDF → 記事 → 予定ページ の順 */
   linkKinds: Record<string, LinkKind>;
 }
@@ -141,7 +143,8 @@ function topicBubble(d: Digest, opts: FlexBuildOptions) {
         type: 'image',
         url: img,
         size: 'full',
-        aspectRatio: '1:1',
+        // 枠の形は切り出しと同じ（横長の写真は 4:3、チラシは 1:1）
+        aspectRatio: opts.flyerAspects?.[t.id] ?? '1:1',
         aspectMode: 'cover',
         backgroundColor: '#f5f5f5',
         margin: i > 0 ? 'lg' : 'none',
