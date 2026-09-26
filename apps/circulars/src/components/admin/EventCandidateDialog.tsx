@@ -17,13 +17,16 @@ import {
   updateEventCard,
   getOrganizers,
   addOrganizer,
+  getEventCardsFrom,
   type EventCandidate,
   type EventKind,
   type EventCard,
+  type EventCardWithNewsletter,
 } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
 import { Loader2, AlertCircle, X, Sparkles, Copy, Check, Plus } from 'lucide-react';
 import { ProcessingIndicator, showToast } from '@/components/ui/feedback';
+import { isSameEvent } from './eventMatch';
 
 /**
  * 編集可能なイベント候補（選択状態付き）
@@ -39,10 +42,13 @@ interface EditableCandidate extends EventCandidate {
   /** weekly_topic の機械判定の根拠（単独チラシ / 複数掲載）。AIの topic_reason とは別に表示する */
   topicHints: string[];
   /**
-   * 同じイベント（日付＋正規化タイトル）が既に登録済みなら、その既存カードのID。
+   * 同じイベント（同じ日付＋似た題名。eventMatch.ts）が既に登録済みなら、その既存カードのID。
+   * 別の号のカード（9月号の行事予定に載っていた10月の予定など）も対象。
    * 登録時は新規追加せず、既存カードの空欄（締切・種別・⭐など）だけを補完する（元のデータは壊さない）
    */
   existingId: string | null;
+  /** 既存カードが別の号にあるとき、その号の題名（同じ号なら null） */
+  existingNewsletterTitle: string | null;
 }
 
 /** 性質(kind)の表示メタ */
@@ -52,18 +58,6 @@ const KIND_META: Record<EventKind, { label: string; icon: string; title: string 
   class: { label: '教室', icon: '📚', title: '定例の教室・講座・サロン' },
 };
 const KIND_KEYS: EventKind[] = ['community', 'support', 'class'];
-
-/**
- * 重複掲載の判定に使うタイトルの正規化（空白・括弧・記号を除き、先頭8文字で同一視）
- */
-function topicKey(date: string, title: string): string {
-  const t = title
-    .replace(/[\s　]/g, '')
-    .replace(/[「」『』（）()【】\[\]〈〉《》・･、。,.!！?？:：;；~〜～\-‐–—]/g, '')
-    .toLowerCase()
-    .slice(0, 8);
-  return `${date}__${t}`;
-}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -332,6 +326,26 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
   const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
   /** 記事テキストも抽出対象に含めるか */
   const [includeArticles, setIncludeArticles] = useState(articles.length > 0);
+  /**
+   * 他の号の登録済みカード（今日以降）。開いた時点で読み始め、突き合わせのときに待つ。
+   * 9月号の行事予定に載った10月の予定が、10月号の抽出で二重登録されるのを防ぐ
+   */
+  const crossCardsRef = useRef<Promise<EventCardWithNewsletter[]> | null>(null);
+  const [crossCards, setCrossCards] = useState<EventCardWithNewsletter[]>([]);
+  useEffect(() => {
+    const today = new Date();
+    const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const p = getEventCardsFrom(ymd)
+      .then((cards) => cards.filter((c) => c.newsletter_id !== newsletter.id))
+      .catch((e) => {
+        console.warn('他の号の予定カードを読めませんでした（同じ号だけで重複判定します）:', e);
+        return [] as EventCardWithNewsletter[];
+      });
+    crossCardsRef.current = p;
+    p.then(setCrossCards);
+  }, [newsletter.id]);
+  /** 重複判定と補完の対象になる全カード（同じ号 → 他の号の順） */
+  const allCards: Array<EventCard & { newsletter_title?: string | null }> = [...existingCards, ...crossCards];
 
   /** 主催団体をマスターに新規登録して選択候補に反映（テーブル未作成でも選択は通す） */
   const handleCreateOrganizer = async (name: string): Promise<void> => {
@@ -466,46 +480,45 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
       .sort((a, b) => (a.value.source === 'article' ? -1 : 1));
 
     // 週次配信トピックの機械判定（AI判定より優先）
-    //  1) 複数掲載: 同じイベント（日付＋正規化タイトル）が記事とPDFの両方、または2本以上のPDFに載っている
+    //  1) 複数掲載: 同じイベント（同じ日付＋似た題名）が記事とPDFの両方、または2本以上のPDFに載っている
     //  2) 単独チラシ: 1本のPDFから抽出されたイベントが1件だけ（＝そのイベントのためのチラシ）
-    const sourcesByKey = new Map<string, Set<string>>();
-    for (const r of ordered) {
-      for (const c of r.value.items) {
-        if (c.event_date < todayStr) continue;
-        const key = topicKey(c.event_date, c.title);
-        const set = sourcesByKey.get(key) ?? new Set<string>();
-        set.add(r.value.source === 'article' ? 'article' : `pdf:${r.value.pdfUrl}`);
-        sourcesByKey.set(key, set);
-      }
-    }
+    const allItems = ordered.flatMap((r) =>
+      r.value.items
+        .filter((c) => c.event_date >= todayStr)
+        .map((c) => ({ item: c, src: r.value.source === 'article' ? 'article' : `pdf:${r.value.pdfUrl}` }))
+    );
+    const sourcesOf = (c: EventCandidate) => new Set(allItems.filter((x) => isSameEvent(x.item, c)).map((x) => x.src));
 
-    const seen = new Set<string>();
+    // 他の号の登録済みカード（開いたときに読み始めている）。同じ号 → 他の号の順で突き合わせる
+    const cross = (await crossCardsRef.current?.catch(() => [])) ?? [];
+    const cards: Array<EventCard & { newsletter_title?: string | null }> = [...existingCards, ...cross];
+
+    const seen: EventCandidate[] = [];
     const merged: EditableCandidate[] = [];
     for (const r of ordered) {
       const futureItems = r.value.items.filter((c) => c.event_date >= todayStr);
       const isSingleFlyer = r.value.source === 'pdf' && futureItems.length === 1;
       for (const c of futureItems) {
-        // 過去除外の保険は上で済み（今日より前の予定は候補に載せない）
-        const key = `${c.event_date}__${c.title.trim()}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
+        // 過去除外の保険は上で済み（今日より前の予定は候補に載せない）。同じ予定が別の出典にもあれば先の（記事側の）1件だけ残す
+        if (seen.some((s) => isSameEvent(s, c))) continue;
+        seen.push(c);
 
         const hints: string[] = [];
-        if ((sourcesByKey.get(topicKey(c.event_date, c.title))?.size ?? 0) >= 2) hints.push('複数掲載');
+        if (sourcesOf(c).size >= 2) hints.push('複数掲載');
         if (isSingleFlyer) hints.push('単独チラシ');
         // 機械判定に当たれば true。当たらない場合、支援系(support)はAIの甘い true を抑えて false に倒す
         const weeklyTopic = hints.length > 0 ? true : c.kind === 'support' ? false : c.weekly_topic;
 
-        // 既に登録済みのカードがあれば「補完対象」にする（同じ日付＋正規化タイトル）
-        const existing = existingCards.find(
-          (card) => card.event_date === c.event_date && topicKey(card.event_date, card.title) === topicKey(c.event_date, c.title)
-        );
+        // 既に登録済みのカードがあれば「補完対象」にする（同じ日付＋似た題名。別の号のカードも対象）
+        const existing = cards.find((card) => isSameEvent(card, c));
+        const existingOther = existing && existing.newsletter_id !== newsletter.id ? (existing.newsletter_title ?? '別の号') : null;
 
         merged.push({
           ...c,
           weekly_topic: weeklyTopic,
           topicHints: hints,
           existingId: existing?.id ?? null,
+          existingNewsletterTitle: existingOther,
           selected: true,
           linkArticle: c.article_index !== null && c.has_details,
           source: r.value.source,
@@ -582,7 +595,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
     try {
       let filled = 0;
       for (const c of toFill) {
-        const existing = existingCards.find((card) => card.id === c.existingId);
+        const existing = allCards.find((card) => card.id === c.existingId);
         if (!existing) continue;
         const updates = buildFillUpdates(existing, c);
         if (!updates) continue;
@@ -980,9 +993,13 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                           {c.existingId && (
                             <span
                               className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-100 text-amber-800"
-                              title="同じ日付・名前のカードが既にあります。登録時は新しく追加せず、既存カードの空欄（締切・種別・⭐など）だけを補完します"
+                              title={
+                                c.existingNewsletterTitle
+                                  ? `同じ日付で似た名前のカードが「${c.existingNewsletterTitle}」に既にあります。登録時は新しく追加せず、そのカードの空欄（締切・種別・⭐など）だけを補完します（カードはその号のまま）`
+                                  : '同じ日付で似た名前のカードが既にあります。登録時は新しく追加せず、既存カードの空欄（締切・種別・⭐など）だけを補完します'
+                              }
                             >
-                              ✔ 登録済み → 空欄だけ補完
+                              ✔ 登録済み{c.existingNewsletterTitle ? `（${c.existingNewsletterTitle}）` : ''} → 空欄だけ補完
                             </span>
                           )}
                         </div>

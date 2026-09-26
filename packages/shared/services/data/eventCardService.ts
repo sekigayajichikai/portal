@@ -73,6 +73,29 @@ export async function getEventCards(newsletterId: string): Promise<EventCard[]> 
   return data || [];
 }
 
+/** 号をまたいだイベントカード（重複判定用に号の題名を添える） */
+export type EventCardWithNewsletter = EventCard & { newsletter_title: string | null; newsletter_status: string | null };
+
+/**
+ * 指定日以降のイベントカードを号をまたいで取得（イベント抽出の重複判定用）
+ * 9月号の行事予定と10月号の行事予定のように、別の号に同じ予定が載ることがあるため、
+ * 抽出時は「同じ号」だけでなく全部の号の登録済みカードと突き合わせる。
+ */
+export async function getEventCardsFrom(fromDate: string): Promise<EventCardWithNewsletter[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続');
+  const { data, error } = await supabase
+    .from('event_cards')
+    .select('*, newsletters(title,status)')
+    .gte('event_date', fromDate)
+    .order('event_date', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row: any) => {
+    const { newsletters, ...card } = row;
+    return { ...card, newsletter_title: newsletters?.title ?? null, newsletter_status: newsletters?.status ?? null };
+  });
+}
+
 /** 複数の号のイベントカードをまとめて取得（日付の近い順、日付未定は末尾） */
 export async function getEventCardsForNewsletters(newsletterIds: string[]): Promise<EventCard[]> {
   const supabase = getSupabaseClient();
