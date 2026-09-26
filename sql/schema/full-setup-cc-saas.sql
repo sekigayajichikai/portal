@@ -168,6 +168,16 @@ CREATE TABLE IF NOT EXISTS event_cards (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 会場マスター（予定カードの実施場所。別名は正式名に自動で寄せる。2026-09-26）
+CREATE TABLE IF NOT EXISTS venues (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id TEXT,
+  name TEXT NOT NULL UNIQUE,                 -- 正式名（施設名＋部屋名）
+  aliases TEXT[] NOT NULL DEFAULT '{}',      -- 別名・揺れた表記
+  display_order INTEGER DEFAULT 100,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- 週次配信（今週のお知らせ）の LINE 送信履歴
 CREATE TABLE IF NOT EXISTS weekly_digest_sends (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

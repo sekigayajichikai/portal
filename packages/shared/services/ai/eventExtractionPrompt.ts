@@ -150,6 +150,18 @@ export function buildOrganizerHint(organizerNames: string[]): string {
   );
 }
 
+/**
+ * 登録済み会場をプロンプトに与えるヒント文を作る（場所の表記揺れ低減用）
+ */
+export function buildVenueHint(venueNames: string[]): string {
+  if (!venueNames || venueNames.length === 0) return '';
+  return (
+    '- 【登録済みの会場】event_location が次のいずれかの場所（略称・階数違いを含む）に当たる場合は、表記を揃えるため必ずこの名称をそのまま使う:\n' +
+    venueNames.map((n) => `  ・${n}`).join('\n') +
+    '\n  部屋名まで分かるものは部屋名付きの名称を、施設名しか分からなければ施設名だけの名称を使う。該当が無ければ原文の場所をそのまま入れる。'
+  );
+}
+
 function buildCutoffRule(cutoffDate: string): string {
   return cutoffDate
     ? `- 【過去除外】実際の開催日をそのまま使うこと。その開催日が ${cutoffDate}（本日）より前になる予定は、出力に含めない（除外する）。日付を本日や別の日に書き換えて残してはいけない。${cutoffDate} 当日は含めてよい`
@@ -165,6 +177,8 @@ export interface PdfEventPromptParams {
   isJichikai?: boolean;
   /** 登録済み主催団体名（表記揺れ防止） */
   organizerNames?: string[];
+  /** 登録済み会場名（場所の表記揺れ防止） */
+  venueNames?: string[];
 }
 
 /**
@@ -175,6 +189,7 @@ export function buildPdfEventPrompt({
   cutoffDate = '',
   isJichikai = true,
   organizerNames = [],
+  venueNames = [],
 }: PdfEventPromptParams): string {
   const deadlineRule = isJichikai
     ? '- 申込締切など、参加者が忘れると困る日付も「〆切」を含むタイトルで抽出してよい'
@@ -205,6 +220,7 @@ ${AUDIENCE_FEE_RULE}
 ${DESCRIPTION_RULE}
 ${DIGEST_EXCLUDE_RULE}
 ${buildOrganizerHint(organizerNames)}
+${buildVenueHint(venueNames)}
 【has_details の判定】日時・場所以外の実質的な詳細情報（持ち物・申込方法・費用・対象者・内容説明など）がPDFに書かれていれば true、日付・場所の羅列だけなら false とする。
 【source_text】各イベントに、そのイベント名と開催日が書かれている原文の一節を40字以内でそのまま書き写す（要約・言い換え禁止）。原文に見つからないイベントは出力しない。
 
@@ -222,6 +238,7 @@ export interface ArticleEventPromptParams {
   referenceDate: string;
   cutoffDate?: string;
   organizerNames?: string[];
+  venueNames?: string[];
 }
 
 /**
@@ -232,6 +249,7 @@ export function buildArticleEventPrompt({
   referenceDate,
   cutoffDate = '',
   organizerNames = [],
+  venueNames = [],
 }: ArticleEventPromptParams): string {
   // 記事本文は長すぎる場合に切り詰める（日時情報は冒頭に書かれることが多い）
   // 併せて「自治会のお知らせ(official)」か「地域のお知らせ」かを明示する（募集・締切ルール用）
@@ -274,6 +292,7 @@ ${AUDIENCE_FEE_RULE}
 ${DESCRIPTION_RULE}
 ${DIGEST_EXCLUDE_RULE}
 ${buildOrganizerHint(organizerNames)}
+${buildVenueHint(venueNames)}
 【has_details の判定】抽出元記事に「日時・場所以外の実質的な詳細情報」（持ち物、申込方法、費用、対象者、内容の説明など）が書かれていれば true、行事予定表のように日付・場所の羅列だけなら false とする。読者が記事を開いたとき、カードに書いてある以上の情報が得られるかどうかで判断すること。
 【source_text】各イベントに、そのイベント名と開催日が書かれている記事中の一節を40字以内でそのまま書き写す。
 

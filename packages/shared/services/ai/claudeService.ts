@@ -1050,14 +1050,15 @@ export async function extractEventCandidatesWithClaude(
   articles: EventPromptArticle[],
   referenceDate: string,
   organizerNames: string[] = [],
-  cutoffDate: string = ''
+  cutoffDate: string = '',
+  venueNames: string[] = []
 ): Promise<EventCandidate[]> {
   if (!hasClaudeAccess()) {
     throw new Error('AI機能が利用できません（APIキー/プロキシ未設定）');
   }
   if (articles.length === 0) return [];
 
-  const prompt = buildArticleEventPrompt({ articles, referenceDate, cutoffDate, organizerNames });
+  const prompt = buildArticleEventPrompt({ articles, referenceDate, cutoffDate, organizerNames, venueNames });
 
   const response = await callClaudeAPI({
     model: CLAUDE_MODEL,
@@ -1111,13 +1112,14 @@ export async function extractEventCandidatesFromPDFWithClaude(
   referenceDate: string,
   organizerNames: string[] = [],
   isJichikai: boolean = true,
-  cutoffDate: string = ''
+  cutoffDate: string = '',
+  venueNames: string[] = []
 ): Promise<EventCandidate[]> {
   if (!hasClaudeAccess()) {
     throw new Error('AI機能が利用できません（APIキー/プロキシ未設定）');
   }
 
-  const prompt = buildPdfEventPrompt({ referenceDate, cutoffDate, isJichikai, organizerNames });
+  const prompt = buildPdfEventPrompt({ referenceDate, cutoffDate, isJichikai, organizerNames, venueNames });
 
   const response = await callClaudeAPI({
     model: CLAUDE_MODEL,

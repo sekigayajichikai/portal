@@ -18,6 +18,9 @@ import {
   getOrganizers,
   addOrganizer,
   getEventCardsFrom,
+  getVenuesSafe,
+  resolveVenueName,
+  type Venue,
   type EventCandidate,
   type EventKind,
   type EventCard,
@@ -318,6 +321,8 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
   const provider = getEventExtractionProvider();
   /** 登録済み主催団体の名前一覧（選択候補・AIヒント用） */
   const [orgOptions, setOrgOptions] = useState<string[]>([]);
+  /** 会場マスター（AIヒント・場所欄の候補・別名の正式名への置き換え用） */
+  const [venues, setVenues] = useState<Venue[]>([]);
   /** 抽出元PDF一覧（選択用）。label=媒体名, publisher=発行元 */
   const [pdfSources, setPdfSources] = useState<
     { url: string; label: string; publisher: string; isJichikai: boolean }[]
@@ -371,6 +376,9 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
       }
       if (cancelled) return;
       setOrgOptions(orgNames);
+      const venueList = await getVenuesSafe();
+      if (cancelled) return;
+      setVenues(venueList);
 
       // source_pdf_urls は { url, label, publisher, type, thumbnail } のオブジェクト配列（旧データは文字列）。
       const rawEntries: any[] =
@@ -413,6 +421,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
     setError(null);
 
     const orgNames = orgOptions;
+    const venueNames = venues.map((v) => v.name);
     // 「今日」(ローカル日付 YYYY-MM-DD)。これより前の予定は過去として除外する
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -425,7 +434,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
     const taskThunks: Array<() => Promise<ExtractTask>> = [];
     if (useArticles) {
       taskThunks.push(() =>
-        withRateLimitRetry(() => extractEventCandidates(articles, newsletter.issue_date, orgNames, todayStr)).then(
+        withRateLimitRetry(() => extractEventCandidates(articles, newsletter.issue_date, orgNames, todayStr, venueNames)).then(
           (items) => ({
             source: 'article' as const,
             items,
@@ -439,7 +448,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
         convertPdfUrlToBase64(p.url)
           .then((b64) =>
             withRateLimitRetry(() =>
-              extractEventCandidatesFromPDF(b64, newsletter.issue_date, orgNames, p.isJichikai, todayStr)
+              extractEventCandidatesFromPDF(b64, newsletter.issue_date, orgNames, p.isJichikai, todayStr, venueNames)
             )
           )
           .then((items) => ({ source: 'pdf' as const, items, pdfUrl: p.url }))
@@ -515,6 +524,8 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
 
         merged.push({
           ...c,
+          // 場所は会場マスターの正式名に寄せる（別名に当たれば置き換え、当たらなければ原文のまま）
+          event_location: resolveVenueName(c.event_location, venues),
           weekly_topic: weeklyTopic,
           topicHints: hints,
           existingId: existing?.id ?? null,
@@ -663,6 +674,12 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      {/* 場所欄の候補（会場マスターの正式名） */}
+      <datalist id="venue-options">
+        {venues.map((v) => (
+          <option key={v.id} value={v.name} />
+        ))}
+      </datalist>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
         {/* ヘッダー */}
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
@@ -845,12 +862,18 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                             原文: {c.source_text}
                           </p>
                         )}
+                        {/* 場所: 会場マスターの正式名を候補に出す（自由入力も可。入力を確定したとき別名なら正式名に置き換える） */}
                         <input
                           type="text"
+                          list="venue-options"
                           value={c.event_location ?? ''}
                           placeholder="場所（例: 自治会館）"
                           onChange={(e) => updateCandidate(i, { event_location: e.target.value || null })}
-                          className="text-sm border border-slate-300 rounded px-2 py-1 w-full"
+                          onBlur={(e) => updateCandidate(i, { event_location: resolveVenueName(e.target.value || null, venues) })}
+                          className={`text-sm border rounded px-2 py-1 w-full ${
+                            c.event_location && venues.length > 0 && !venues.some((v) => v.name === c.event_location) ? 'border-amber-300 bg-amber-50' : 'border-slate-300'
+                          }`}
+                          title={c.event_location && venues.length > 0 && !venues.some((v) => v.name === c.event_location) ? '会場マスターに無い表記です（そのまま登録もできます）' : ''}
                         />
                         {/* 対象者・参加費（週次配信の一押し・申込受付中に添える） */}
                         <div className="flex gap-2">

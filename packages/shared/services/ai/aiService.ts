@@ -348,12 +348,13 @@ export async function extractEventCandidates(
   articles: EventPromptArticle[],
   referenceDate: string,
   organizerNames: string[] = [],
-  cutoffDate: string = ''
+  cutoffDate: string = '',
+  venueNames: string[] = []
 ): Promise<EventCandidate[]> {
   return withEventFallback(
     '記事からのイベント抽出',
-    () => geminiService.extractEventCandidatesWithGemini(articles, referenceDate, organizerNames, cutoffDate),
-    () => claudeService.extractEventCandidatesWithClaude(articles, referenceDate, organizerNames, cutoffDate)
+    () => geminiService.extractEventCandidatesWithGemini(articles, referenceDate, organizerNames, cutoffDate, venueNames),
+    () => claudeService.extractEventCandidatesWithClaude(articles, referenceDate, organizerNames, cutoffDate, venueNames)
   );
 }
 
@@ -365,13 +366,14 @@ export async function extractEventCandidatesFromPDF(
   referenceDate: string,
   organizerNames: string[] = [],
   isJichikai: boolean = true,
-  cutoffDate: string = ''
+  cutoffDate: string = '',
+  venueNames: string[] = []
 ): Promise<EventCandidate[]> {
   return withEventFallback(
     'PDFからのイベント抽出',
     () =>
-      geminiService.extractEventCandidatesFromPDFWithGemini(pdfBase64, referenceDate, organizerNames, isJichikai, cutoffDate),
+      geminiService.extractEventCandidatesFromPDFWithGemini(pdfBase64, referenceDate, organizerNames, isJichikai, cutoffDate, venueNames),
     () =>
-      claudeService.extractEventCandidatesFromPDFWithClaude(pdfBase64, referenceDate, organizerNames, isJichikai, cutoffDate)
+      claudeService.extractEventCandidatesFromPDFWithClaude(pdfBase64, referenceDate, organizerNames, isJichikai, cutoffDate, venueNames)
   );
 }

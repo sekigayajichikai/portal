@@ -24,6 +24,7 @@ export * from './services/data/radioService.js';
 export * from './services/data/storageService.js';
 export * from './services/data/publisherService.js';
 export * from './services/data/organizerService.js';
+export * from './services/data/venueService.js';
 export * from './services/data/eventCardService.js';
 export * from './services/data/lineBroadcastService.js';
 export * from './services/data/lineRichMenuService.js';

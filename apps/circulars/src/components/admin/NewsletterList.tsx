@@ -6,7 +6,7 @@
 
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useEffect, useState } from 'react';
-import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getEventCards, addEventCard, updateEventCard, deleteEventCard, requestReview, cancelReview, type EventCard } from '@cc-saas/shared';
+import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getEventCards, addEventCard, updateEventCard, deleteEventCard, requestReview, cancelReview, getVenuesSafe, resolveVenueName, type EventCard, type Venue } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
 import { FileText, Calendar, ChevronRight, ChevronUp, ChevronDown, GripVertical, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles, ClipboardCheck, CheckCircle2, MessageSquareWarning } from 'lucide-react';
 import { ArticleList } from './ArticleList';
@@ -66,6 +66,11 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   // 担当者確認リンクのダイアログ（nullなら非表示）
   const [reviewLinkUrl, setReviewLinkUrl] = useState<string | null>(null);
   const [eventCards, setEventCards] = useState<EventCard[]>([]);
+  /** 会場マスター（予定カードの場所欄の候補と、別名→正式名の置き換え用） */
+  const [venues, setVenues] = useState<Venue[]>([]);
+  useEffect(() => {
+    getVenuesSafe().then(setVenues);
+  }, []);
   const [showEventExtract, setShowEventExtract] = useState(false);
   /** インライン編集中のイベントカード（nullなら非編集） */
   const [editingCard, setEditingCard] = useState<{
@@ -828,13 +833,21 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         onChange={(e) => setEditingCard({ ...editingCard, title: e.target.value })}
                         className="text-sm font-medium border border-slate-300 rounded px-2 py-1 w-full"
                       />
+                      {/* 場所: 会場マスターの正式名を候補に出す。別名を入れて確定すると正式名に置き換わる */}
                       <input
                         type="text"
+                        list="venue-options-cards"
                         value={editingCard.event_location}
                         placeholder="場所（例: 自治会館）"
                         onChange={(e) => setEditingCard({ ...editingCard, event_location: e.target.value })}
+                        onBlur={(e) => setEditingCard({ ...editingCard, event_location: resolveVenueName(e.target.value, venues) ?? '' })}
                         className="text-sm border border-slate-300 rounded px-2 py-1 w-full"
                       />
+                      <datalist id="venue-options-cards">
+                        {venues.map((v) => (
+                          <option key={v.id} value={v.name} />
+                        ))}
+                      </datalist>
                       <textarea
                         value={editingCard.description}
                         placeholder="紹介文（1〜2文。週次配信の⭐一押しと予定ページに表示）"

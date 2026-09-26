@@ -483,12 +483,13 @@ export async function extractEventCandidatesFromPDFWithGemini(
   referenceDate: string,
   organizerNames: string[] = [],
   isJichikai: boolean = true,
-  cutoffDate: string = ''
+  cutoffDate: string = '',
+  venueNames: string[] = []
 ): Promise<EventCandidate[]> {
   if (!hasGeminiEventAccess()) {
     throw new Error('Gemini が利用できません（APIキー/プロキシ未設定）');
   }
-  const prompt = buildPdfEventPrompt({ referenceDate, cutoffDate, isJichikai, organizerNames });
+  const prompt = buildPdfEventPrompt({ referenceDate, cutoffDate, isJichikai, organizerNames, venueNames });
   const res = await callGeminiGenerate({
     contents: [
       {
@@ -518,13 +519,14 @@ export async function extractEventCandidatesWithGemini(
   articles: EventPromptArticle[],
   referenceDate: string,
   organizerNames: string[] = [],
-  cutoffDate: string = ''
+  cutoffDate: string = '',
+  venueNames: string[] = []
 ): Promise<EventCandidate[]> {
   if (!hasGeminiEventAccess()) {
     throw new Error('Gemini が利用できません（APIキー/プロキシ未設定）');
   }
   if (articles.length === 0) return [];
-  const prompt = buildArticleEventPrompt({ articles, referenceDate, cutoffDate, organizerNames });
+  const prompt = buildArticleEventPrompt({ articles, referenceDate, cutoffDate, organizerNames, venueNames });
   const res = await callGeminiGenerate({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {

@@ -14,9 +14,11 @@ import { showError, appConfirm } from '@/components/ui/feedback';
 interface OrganizerManagerProps {
   isOpen: boolean;
   onClose: () => void;
+  /** true なら モーダルではなく「マスタ」タブの中の1枚として描く（閉じるボタン無し） */
+  inline?: boolean;
 }
 
-export const OrganizerManager: React.FC<OrganizerManagerProps> = ({ isOpen, onClose }) => {
+export const OrganizerManager: React.FC<OrganizerManagerProps> = ({ isOpen, onClose, inline = false }) => {
   const [organizers, setOrganizers] = useState<Organizer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [newName, setNewName] = useState('');
@@ -111,14 +113,16 @@ export const OrganizerManager: React.FC<OrganizerManagerProps> = ({ isOpen, onCl
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col">
+    <div className={inline ? '' : 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4'}>
+      <div className={inline ? 'bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col' : 'bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col'}>
         {/* ヘッダー */}
         <div className="flex items-center justify-between p-5 border-b border-slate-200">
-          <h3 className="font-bold text-lg text-slate-800">主催団体の管理</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition">
-            <X size={22} />
-          </button>
+          <h3 className="font-bold text-lg text-slate-800">{inline ? '主催団体' : '主催団体の管理'}</h3>
+          {!inline && (
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition">
+              <X size={22} />
+            </button>
+          )}
         </div>
 
         {/* 追加フォーム */}
@@ -151,7 +155,7 @@ export const OrganizerManager: React.FC<OrganizerManagerProps> = ({ isOpen, onCl
         </div>
 
         {/* 一覧 */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className={inline ? 'p-4 max-h-[60vh] overflow-y-auto' : 'flex-1 overflow-y-auto p-4'}>
           <p className="text-xs text-slate-500 mb-3">上下ボタンで表示順を変更。名前をクリックで編集。</p>
           {isLoading ? (
             <p className="text-center text-slate-500 py-8">読み込み中...</p>

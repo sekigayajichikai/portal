@@ -1,24 +1,21 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth, PasswordLogin } from '@cc-saas/shared';
 import { CircularBoard } from '@/components/admin/CircularBoard';
-import { PublisherManager } from '@/components/admin/PublisherManager';
-import { OrganizerManager } from '@/components/admin/OrganizerManager';
 import { ReportBoard } from '@/components/admin/ReportBoard';
 import { WeeklyDigest } from '@/components/admin/WeeklyDigest';
 import { RichMenuManager } from '@/components/admin/RichMenuManager';
-import { FileText, Settings, Users, LogOut, Newspaper, Send, LayoutGrid } from 'lucide-react';
+import { MastersPanel } from '@/components/admin/MastersPanel';
+import { FileText, LogOut, Newspaper, Send, LayoutGrid, Database } from 'lucide-react';
 import { appConfirm } from '@/components/ui/feedback';
 
-/** 管理画面の作成対象。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事）/ 'weekly' = 週次配信 / 'richmenu' = LINE リッチメニュー */
-type AdminMode = 'circulars' | 'reports' | 'weekly' | 'richmenu';
+/** 管理画面の作成対象。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事）/ 'weekly' = 週次配信 / 'richmenu' = LINE リッチメニュー / 'masters' = マスタ（会場・主催団体・発行元） */
+type AdminMode = 'circulars' | 'reports' | 'weekly' | 'richmenu' | 'masters';
 
 function AdminContent() {
   const { isAuthenticated, isLoading, logout } = useAuth();
-  const [showPublisherManager, setShowPublisherManager] = useState(false);
-  const [showOrganizerManager, setShowOrganizerManager] = useState(false);
   // URLの ?mode=reports で直接レポート画面を開ける（ブックマーク用）
   const [mode, setMode] = useState<AdminMode>(() =>
-    (['reports', 'weekly', 'richmenu'].find((m) => m === new URLSearchParams(window.location.search).get('mode')) as AdminMode | undefined) ?? 'circulars'
+    (['reports', 'weekly', 'richmenu', 'masters'].find((m) => m === new URLSearchParams(window.location.search).get('mode')) as AdminMode | undefined) ?? 'circulars'
   );
 
   if (isLoading) {
@@ -46,20 +43,6 @@ function AdminContent() {
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => setShowOrganizerManager(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
-          >
-            <Users size={16} />
-            主催団体
-          </button>
-          <button
-            onClick={() => setShowPublisherManager(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
-          >
-            <Settings size={16} />
-            発行元
-          </button>
-          <button
             onClick={async () => {
               if (await appConfirm({ title: 'ログアウトしますか？', confirmLabel: 'ログアウト' })) {
                 logout();
@@ -72,10 +55,7 @@ function AdminContent() {
           </button>
         </div>
       </header>
-      <PublisherManager isOpen={showPublisherManager} onClose={() => setShowPublisherManager(false)} />
-      <OrganizerManager isOpen={showOrganizerManager} onClose={() => setShowOrganizerManager(false)} />
-
-      {/* 作成対象の切替: 電子回覧板 / 関ヶ谷レポート */}
+      {/* 作成対象の切替: 電子回覧板 / 関ヶ谷レポート / 週次配信 / リッチメニュー / マスタ */}
       <div className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 flex gap-1">
           <button
@@ -122,12 +102,24 @@ function AdminContent() {
             <LayoutGrid size={16} />
             リッチメニュー
           </button>
+          <button
+            onClick={() => setMode('masters')}
+            className={`flex items-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition ml-auto ${
+              mode === 'masters'
+                ? 'border-slate-600 text-slate-800'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+            title="会場・主催団体・発行元の名前の一覧"
+          >
+            <Database size={16} />
+            マスタ
+          </button>
         </div>
       </div>
 
       <main className="p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
-          {mode === 'circulars' ? <CircularBoard /> : mode === 'reports' ? <ReportBoard /> : mode === 'weekly' ? <WeeklyDigest /> : <RichMenuManager />}
+          {mode === 'circulars' ? <CircularBoard /> : mode === 'reports' ? <ReportBoard /> : mode === 'weekly' ? <WeeklyDigest /> : mode === 'richmenu' ? <RichMenuManager /> : <MastersPanel />}
         </div>
       </main>
     </div>
