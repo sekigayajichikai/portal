@@ -762,10 +762,17 @@ export const WeeklyDigest: React.FC = () => {
   /** チェック一覧の行（一押し・締切間近・今週の予定・申込受付中の順） */
   const digestItems = useMemo(() => {
     const rows: Array<{ card: PublicEventCard; section: string }> = [];
-    for (const c of fullDigest.topics) rows.push({ card: c, section: '⭐ 一押し' });
-    for (const c of fullDigest.urgent) rows.push({ card: c, section: '⏰ 締切間近' });
-    for (const c of fullDigest.events) rows.push({ card: c, section: '📅 今週の予定' });
-    for (const c of fullDigest.apply) rows.push({ card: c, section: '📝 申込受付中' });
+    // 一押しは「今週の予定」にも重ねて載るが、チェック一覧では1行にまとめる（外すと両方から消える）
+    const seen = new Set<string>();
+    const push = (card: PublicEventCard, section: string) => {
+      if (seen.has(card.id)) return;
+      seen.add(card.id);
+      rows.push({ card, section });
+    };
+    for (const c of fullDigest.topics) push(c, '⭐ 一押し');
+    for (const c of fullDigest.urgent) push(c, '⏰ 締切間近');
+    for (const c of fullDigest.events) push(c, '📅 今週の予定');
+    for (const c of fullDigest.apply) push(c, '📝 申込受付中');
     return rows;
   }, [fullDigest]);
 

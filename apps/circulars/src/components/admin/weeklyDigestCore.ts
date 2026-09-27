@@ -208,14 +208,13 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
     const auto = topicPool.find((c) => c.event_date! <= applyUntil) ?? topicPool[0] ?? null;
     topics = auto ? [auto] : [];
   }
-  const topicIdSet = new Set(topics.map((c) => c.id));
-
   // 「申込が必要」= 要予約、または締切が入っているもの（定員制の連続講座など）
   const needsApply = (c: PublicEventCard) => c.category === 'reserve' || !!c.apply_deadline;
 
-  // 今週の予定: 申込不要のもので、配信日から7日間に開催（一押しにした予定は除く）
+  // 今週の予定: 申込不要のもので、配信日から7日間に開催。
+  // 一押しにした予定も重ねて載せる（2026-09-27 ユーザー指示。一押しカードだけだと「今週の予定」の一覧から抜けて見えるため）
   const events = future
-    .filter((c) => !needsApply(c) && c.event_date! <= to && !topicIdSet.has(c.id))
+    .filter((c) => !needsApply(c) && c.event_date! <= to)
     .sort(byDate)
     .slice(0, LIMITS.events);
 
