@@ -92,6 +92,56 @@ export function calculateSimilarity(text1: string, text2: string): number {
   return Math.max(0, Math.min(1, similarity));
 }
 
+/** 題名の正規化（空白・括弧・記号を除いて比べる） */
+function normalizeTitle(s: string): string {
+  return (s || '')
+    .replace(/[\s　]/g, '')
+    .replace(/[「」『』（）()【】\[\]〈〉《》・･、。,.!！?？:：;；~〜～\-‐–—―]/g, '')
+    .toLowerCase();
+}
+
+/**
+ * 1回の抽出結果の中の重複（AIが同じ記事を2回出したもの）を取り除く
+ *
+ * 2026-09-27: 10月号の記事化で「見まわり隊大募集」「図書部新配架本」などが同じ応答の中に2回出た。
+ * findDuplicateArticles は「新しい記事 × 既存の記事」の比較なので、同じ応答内の重複は拾えない。
+ * 判定: 題名（正規化）が一致、または 題名の類似度 0.5 以上かつ本文（先頭400字）の類似度 0.7 以上、または 本文の類似度 0.9 以上。
+ * 残すのは本文が1割超長い方、長さが近ければ先に出た方。順番は元のまま。
+ */
+export function dedupeExtractedArticles<T extends { title: string; content?: string | null }>(articles: T[]): { articles: T[]; removed: T[] } {
+  const keep: T[] = [];
+  const removed: T[] = [];
+  const head = (a: T) => (a.content || '').trim().slice(0, 400);
+  for (const a of articles) {
+    const na = normalizeTitle(a.title);
+    const idx = keep.findIndex((b) => {
+      const nb = normalizeTitle(b.title);
+      if (na && na === nb) return true;
+      const ts = calculateSimilarity(na, nb);
+      // 本文比較は題名がある程度似ているか、長さが近いときだけ（レーベンシュタインは重いため）
+      const la = head(a).length;
+      const lb = head(b).length;
+      const lengthClose = la > 0 && lb > 0 && Math.min(la, lb) / Math.max(la, lb) >= 0.7;
+      if (ts < 0.3 && !lengthClose) return false;
+      const cs = calculateSimilarity(head(a), head(b));
+      return (ts >= 0.5 && cs >= 0.7) || cs >= 0.9;
+    });
+    if (idx < 0) {
+      keep.push(a);
+      continue;
+    }
+    // 本文が明らかに長い（1割超）方を残す。長さがほぼ同じなら先に出た方（題名が紙面に近いことが多い）を残す
+    const b = keep[idx];
+    if ((a.content || '').length > (b.content || '').length * 1.1) {
+      keep[idx] = a;
+      removed.push(b);
+    } else {
+      removed.push(a);
+    }
+  }
+  return { articles: keep, removed };
+}
+
 /**
  * 重複記事のペア情報
  */

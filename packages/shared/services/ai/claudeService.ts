@@ -9,6 +9,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Article, Category, ExtractionResult } from '../../types/index.js';
 import type { BusScheduleExtractionResult, BusSchedule } from '../../types/index.js';
+import { dedupeExtractedArticles } from '../../utils/similarity.js';
 import { MOCK_ARTICLES } from '../../constants/mockData.js';
 import { invokeAIProxy, isAIProxyAvailable } from './aiProxyClient.js';
 import { repairJsonString } from './jsonRepair.js';
@@ -148,7 +149,12 @@ export async function extractArticlesFromPDF(
     }
 
     // JSONを抽出して解析
-    const articles = parseArticlesFromResponse(textContent.text);
+    const parsed = parseArticlesFromResponse(textContent.text);
+    // AIが同じ記事を2回出すことがある（10月号で5件）。同じ応答内の重複はここで落とす（本文の長い方を残す）
+    const { articles, removed } = dedupeExtractedArticles(parsed);
+    if (removed.length > 0) {
+      console.log(`🧹 同じ記事の重複を ${removed.length} 件除外:`, removed.map((r) => r.title).join(' / '));
+    }
 
     return {
       articles,
