@@ -6,7 +6,7 @@
  */
 
 import { appPrompt } from '@/components/ui/feedback';
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
@@ -78,11 +78,19 @@ marked.setOptions({
  * Markdownテーブルをプレースホルダーに置換して保護する。
  * Tiptapはテーブルを理解できないため、読み込み時に壊れてしまう。
  * テーブル部分を退避し、保存時に復元する。
+ *
+ * 退避先は**コンポーネントごとに持つ**（tablesRef）。以前はモジュール変数に置いていたため、
+ * 記事を切り替えたり画面が描き直されたりすると中身が入れ替わり、
+ * 復元できずに表が丸ごと消える事故が起きた（2026-09-28。10月号「ふれあいの会10月の予定」）。
  */
 const TABLE_REGEX = /((?:^|\n)\|.+\|[ \t]*\n\|[\s\-:|]+\|[ \t]*\n(?:\|.+\|[ \t]*\n?)+)/g;
-const TABLE_PLACEHOLDER_PREFIX = '@@TABLE_';
-
-let _savedTables: string[] = [];
+/**
+ * 目印には **アンダースコアを使わない**。turndown が `_` を `\_` にエスケープするため、
+ * 旧形式 `@@TABLE_0@@` は戻すときの照合に失敗し、表が復元されないまま保存されていた（2026-09-28の事故の原因）。
+ */
+const TABLE_PLACEHOLDER_PREFIX = '@@TABLE';
+/** 目印の照合。旧形式（`@@TABLE_0@@`）とエスケープ後（`@@TABLE\_0@@`）も拾う */
+const TABLE_PLACEHOLDER_PATTERN = '@@TABLE\\\\?_?(\\d+)@@';
 
 function extractTables(md: string): { cleaned: string; tables: string[] } {
   const tables: string[] = [];
@@ -94,25 +102,34 @@ function extractTables(md: string): { cleaned: string; tables: string[] } {
   return { cleaned, tables };
 }
 
+/**
+ * プレースホルダーを表に戻す。
+ * 対応する表が見つからないときは**プレースホルダーをそのまま残す**（空にして消さない）。
+ * 消すと本文から表が失われて復旧できなくなるため、目印を残して気づけるようにする。
+ */
 function restoreTables(md: string, tables: string[]): string {
-  return md.replace(new RegExp(`${TABLE_PLACEHOLDER_PREFIX}(\\d+)@@`, 'g'), (_, idx) => {
-    return tables[Number(idx)] || '';
+  return md.replace(new RegExp(TABLE_PLACEHOLDER_PATTERN, 'g'), (whole, idx) => {
+    const table = tables[Number(idx)];
+    if (table === undefined) {
+      console.warn('[RichTextEditor] 表を復元できませんでした。プレースホルダーを残します:', whole);
+      return whole;
+    }
+    return table;
   });
 }
 
-/** Markdown→HTML変換（テーブルを保護してプレースホルダーに置換） */
-function markdownToHtml(md: string): string {
-  if (!md) return '';
+/** Markdown→HTML変換（テーブルを退避し、退避した表も返す）。検証用に export している */
+export function markdownToHtml(md: string): { html: string; tables: string[] } {
+  if (!md) return { html: '', tables: [] };
   const { cleaned, tables } = extractTables(md);
-  _savedTables = tables;
-  return marked.parse(cleaned, { async: false }) as string;
+  return { html: marked.parse(cleaned, { async: false }) as string, tables };
 }
 
-/** HTML→Markdown変換（プレースホルダーをテーブルに復元） */
-function htmlToMarkdown(html: string): string {
+/** HTML→Markdown変換（プレースホルダーをテーブルに復元）。検証用に export している */
+export function htmlToMarkdown(html: string, tables: string[]): string {
   if (!html || html === '<p></p>') return '';
   const md = turndown.turndown(html);
-  return restoreTables(md, _savedTables);
+  return restoreTables(md, tables);
 }
 
 interface RichTextEditorProps {
@@ -156,6 +173,17 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   placeholder = '記事の全文を入力してください',
   className,
 }) => {
+  /** いま編集している本文から退避した表。コンポーネントごとに持つ（記事をまたいで混ざらないように） */
+  const tablesRef = useRef<string[]>([]);
+  /** Markdown → HTML。退避した表を ref に控える */
+  const toHtml = useCallback((md: string) => {
+    const { html, tables } = markdownToHtml(md);
+    tablesRef.current = tables;
+    return html;
+  }, []);
+  /** HTML → Markdown。控えておいた表を戻す */
+  const toMarkdown = useCallback((html: string) => htmlToMarkdown(html, tablesRef.current), []);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -167,11 +195,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       }),
       Placeholder.configure({ placeholder }),
     ],
-    content: markdownToHtml(value),
+    content: toHtml(value),
     onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      const md = htmlToMarkdown(html);
-      onChange(md);
+      onChange(toMarkdown(editor.getHTML()));
     },
     editorProps: {
       attributes: {
@@ -183,11 +209,14 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   // 外部からvalueが変わった場合（記事切り替え時）にエディタ内容を同期
   useEffect(() => {
     if (!editor) return;
-    const currentMd = htmlToMarkdown(editor.getHTML());
+    const currentMd = toMarkdown(editor.getHTML());
     if (currentMd !== value) {
-      editor.commands.setContent(markdownToHtml(value));
+      editor.commands.setContent(toHtml(value));
     }
-  }, [value, editor]);
+  }, [value, editor, toHtml, toMarkdown]);
+
+  /** 表を含む本文か（編集欄の下に注意書きを出す） */
+  const tableCount = tablesRef.current.length;
 
   /** リンク挿入 */
   const handleLink = useCallback(async () => {
@@ -300,6 +329,14 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
       {/* エディタ本体 */}
       <EditorContent editor={editor} />
+
+      {/* 表を含む本文の注意書き（この編集欄は表を編集できないため、目印で位置だけ示している） */}
+      {tableCount > 0 && (
+        <p className="px-3 py-1.5 text-[11px] text-amber-700 bg-amber-50 border-t border-amber-200">
+          この記事には表が {tableCount} 個あります。本文の <code className="font-mono">@@TABLE0@@</code> は表の位置を示す目印で、保存すると元の表に戻ります。
+          <strong>目印の行を消すと表も消えます。</strong>表そのものを直すときは、いったん保存してから担当者に相談してください。
+        </p>
+      )}
     </div>
   );
 };
