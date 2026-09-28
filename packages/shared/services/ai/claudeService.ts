@@ -174,7 +174,7 @@ export async function extractArticlesFromPDF(
  * @param categories - 組織のカテゴリ設定
  * @returns プロンプト文字列
  */
-function generateExtractionPrompt(categories: Category[]): string {
+export function generateExtractionPrompt(categories: Category[]): string {
   return `
 あなたは自治会の広報誌を分析する専門家です。
 以下の広報誌から記事を抽出し、構造化してください。
