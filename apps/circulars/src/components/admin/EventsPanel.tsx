@@ -21,9 +21,10 @@ import {
   type AdminEventCard,
   type Venue,
 } from '@cc-saas/shared';
-import { Loader2, Search, RefreshCw, AlertTriangle, X, Calendar } from 'lucide-react';
+import { Loader2, Search, RefreshCw, AlertTriangle, X, Calendar, CalendarCheck } from 'lucide-react';
 import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 import { EventCardEditDialog } from './EventCardEditDialog';
+import { CalendarSyncDialog } from './CalendarSyncDialog';
 import { CATEGORY_META, KIND_META } from './EventCandidateDialog';
 import { findDuplicateGroups, buildMergeUpdates } from './eventMatch';
 
@@ -72,6 +73,8 @@ export const EventsPanel: React.FC = () => {
   /** 見比べ中の2件（左・右） */
   const [comparing, setComparing] = useState<[AdminEventCard, AdminEventCard] | null>(null);
   const [merging, setMerging] = useState(false);
+  /** 「カレンダーに反映」ダイアログを開いているか */
+  const [syncing, setSyncing] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -181,6 +184,13 @@ export const EventsPanel: React.FC = () => {
                 className="text-sm border border-slate-300 rounded-lg pl-7 pr-2 py-1.5 w-56"
               />
             </div>
+            <button
+              onClick={() => setSyncing(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition"
+              title="公開済みの号の予定（今日以降）を自治会カレンダーに載せます。何が変わるかを先に確認できます"
+            >
+              <CalendarCheck size={15} /> カレンダーに反映
+            </button>
             <button onClick={load} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg" title="読み直す">
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             </button>
@@ -291,6 +301,8 @@ export const EventsPanel: React.FC = () => {
       </div>
 
       {editingId && <EventCardEditDialog cardId={editingId} onClose={() => setEditingId(null)} onChanged={load} />}
+
+      {syncing && <CalendarSyncDialog cards={cards} onClose={() => setSyncing(false)} />}
 
       {comparing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onMouseDown={(e) => e.target === e.currentTarget && !merging && setComparing(null)}>

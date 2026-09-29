@@ -31,6 +31,7 @@ export * from './services/data/lineRichMenuService.js';
 export * from './services/data/weeklyDigestDraftService.js';
 export * from './services/data/likeService.js';
 export * from './services/data/calendarService.js';
+export * from './services/data/calendarSyncService.js';
 export * from './services/data/bookingService.js';
 
 // 画像関連サービス
