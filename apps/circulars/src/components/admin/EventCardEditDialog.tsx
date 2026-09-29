@@ -30,6 +30,8 @@ import { OrganizerSelect, CATEGORY_KEYS, CATEGORY_META, KIND_KEYS, KIND_META } f
 import { ArticleLinkPicker } from './ArticleLinkPicker';
 import { CropEditor } from './CropEditor';
 import { type HeroCrop, normalizeCrop, resolveCrop, loadImageCanvas, renderPdfFirstPage } from './heroCrop';
+import { inspectPdf, type PdfInfo } from './pdfInspect';
+import { PdfPagePeek } from './PdfPagePeek';
 import { topicImageSource } from './weeklyDigestCore';
 
 interface EventCardEditDialogProps {
@@ -123,6 +125,8 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
   const [cropSource, setCropSource] = useState<HTMLCanvasElement | null>(null);
   const [cropState, setCropState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [crop, setCrop] = useState<HeroCrop | null>(null);
+  /** 由来PDFの中身（スキャン画像なら「元のページと見比べる」を出す） */
+  const [pdfInfo, setPdfInfo] = useState<PdfInfo | null>(null);
 
   useEffect(() => {
     getAdminEventCardById(cardId)
@@ -143,6 +147,22 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
       .then((os) => setOrgOptions(os.map((o) => o.name)))
       .catch(() => setOrgOptions([]));
   }, [cardId]);
+
+  // 由来PDFがスキャン画像かを調べる（ブラウザ内の pdf.js。AIは呼ばない）
+  const sourcePdfUrl = form?.source_pdf_url ?? null;
+  useEffect(() => {
+    setPdfInfo(null);
+    if (!sourcePdfUrl) return;
+    let cancelled = false;
+    inspectPdf(sourcePdfUrl)
+      .then((info) => {
+        if (!cancelled) setPdfInfo(info);
+      })
+      .catch((e) => console.warn('由来PDFの中身を調べられませんでした:', e));
+    return () => {
+      cancelled = true;
+    };
+  }, [sourcePdfUrl]);
 
   // Esc で閉じる（記事の選択中はそちらを閉じる）
   useEffect(() => {
@@ -520,6 +540,19 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
                   <option value={form.source_pdf_url}>（号の一覧に無いPDF）</option>
                 )}
               </select>
+              {/* スキャン画像のPDFは日付を読み違えていることがあるので、元のページを開いて見比べられるようにする */}
+              {form.source_pdf_url && pdfInfo?.isScan && (
+                <div className="mt-1.5">
+                  <p className="text-[11px] text-amber-800 mb-1">
+                    ⚠ このPDFは文字データのない<strong>スキャン画像</strong>です。AIが目で見て読むため、日付や行事名を取り違えていることがあります。
+                  </p>
+                  <PdfPagePeek
+                    url={form.source_pdf_url}
+                    label={card.newsletter_pdfs.find((p) => p.url === form.source_pdf_url)?.label ?? '由来PDF'}
+                    pages={pdfInfo.pages}
+                  />
+                </div>
+              )}
             </div>
 
             {/* 画像の切り出し（週次配信の一押しカード用） */}
