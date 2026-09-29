@@ -82,7 +82,17 @@ export const RichMenuManager: React.FC = () => {
   const [userIds, setUserIds] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const loadSaved = () => getSavedRichMenus().then(setSaved);
+  /**
+   * 保存済みを読み終えたか。
+   * 読む前は「自動生成の既定デザイン」しか手元に無いので、それを描くとタブを開くたびに
+   * 前のデザインが一瞬映ってから保存済みの画像に入れ替わる。読み終えるまでプレビューを描かない（2026-09-30 修正）
+   */
+  const [savedLoaded, setSavedLoaded] = useState(false);
+  const loadSaved = () =>
+    getSavedRichMenus()
+      .then(setSaved)
+      .catch((e) => console.warn('保存済みリッチメニューを読めませんでした:', e))
+      .finally(() => setSavedLoaded(true));
   const loadLine = async () => {
     setLineLoading(true);
     try {
@@ -114,10 +124,14 @@ export const RichMenuManager: React.FC = () => {
   const preview = useMemo(() => renderRichMenu(def), [def]);
   useEffect(() => {
     const c = canvasRef.current;
-    if (!c) return;
+    // 保存済みを読み終えるまでは描かない（既定デザインがちらつくのを防ぐ）
+    if (!c || !savedLoaded) return;
     c.width = RM_W / 4;
     c.height = RM_H / 4;
     const ctx = c.getContext('2d')!;
+    // 画像が届くまでの間に黒く見えないよう、先に下地を塗る
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, c.width, c.height);
     let cancelled = false;
     const src = customImage ? URL.createObjectURL(customImage) : savedImageUrl;
     if (src) {
@@ -136,7 +150,7 @@ export const RichMenuManager: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [preview, customImage, savedImageUrl]);
+  }, [preview, customImage, savedImageUrl, savedLoaded]);
 
   const update = (patch: Partial<RichMenuDef>) => setDef((d) => ({ ...d, ...patch }));
   const updateTile = (i: number, patch: Partial<Tile>) => setDef((d) => ({ ...d, tiles: d.tiles.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
@@ -164,11 +178,11 @@ export const RichMenuManager: React.FC = () => {
   };
   // 保存済み一覧を読み込んだら、開いているタブに保存行があれば差し替える（初回表示用）
   useEffect(() => {
-    if (saved.length === 0) return;
+    if (!savedLoaded || saved.length === 0) return;
     const row = savedFor(role);
     if (row && (!current || current.id !== row.id) && !dirty) openRole(role, saved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saved]);
+  }, [saved, savedLoaded]);
 
   /** タブに出す状態バッジ */
   const roleBadge = (r: MenuRole): { label: string; cls: string } => {
@@ -452,7 +466,14 @@ export const RichMenuManager: React.FC = () => {
                   <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => setCustomImage(e.target.files?.[0] ?? null)} />
                 </label>
               </div>
-              <canvas ref={canvasRef} className="w-full rounded-lg border border-slate-200" />
+              <div className="relative">
+                <canvas ref={canvasRef} className="w-full rounded-lg border border-slate-200" />
+                {!savedLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-400">
+                    <Loader2 size={16} className="animate-spin" /> 保存したメニューを読み込んでいます…
+                  </div>
+                )}
+              </div>
               {customImage ? (
                 <p className="text-[11px] text-slate-500 mt-1">
                   {customImage.name}（{Math.round(customImage.size / 1024)}KB）を使います。「保存」で Storage に置かれ、以後はその画像が表示されます。{' '}
