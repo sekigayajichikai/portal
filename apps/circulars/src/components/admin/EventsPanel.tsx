@@ -18,15 +18,18 @@ import {
   getVenuesSafe,
   getOrganizers,
   normalizeVenueText,
+  checkEventsWithGemini,
+  hasGeminiEventAccess,
   type AdminEventCard,
   type Venue,
 } from '@cc-saas/shared';
-import { Loader2, Search, RefreshCw, AlertTriangle, X, Calendar, CalendarCheck } from 'lucide-react';
+import { Loader2, Search, RefreshCw, AlertTriangle, X, Calendar, CalendarCheck, Sparkles } from 'lucide-react';
 import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 import { EventCardEditDialog } from './EventCardEditDialog';
 import { CalendarSyncDialog } from './CalendarSyncDialog';
 import { CATEGORY_META, KIND_META } from './EventCandidateDialog';
 import { findDuplicateGroups, buildMergeUpdates } from './eventMatch';
+import { checkEventByRule, issueBadge, type EventIssue } from './eventQualityCheck';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const todayYmd = () => {
@@ -75,6 +78,63 @@ export const EventsPanel: React.FC = () => {
   const [merging, setMerging] = useState(false);
   /** 「カレンダーに反映」ダイアログを開いているか */
   const [syncing, setSyncing] = useState(false);
+  /** AIの点検結果（予定ID → 指摘）。「AIで点検」を押したときだけ入る */
+  const [aiIssues, setAiIssues] = useState<Map<string, EventIssue[]>>(new Map());
+  const [checking, setChecking] = useState(false);
+
+  /** 機械判定の点検（常に効く。費用ゼロ） */
+  const ruleIssues = useMemo(() => {
+    const today = todayYmd();
+    const m = new Map<string, EventIssue[]>();
+    for (const c of cards) {
+      const list = checkEventByRule(c, today);
+      if (list.length > 0) m.set(c.id, list);
+    }
+    return m;
+  }, [cards]);
+
+  /** その予定の指摘（機械判定＋AI） */
+  const issuesOf = (c: AdminEventCard): EventIssue[] => [...(ruleIssues.get(c.id) ?? []), ...(aiIssues.get(c.id) ?? [])];
+
+  /** 一覧に出ている予定をまとめてAIに点検してもらう（Gemini 1回。無料枠に収まる） */
+  const runAiCheck = async () => {
+    const targets = visible.filter((c) => c.event_date);
+    if (targets.length === 0) return;
+    setChecking(true);
+    try {
+      const found = await checkEventsWithGemini(
+        targets.map((c, i) => ({
+          index: i,
+          date: c.event_date,
+          title: c.title,
+          location: c.event_location,
+          organizer: c.organizer,
+          source: c.source_pdf_label ?? c.newsletter_title,
+        }))
+      );
+      const m = new Map<string, EventIssue[]>();
+      for (const f of found) {
+        const card = targets[f.index];
+        if (!card) continue;
+        m.set(card.id, [...(m.get(card.id) ?? []), { from: 'ai', reason: f.reason, severity: f.severity }]);
+      }
+      setAiIssues(m);
+      showToast(found.length === 0 ? 'AIの点検で気になる予定はありませんでした' : `AIが ${m.size} 件の予定を「確認したほうがよい」と挙げました`);
+    } catch (e: any) {
+      console.error('AI点検エラー:', e);
+      const msg = String(e?.message ?? e);
+      // 無料枠の制限は「1分5回」と「1日20回」の2種類。後者は待っても今日は戻らない
+      showError(
+        /PerDay|per day/i.test(msg)
+          ? 'AIの無料枠の1日の上限に達しました。日付が変わってからお試しください（機械判定の印はそのまま使えます）。'
+          : /429|RESOURCE_EXHAUSTED|quota/i.test(msg)
+            ? 'AIの無料枠の回数制限にかかりました。1分ほど待ってからもう一度押してください。'
+            : `点検できませんでした。${msg}`
+      );
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -184,6 +244,17 @@ export const EventsPanel: React.FC = () => {
                 className="text-sm border border-slate-300 rounded-lg pl-7 pr-2 py-1.5 w-56"
               />
             </div>
+            {hasGeminiEventAccess() && (
+              <button
+                onClick={runAiCheck}
+                disabled={checking}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 transition disabled:opacity-40"
+                title="一覧の予定をAIがまとめて点検し、題名が催しの名前になっていないものなど「確認したほうがよい予定」を挙げます"
+              >
+                {checking ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                {checking ? '点検しています…' : 'AIで点検'}
+              </button>
+            )}
             <button
               onClick={() => setSyncing(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition"
@@ -257,6 +328,10 @@ export const EventsPanel: React.FC = () => {
                           <span title={`記事: ${c.linked_article.title}${c.linked_article_newsletter_title ? `（${c.linked_article_newsletter_title}）` : ''}`}>🔗</span>
                         )}
                         {c.digest_exclude && <span title="週次配信に載せない">🚫</span>}
+                        {(() => {
+                          const b = issueBadge(issuesOf(c));
+                          return b ? <span className={`px-1.5 py-0.5 rounded font-medium ${b.cls}`} title={b.title}>{b.label}</span> : null;
+                        })()}
                         <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 max-w-[10rem] truncate">{c.newsletter_title ?? '号不明'}</span>
                         {badge && <span className={`px-1.5 py-0.5 rounded ${badge.cls}`} title="この号は公開されていないので、カレンダー・週次配信には出ません">{badge.label}</span>}
                       </span>
@@ -282,6 +357,18 @@ export const EventsPanel: React.FC = () => {
                       </div>
                     )}
                   </button>
+                  {issuesOf(c).map((iss, n) => (
+                    <div
+                      key={`iss-${n}`}
+                      className={`flex items-center gap-2 text-xs px-4 py-1 pl-[6.75rem] ${iss.severity === 'high' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'}`}
+                    >
+                      <AlertTriangle size={12} className="shrink-0" />
+                      <span className="truncate">
+                        {iss.from === 'ai' && <span className="font-bold">AIの指摘: </span>}
+                        {iss.reason}
+                      </span>
+                    </div>
+                  ))}
                   {dups.map((d) => (
                     <div key={d.id} className="flex items-center gap-2 text-xs bg-amber-50 text-amber-800 px-4 py-1 pl-[6.75rem]">
                       <AlertTriangle size={12} className="shrink-0" />
@@ -302,7 +389,16 @@ export const EventsPanel: React.FC = () => {
 
       {editingId && <EventCardEditDialog cardId={editingId} onClose={() => setEditingId(null)} onChanged={load} />}
 
-      {syncing && <CalendarSyncDialog cards={cards} onClose={() => setSyncing(false)} />}
+      {syncing && (
+        <CalendarSyncDialog
+          cards={cards}
+          issuesOf={(cardId) => {
+            const c = byId.get(cardId);
+            return c ? issuesOf(c) : [];
+          }}
+          onClose={() => setSyncing(false)}
+        />
+      )}
 
       {comparing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onMouseDown={(e) => e.target === e.currentTarget && !merging && setComparing(null)}>

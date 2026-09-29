@@ -402,8 +402,8 @@ type GeminiGenerateResponse = {
  * Gemini generateContent を呼ぶ（ローカルキーがあれば直接、無ければ ai-proxy 経由）
  * REST ボディ形式に統一し、scripts/schedule-test/run-gemini.mjs と同じリクエストになるようにする。
  */
-async function callGeminiGenerate(body: unknown): Promise<GeminiGenerateResponse> {
-  const path = `models/${GEMINI_EVENT_MODEL}:generateContent`;
+async function callGeminiGenerate(body: unknown, model: string = GEMINI_EVENT_MODEL): Promise<GeminiGenerateResponse> {
+  const path = `models/${model}:generateContent`;
   const key = getLocalGeminiKey();
   if (key) {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${path}?key=${key}`, {
@@ -453,6 +453,37 @@ const EVENT_RESPONSE_SCHEMA = {
   },
   required: ['events'],
 } as const;
+
+/**
+ * 混雑（503）のときの控えのモデル
+ * gemini-3.6-flash は高負荷で 503 を返すことがある（2026-09-29 に予定の点検で発生）。
+ * 同じ無料枠で使える軽いモデルに切り替えて通す。
+ */
+export const GEMINI_FALLBACK_MODEL = 'gemini-3.5-flash-lite';
+
+const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 混雑（503/UNAVAILABLE）のときだけ、待ってから再試行し、それでも駄目なら控えのモデルを使う。
+ * 回数制限（429）や他のエラーはそのまま投げる（待っても直らないため）。
+ */
+async function callGeminiWithRetry(body: unknown): Promise<GeminiGenerateResponse> {
+  let lastErr: unknown;
+  for (const model of [GEMINI_EVENT_MODEL, GEMINI_FALLBACK_MODEL]) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await callGeminiGenerate(body, model);
+      } catch (e) {
+        lastErr = e;
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/\b503\b|UNAVAILABLE|overloaded|high demand/i.test(msg)) throw e;
+        await sleepMs(2000 * (attempt + 1));
+      }
+    }
+    console.warn(`[gemini] ${model} が混んでいるため控えのモデルに切り替えます`);
+  }
+  throw lastErr;
+}
 
 /** レスポンスからテキストを取り出す（ブロック・空応答はエラーに） */
 function extractGeminiText(res: GeminiGenerateResponse): string {
@@ -617,17 +648,119 @@ ${hints.length > 0 ? `## 手がかり\n${hints.join('\n\n')}\n` : '## 手がか�
     contents: [{ role: 'user', parts }],
     generationConfig: { responseMimeType: 'text/plain', temperature: 0.4 },
   };
-  let res: GeminiGenerateResponse;
-  try {
-    res = await callGeminiGenerate(body);
-  } catch (e) {
-    // 無料枠のモデルは一時的な 503（高負荷）を返すことがあるので、少し待って1回だけやり直す
-    const msg = e instanceof Error ? e.message : String(e);
-    if (!/\b503\b|overloaded|UNAVAILABLE/i.test(msg)) throw e;
-    await new Promise((r) => setTimeout(r, 2500));
-    res = await callGeminiGenerate(body);
-  }
+  // 無料枠のモデルは一時的な 503（高負荷）を返すことがあるので、待って再試行し、駄目なら控えのモデルに切り替える
+  const res = await callGeminiWithRetry(body);
   return tidyDescription(extractGeminiText(res));
+}
+
+// =====================================================
+// 予定の点検（カレンダーに載せる前に人が確認したほうがよいものを挙げる）
+//
+// PDF（特にスキャン画像）からの抽出は、題名に紙面の見出しがそのまま入ったり、
+// 催しでないお知らせを拾ったりする。機械的に分かるものは eventQualityCheck.ts のルールで拾い、
+// 文脈を見ないと分からないものをここで挙げる。一覧をまとめて1回のリクエストで送る（無料枠に収まる）。
+// =====================================================
+
+/** 点検に渡す予定1件 */
+export interface EventCheckItem {
+  /** 呼び出し側が結果を突き合わせるための番号 */
+  index: number;
+  date: string | null;
+  title: string;
+  location?: string | null;
+  organizer?: string | null;
+  /** 出典（PDFの名前など）。読み違いの手がかりになる */
+  source?: string | null;
+}
+
+/** AIからの指摘1件 */
+export interface EventCheckIssue {
+  index: number;
+  reason: string;
+  severity: 'high' | 'low';
+}
+
+const EVENT_CHECK_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    issues: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          index: { type: 'INTEGER' },
+          reason: { type: 'STRING' },
+          severity: { type: 'STRING' },
+        },
+        required: ['index', 'reason', 'severity'],
+      },
+    },
+  },
+  required: ['issues'],
+} as const;
+
+/**
+ * 予定の一覧をAIに点検させる（カレンダーに載せる前の確認用）
+ *
+ * 指摘は「消す候補」ではなく「目を通す候補」。役員会や監査のように
+ * 題名が短く場所も無い正しい予定を誤って挙げないよう、プロンプトで明示的に除いている。
+ */
+export async function checkEventsWithGemini(items: EventCheckItem[]): Promise<EventCheckIssue[]> {
+  if (!hasGeminiEventAccess()) throw new Error('Gemini が利用できません（APIキー/プロキシ未設定）');
+  if (items.length === 0) return [];
+
+  const list = items
+    .map((it) =>
+      [
+        `${it.index}. ${it.date ?? '日付未定'} ${it.title}`,
+        it.location ? `場所: ${it.location}` : null,
+        it.organizer ? `主催: ${it.organizer}` : null,
+        it.source ? `出典: ${it.source}` : null,
+      ]
+        .filter(Boolean)
+        .join(' / ')
+    )
+    .join('\n');
+
+  const prompt = `あなたは自治会カレンダーの編集者です。次の予定一覧から、カレンダーに載せる前に**人が確認したほうがよいもの**を挙げてください。
+
+【確認したいもの】
+- 題名が催しの名前になっていない（紙面の見出し・説明文・呼びかけがそのまま入っている）
+- そもそも催しではない（期間・連絡事項・お知らせ・お願い・報告だけのもの）
+- 題名に文字の読み違いや崩れがある（意味をなさない語、途中で切れている、記号の混入）
+- 日付・時間・場所が原文の読み違いに見える（曜日と日付が合わない、時間が不自然など）
+
+【指摘しないもの】
+- 役員会・委員会・監査・実行委員会など、住民が参加しない自治会の予定（正しい予定です）
+- 場所や主催が書かれていないだけの予定
+- 題名が短いだけの予定（「合同会議」「包丁研ぎ」などは正しい名前です）
+- 地域の団体・病院・学校の催し（自治会以外の主催でも正しい予定です）
+
+【出力】
+issues の配列。問題が無ければ空配列にしてください。
+- index: 予定の番号（一覧の先頭の数字）
+- reason: 何が気になるかを40字以内で。言い切らず「〜に見えます」「〜かもしれません」と書く
+- severity: "high"（載せる前に直したい）か "low"（念のため見てほしい）
+
+【予定一覧】
+${list}
+`;
+
+  const res = await callGeminiWithRetry({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', responseSchema: EVENT_CHECK_SCHEMA, temperature: 0 },
+  });
+  const text = extractGeminiText(res);
+  try {
+    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? text) as { issues?: EventCheckIssue[] };
+    const known = new Set(items.map((i) => i.index));
+    return (parsed.issues ?? [])
+      .filter((i) => known.has(i.index) && typeof i.reason === 'string' && i.reason.trim())
+      .map((i) => ({ index: i.index, reason: i.reason.trim(), severity: i.severity === 'high' ? 'high' : 'low' }));
+  } catch (e) {
+    console.error('予定の点検結果を読めませんでした:', text.slice(0, 200));
+    throw new Error('点検の結果を読み取れませんでした');
+  }
 }
 
 /** 生成文を1行に整え、長すぎれば文の区切りで切る */

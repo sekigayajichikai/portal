@@ -17,6 +17,7 @@ import {
 import { Loader2, X, CalendarCheck, AlertTriangle } from 'lucide-react';
 import { showError, showToast } from '@/components/ui/feedback';
 import { isSameEventTitle } from './eventMatch';
+import { issueBadge, type EventIssue } from './eventQualityCheck';
 import { siteUrl } from './weeklyDigestCore';
 
 interface CalendarSyncDialogProps {
@@ -25,6 +26,8 @@ interface CalendarSyncDialogProps {
   onClose: () => void;
   /** 反映が終わったとき（一覧の読み直しなど） */
   onDone?: () => void;
+  /** 予定の点検結果（予定タブの機械判定＋AIの指摘）。載せる前に気づけるように行に出す */
+  issuesOf?: (cardId: string) => EventIssue[];
 }
 
 const todayYmd = () => {
@@ -50,7 +53,7 @@ const SECTIONS: Array<{ kind: CalendarDiffRow['kind']; title: string; note: stri
   { kind: 'same', title: '変更なし', note: 'カレンダーの内容と同じです', defaultOn: false },
 ];
 
-export const CalendarSyncDialog: React.FC<CalendarSyncDialogProps> = ({ cards, onClose, onDone }) => {
+export const CalendarSyncDialog: React.FC<CalendarSyncDialogProps> = ({ cards, onClose, onDone, issuesOf }) => {
   const [diff, setDiff] = useState<CalendarDiffRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -185,7 +188,17 @@ export const CalendarSyncDialog: React.FC<CalendarSyncDialogProps> = ({ cards, o
                               <span className="text-xs text-slate-500 shrink-0">{r.values.start_time.slice(0, 5)}</span>
                             )}
                             <span className="font-medium text-slate-800 truncate">{r.values.title}</span>
+                            {(() => {
+                              const b = issueBadge(issuesOf?.(r.cardId) ?? []);
+                              return b ? <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium shrink-0 ${b.cls}`} title={b.title}>{b.label}</span> : null;
+                            })()}
                           </div>
+                          {(issuesOf?.(r.cardId) ?? []).map((iss, n) => (
+                            <p key={n} className={`text-[11px] ${iss.severity === 'high' ? 'text-red-600' : 'text-amber-700'}`}>
+                              {iss.from === 'ai' ? 'AIの指摘: ' : ''}
+                              {iss.reason}
+                            </p>
+                          ))}
                           <p className="text-xs text-slate-400 truncate">
                             {[r.values.location, r.values.org_name && `主催: ${r.values.org_name}`, r.values.article_url && '記事リンクあり']
                               .filter(Boolean)
