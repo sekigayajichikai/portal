@@ -342,6 +342,22 @@ async function withEventFallback<T>(
 }
 
 /**
+ * 予定の点検（プロバイダ自動切替）
+ *
+ * カレンダーに載せる前に「人が確認したほうがよい予定」を挙げる。
+ * Gemini（無料枠）が混雑・上限のときは Claude に切り替える。69件で1円未満。
+ */
+export async function checkEvents(
+  items: Array<{ index: number; date: string | null; title: string; location?: string | null; organizer?: string | null; source?: string | null }>
+): Promise<Array<{ index: number; reason: string; severity: 'high' | 'low' }>> {
+  return withEventFallback(
+    '予定の点検',
+    () => geminiService.checkEventsWithGemini(items),
+    () => claudeService.checkEventsWithClaude(items)
+  );
+}
+
+/**
  * 記事群からイベント候補を抽出（プロバイダ自動切替）
  */
 export async function extractEventCandidates(

@@ -18,8 +18,7 @@ import {
   getVenuesSafe,
   getOrganizers,
   normalizeVenueText,
-  checkEventsWithGemini,
-  hasGeminiEventAccess,
+  checkEvents,
   type AdminEventCard,
   type Venue,
 } from '@cc-saas/shared';
@@ -102,7 +101,7 @@ export const EventsPanel: React.FC = () => {
     if (targets.length === 0) return;
     setChecking(true);
     try {
-      const found = await checkEventsWithGemini(
+      const found = await checkEvents(
         targets.map((c, i) => ({
           index: i,
           date: c.event_date,
@@ -244,17 +243,15 @@ export const EventsPanel: React.FC = () => {
                 className="text-sm border border-slate-300 rounded-lg pl-7 pr-2 py-1.5 w-56"
               />
             </div>
-            {hasGeminiEventAccess() && (
-              <button
-                onClick={runAiCheck}
-                disabled={checking}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 transition disabled:opacity-40"
-                title="一覧の予定をAIがまとめて点検し、題名が催しの名前になっていないものなど「確認したほうがよい予定」を挙げます"
-              >
-                {checking ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-                {checking ? '点検しています…' : 'AIで点検'}
-              </button>
-            )}
+            <button
+              onClick={runAiCheck}
+              disabled={checking}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 transition disabled:opacity-40"
+              title="一覧の予定をAIがまとめて点検し、題名が催しの名前になっていないものなど「確認したほうがよい予定」を挙げます（Geminiが混んでいるときはClaudeに切り替わります）"
+            >
+              {checking ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              {checking ? '点検しています…' : 'AIで点検'}
+            </button>
             <button
               onClick={() => setSyncing(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition"

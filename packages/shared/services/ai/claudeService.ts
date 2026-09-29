@@ -1085,6 +1085,75 @@ export async function extractEventCandidatesWithClaude(
 }
 
 /**
+ * 予定の点検（Claude版）
+ *
+ * Gemini の無料枠を使い切ったときや混雑しているときの控え。
+ * プロンプト・出力の形は geminiService.checkEventsWithGemini と同じ（指摘は「目を通す候補」）。
+ * 69件でおよそ 3,000 トークン（1円未満）。
+ */
+export async function checkEventsWithClaude(
+  items: Array<{ index: number; date: string | null; title: string; location?: string | null; organizer?: string | null; source?: string | null }>
+): Promise<Array<{ index: number; reason: string; severity: 'high' | 'low' }>> {
+  if (!hasClaudeAccess()) throw new Error('AI機能が利用できません（APIキー/プロキシ未設定）');
+  if (items.length === 0) return [];
+
+  const list = items
+    .map((it) =>
+      [
+        `${it.index}. ${it.date ?? '日付未定'} ${it.title}`,
+        it.location ? `場所: ${it.location}` : null,
+        it.organizer ? `主催: ${it.organizer}` : null,
+        it.source ? `出典: ${it.source}` : null,
+      ]
+        .filter(Boolean)
+        .join(' / ')
+    )
+    .join('\n');
+
+  const prompt = `あなたは自治会カレンダーの編集者です。次の予定一覧から、カレンダーに載せる前に**人が確認したほうがよいもの**を挙げてください。
+
+【確認したいもの】
+- 題名が催しの名前になっていない（紙面の見出し・説明文・呼びかけがそのまま入っている）
+- そもそも催しではない（期間・連絡事項・お知らせ・お願い・報告だけのもの）
+- 題名に文字の読み違いや崩れがある（意味をなさない語、途中で切れている、記号の混入）
+- 日付・時間・場所が原文の読み違いに見える
+
+【指摘しないもの】
+- 役員会・委員会・監査・実行委員会など、住民が参加しない自治会の予定（正しい予定です）
+- **場所や主催が空であること自体**。これは別の仕組みで拾うので、それだけを理由に挙げないでください
+- 題名が短いだけの予定（「合同会議」「包丁研ぎ」などは正しい名前です）
+- 題名に年度や主催団体が入っているだけの予定（「2026年度下期 安否確認訓練説明会」は正しい名前です）
+- 地域の団体・病院・学校の催し（自治会以外の主催でも正しい予定です）
+
+【出力】
+次の形のJSONだけを返してください。前後の説明は不要です。問題が無ければ issues は空配列。
+{"issues":[{"index":番号,"reason":"40字以内。言い切らず「〜に見えます」と書く","severity":"high"|"low"}]}
+
+【予定一覧】
+${list}
+`;
+
+  const response = await callClaudeAPI({
+    model: CLAUDE_MODEL,
+    max_tokens: 2000,
+    messages: [{ role: 'user', content: prompt }],
+  });
+  const textContent = response.content.find((c) => c.type === 'text');
+  const text = textContent && textContent.type === 'text' ? textContent.text : '';
+  const json = text.match(/```json\s*([\s\S]*?)\s*```/)?.[1] ?? text.match(/\{[\s\S]*\}/)?.[0] ?? text;
+  try {
+    const parsed = JSON.parse(json) as { issues?: Array<{ index: number; reason: string; severity: string }> };
+    const known = new Set(items.map((i) => i.index));
+    return (parsed.issues ?? [])
+      .filter((i) => known.has(i.index) && typeof i.reason === 'string' && i.reason.trim())
+      .map((i) => ({ index: i.index, reason: i.reason.trim(), severity: i.severity === 'high' ? ('high' as const) : ('low' as const) }));
+  } catch {
+    console.error('予定の点検結果を読めませんでした:', text.slice(0, 200));
+    throw new Error('点検の結果を読み取れませんでした');
+  }
+}
+
+/**
  * アップロード済みPDFの公開URLをBase64に変換
  *
  * Storage上のPDFをfetchしてBase64エンコードします（データURLプレフィックスなし）。
