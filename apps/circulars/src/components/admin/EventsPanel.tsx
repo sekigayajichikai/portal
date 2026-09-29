@@ -19,6 +19,7 @@ import {
   getOrganizers,
   normalizeVenueText,
   checkEvents,
+  removeCalendarEventByCard,
   type AdminEventCard,
   type Venue,
 } from '@cc-saas/shared';
@@ -27,7 +28,7 @@ import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 import { EventCardEditDialog } from './EventCardEditDialog';
 import { CalendarSyncDialog } from './CalendarSyncDialog';
 import { CATEGORY_META, KIND_META } from './EventCandidateDialog';
-import { findDuplicateGroups, buildMergeUpdates } from './eventMatch';
+import { findDuplicateGroups, buildMergeUpdates, type DuplicateReason } from './eventMatch';
 import { checkEventByRule, issueBadge, type EventIssue } from './eventQualityCheck';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -211,6 +212,8 @@ export const EventsPanel: React.FC = () => {
       const updates = buildMergeUpdates(keep, drop);
       if (updates) await updateEventCard(keep.id, updates);
       await deleteEventCard(drop.id);
+      // カレンダーに載せていた場合は、そちらからも消す（残す側は次の「カレンダーに反映」で更新される）
+      await removeCalendarEventByCard(drop.id).catch((e) => console.warn('カレンダーからの削除に失敗:', e));
       showToast('1件にまとめました');
       setComparing(null);
       await load();
@@ -305,7 +308,9 @@ export const EventsPanel: React.FC = () => {
           <ul className="divide-y divide-slate-100">
             {visible.map((c) => {
               const badge = c.newsletter_status ? STATUS_BADGE[c.newsletter_status] : undefined;
-              const dups = (duplicates.get(c.id) ?? []).map((id) => byId.get(id)).filter((x): x is AdminEventCard => !!x);
+              const dups = (duplicates.get(c.id) ?? [])
+                .map((h) => ({ card: byId.get(h.id), reason: h.reason }))
+                .filter((x): x is { card: AdminEventCard; reason: DuplicateReason } => !!x.card);
               return (
                 <li key={c.id} className={c.digest_exclude ? 'bg-slate-50/60' : ''}>
                   <button type="button" onClick={() => setEditingId(c.id)} className="w-full text-left px-4 py-2 hover:bg-primary-50/40 transition">
@@ -366,11 +371,12 @@ export const EventsPanel: React.FC = () => {
                       </span>
                     </div>
                   ))}
-                  {dups.map((d) => (
+                  {dups.map(({ card: d, reason }) => (
                     <div key={d.id} className="flex items-center gap-2 text-xs bg-amber-50 text-amber-800 px-4 py-1 pl-[6.75rem]">
                       <AlertTriangle size={12} className="shrink-0" />
                       <span className="truncate">
-                        同じ日に似た予定: {d.title}（{d.newsletter_title ?? '号不明'}）
+                        {reason === 'title' ? '同じ日に似た予定' : '同じ時刻・同じ主催の予定（同じ催しかもしれません）'}: {d.title}（
+                        {d.newsletter_title ?? '号不明'}）
                       </span>
                       <button type="button" onClick={() => setComparing([c, d])} className="shrink-0 font-bold text-amber-900 hover:underline">
                         見比べる

@@ -95,12 +95,50 @@ export function isSameEvent(a: { event_date: string | null; title: string }, b: 
   return isSameEventTitle(a.title, b.title);
 }
 
+/** event_time の先頭の時刻（"13:30-15:30" → "13:30"）。読み取れなければ null */
+export function startTimeOf(time: string | null | undefined): string | null {
+  const m = (time ?? '').match(/(\d{1,2}):(\d{2})/);
+  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null;
+}
+
+/** 重複を疑う理由 */
+export type DuplicateReason =
+  /** 題名が似ている */
+  | 'title'
+  /** 題名は違うが、同じ日・同じ開始時刻・同じ主催（同じ枠の催しが別名で入っている） */
+  | 'slot';
+
+export interface DuplicateHit {
+  id: string;
+  reason: DuplicateReason;
+}
+
+/** 重複を疑う予定の最小の形 */
+export type DuplicateCandidate = {
+  id: string;
+  event_date: string | null;
+  title: string;
+  event_time?: string | null;
+  organizer?: string | null;
+};
+
 /**
  * 一覧の中の「同じ予定」の組を見つける（予定タブの重複警告用）。
- * 戻り値: 予定ID → 同じ予定とみなした相手のID一覧
+ *
+ * 2つの見方で探す。
+ * 1. **題名が似ている**（`isSameEventTitle`）… 号ごとの書き方の違いを拾う
+ * 2. **同じ日・同じ開始時刻・同じ主催**… 題名が全く違っても同じ枠の催しのことがある
+ *    （2026-09-29: 10/19 13:30 ふれあいの会の「YouTube カフェ」と「歌声喫茶～秋の思い出と懐かしの名曲を歌おう～」。
+ *    予定表には枠の名前、記事には当日の催し名が書かれていた）
+ *
+ * 戻り値: 予定ID → 同じ予定とみなした相手（理由つき）
  */
-export function findDuplicateGroups<T extends { id: string; event_date: string | null; title: string }>(cards: T[]): Map<string, string[]> {
-  const out = new Map<string, string[]>();
+export function findDuplicateGroups<T extends DuplicateCandidate>(cards: T[]): Map<string, DuplicateHit[]> {
+  const out = new Map<string, DuplicateHit[]>();
+  const add = (a: string, b: string, reason: DuplicateReason) => {
+    out.set(a, [...(out.get(a) ?? []), { id: b, reason }]);
+    out.set(b, [...(out.get(b) ?? []), { id: a, reason }]);
+  };
   const byDate = new Map<string, T[]>();
   for (const c of cards) {
     if (!c.event_date) continue;
@@ -111,9 +149,18 @@ export function findDuplicateGroups<T extends { id: string; event_date: string |
   for (const list of byDate.values()) {
     for (let i = 0; i < list.length; i++) {
       for (let j = i + 1; j < list.length; j++) {
-        if (!isSameEventTitle(list[i].title, list[j].title)) continue;
-        out.set(list[i].id, [...(out.get(list[i].id) ?? []), list[j].id]);
-        out.set(list[j].id, [...(out.get(list[j].id) ?? []), list[i].id]);
+        const a = list[i];
+        const b = list[j];
+        if (isSameEventTitle(a.title, b.title)) {
+          add(a.id, b.id, 'title');
+          continue;
+        }
+        // 題名が違っても、同じ時刻に同じ団体が開くものは同じ催しのことが多い
+        const ta = startTimeOf(a.event_time);
+        const tb = startTimeOf(b.event_time);
+        const orgA = a.organizer?.trim();
+        const orgB = b.organizer?.trim();
+        if (ta && tb && ta === tb && orgA && orgB && orgA === orgB) add(a.id, b.id, 'slot');
       }
     }
   }

@@ -12,6 +12,7 @@ import {
   getAdminEventCardById,
   updateEventCard,
   deleteEventCard,
+  removeCalendarEventByCard,
   getOrganizers,
   addOrganizer,
   getVenuesSafe,
@@ -235,6 +236,8 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
     if (!(await appConfirm({ title: `「${card.title}」を削除しますか？`, message: 'カレンダー・週次配信からも消えます。元に戻せません。', confirmLabel: '削除する', danger: true }))) return;
     try {
       await deleteEventCard(card.id);
+      // カレンダーに載せていた場合は、そちらからも消す
+      await removeCalendarEventByCard(card.id).catch((e) => console.warn('カレンダーからの削除に失敗:', e));
       showToast('予定を削除しました');
       onChanged();
       onClose();
