@@ -5,17 +5,18 @@ import { ReportBoard } from '@/components/admin/ReportBoard';
 import { WeeklyDigest } from '@/components/admin/WeeklyDigest';
 import { RichMenuManager } from '@/components/admin/RichMenuManager';
 import { MastersPanel } from '@/components/admin/MastersPanel';
-import { FileText, LogOut, Newspaper, Send, LayoutGrid, Database } from 'lucide-react';
+import { EventsPanel } from '@/components/admin/EventsPanel';
+import { FileText, LogOut, Newspaper, Send, LayoutGrid, Database, Calendar } from 'lucide-react';
 import { appConfirm } from '@/components/ui/feedback';
 
-/** 管理画面の作成対象。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事）/ 'weekly' = 週次配信 / 'richmenu' = LINE リッチメニュー / 'masters' = マスタ（会場・主催団体・発行元） */
-type AdminMode = 'circulars' | 'reports' | 'weekly' | 'richmenu' | 'masters';
+/** 管理画面の作成対象。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事）/ 'weekly' = 週次配信 / 'richmenu' = LINE リッチメニュー / 'events' = 予定（号をまたぐ予定カードの一覧・編集）/ 'masters' = マスタ（会場・主催団体・発行元） */
+type AdminMode = 'circulars' | 'reports' | 'weekly' | 'richmenu' | 'events' | 'masters';
 
 function AdminContent() {
   const { isAuthenticated, isLoading, logout } = useAuth();
   // URLの ?mode=reports で直接レポート画面を開ける（ブックマーク用）
   const [mode, setMode] = useState<AdminMode>(() =>
-    (['reports', 'weekly', 'richmenu', 'masters'].find((m) => m === new URLSearchParams(window.location.search).get('mode')) as AdminMode | undefined) ?? 'circulars'
+    (['reports', 'weekly', 'richmenu', 'events', 'masters'].find((m) => m === new URLSearchParams(window.location.search).get('mode')) as AdminMode | undefined) ?? 'circulars'
   );
 
   if (isLoading) {
@@ -55,7 +56,7 @@ function AdminContent() {
           </button>
         </div>
       </header>
-      {/* 作成対象の切替: 電子回覧板 / 関ヶ谷レポート / 週次配信 / リッチメニュー / マスタ */}
+      {/* 作成対象の切替: 電子回覧板 / 関ヶ谷レポート / 週次配信 / リッチメニュー / 予定 / マスタ */}
       <div className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 flex gap-1">
           <button
@@ -103,6 +104,18 @@ function AdminContent() {
             リッチメニュー
           </button>
           <button
+            onClick={() => setMode('events')}
+            className={`flex items-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition ${
+              mode === 'events'
+                ? 'border-blue-600 text-blue-700'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+            title="号をまたいで予定カードを一覧・編集"
+          >
+            <Calendar size={16} />
+            予定
+          </button>
+          <button
             onClick={() => setMode('masters')}
             className={`flex items-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition ml-auto ${
               mode === 'masters'
@@ -119,7 +132,7 @@ function AdminContent() {
 
       <main className="p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
-          {mode === 'circulars' ? <CircularBoard /> : mode === 'reports' ? <ReportBoard /> : mode === 'weekly' ? <WeeklyDigest /> : mode === 'richmenu' ? <RichMenuManager /> : <MastersPanel />}
+          {mode === 'circulars' ? <CircularBoard /> : mode === 'reports' ? <ReportBoard /> : mode === 'weekly' ? <WeeklyDigest /> : mode === 'richmenu' ? <RichMenuManager /> : mode === 'events' ? <EventsPanel /> : <MastersPanel />}
         </div>
       </main>
     </div>

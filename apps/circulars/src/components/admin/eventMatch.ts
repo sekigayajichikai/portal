@@ -94,3 +94,70 @@ export function isSameEvent(a: { event_date: string | null; title: string }, b: 
   if (!a.event_date || !b.event_date || a.event_date !== b.event_date) return false;
   return isSameEventTitle(a.title, b.title);
 }
+
+/**
+ * 一覧の中の「同じ予定」の組を見つける（予定タブの重複警告用）。
+ * 戻り値: 予定ID → 同じ予定とみなした相手のID一覧
+ */
+export function findDuplicateGroups<T extends { id: string; event_date: string | null; title: string }>(cards: T[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const byDate = new Map<string, T[]>();
+  for (const c of cards) {
+    if (!c.event_date) continue;
+    const list = byDate.get(c.event_date) ?? [];
+    list.push(c);
+    byDate.set(c.event_date, list);
+  }
+  for (const list of byDate.values()) {
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        if (!isSameEventTitle(list[i].title, list[j].title)) continue;
+        out.set(list[i].id, [...(out.get(list[i].id) ?? []), list[j].id]);
+        out.set(list[j].id, [...(out.get(list[j].id) ?? []), list[i].id]);
+      }
+    }
+  }
+  return out;
+}
+
+/** 重複を統合するときに引き継ぐ項目（残す側が空欄のときだけ、消す側の値で埋める） */
+type MergeableCard = {
+  event_time: string | null;
+  event_location: string | null;
+  linked_article_id: string | null;
+  organizer?: string | null;
+  source_pdf_url?: string | null;
+  category?: string | null;
+  kind?: string | null;
+  weekly_topic?: boolean | null;
+  topic_reason?: string | null;
+  apply_deadline?: string | null;
+  target_audience?: string | null;
+  fee?: string | null;
+  description?: string | null;
+  digest_exclude?: boolean | null;
+  hero_crop?: unknown;
+  hero_crop_y?: number | null;
+};
+
+/**
+ * 重複した2件を1件にまとめるとき、残す側の空欄を消す側の値で埋める更新内容（抽出ダイアログの buildFillUpdates と同じ考え方）。
+ * 題名・日付など、残す側に値があるものは触らない。埋めるものが無ければ null。
+ */
+export function buildMergeUpdates<T extends MergeableCard>(keep: T, drop: T): Partial<T> | null {
+  const u: Partial<MergeableCard> = {};
+  const fillKeys = ['event_time', 'event_location', 'linked_article_id', 'organizer', 'source_pdf_url', 'category', 'kind', 'apply_deadline', 'target_audience', 'fee', 'description'] as const;
+  for (const k of fillKeys) {
+    if (!keep[k] && drop[k]) (u as any)[k] = drop[k];
+  }
+  if (!keep.weekly_topic && drop.weekly_topic) {
+    u.weekly_topic = true;
+    if (!keep.topic_reason && drop.topic_reason) u.topic_reason = drop.topic_reason;
+  }
+  if (!keep.digest_exclude && drop.digest_exclude) u.digest_exclude = true;
+  if (!keep.hero_crop && drop.hero_crop) {
+    u.hero_crop = drop.hero_crop;
+    u.hero_crop_y = drop.hero_crop_y ?? null;
+  }
+  return Object.keys(u).length > 0 ? (u as Partial<T>) : null;
+}

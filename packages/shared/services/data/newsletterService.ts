@@ -184,6 +184,61 @@ export async function getArticlesByNewsletterId(
   return data;
 }
 
+/** 予定カードからリンクする記事の候補（号の題名付き） */
+export interface LinkableArticle {
+  id: string;
+  title: string;
+  newsletter_id: string;
+  newsletter_title: string | null;
+  newsletter_status: string | null;
+  thumbnail_url: string | null;
+  source: string | null;
+  visibility: string | null;
+}
+
+/**
+ * 予定カードの「記事リンク」の候補を、号をまたいで取得する（新しい記事から）。
+ * 公開中の号の記事すべて（関ヶ谷レポートの記事も含む）に、includeNewsletterId の号（下書きでも）の記事を足す。
+ * 10月号の予定に9月号の詳しい記事を付ける、のような号をまたぐリンク用。
+ */
+export async function getArticlesForLinking(includeNewsletterId?: string): Promise<LinkableArticle[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    throw new Error('Supabase未接続です。環境変数を確認してください。');
+  }
+  const cols = 'id,title,newsletter_id,thumbnail_url,source,visibility,created_at,newsletters!inner(title,status)';
+  const published = supabase
+    .from('articles')
+    .select(cols)
+    .eq('newsletters.status', 'published')
+    .order('created_at', { ascending: false })
+    .limit(1000);
+  const own = includeNewsletterId
+    ? supabase.from('articles').select(cols).eq('newsletter_id', includeNewsletterId).order('display_order', { ascending: true })
+    : null;
+  const [pub, mine] = await Promise.all([published, own]);
+  if (pub.error) throw pub.error;
+  if (mine?.error) throw mine.error;
+
+  const seen = new Set<string>();
+  const out: LinkableArticle[] = [];
+  for (const row of [...(mine?.data ?? []), ...(pub.data ?? [])] as any[]) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    out.push({
+      id: row.id,
+      title: row.title,
+      newsletter_id: row.newsletter_id,
+      newsletter_title: row.newsletters?.title ?? null,
+      newsletter_status: row.newsletters?.status ?? null,
+      thumbnail_url: row.thumbnail_url ?? null,
+      source: row.source ?? null,
+      visibility: row.visibility ?? null,
+    });
+  }
+  return out;
+}
+
 /**
  * 記事をID指定で1件取得
  *

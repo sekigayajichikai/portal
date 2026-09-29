@@ -6,11 +6,12 @@
 
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useEffect, useState } from 'react';
-import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getEventCards, addEventCard, updateEventCard, deleteEventCard, requestReview, cancelReview, getVenuesSafe, resolveVenueName, type EventCard, type Venue } from '@cc-saas/shared';
+import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getAdminEventCards, addEventCard, updateEventCard, deleteEventCard, requestReview, cancelReview, type AdminEventCard } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
 import { FileText, Calendar, ChevronRight, ChevronUp, ChevronDown, GripVertical, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles, ClipboardCheck, CheckCircle2, MessageSquareWarning } from 'lucide-react';
 import { ArticleList } from './ArticleList';
 import { EventCandidateDialog } from './EventCandidateDialog';
+import { EventCardEditDialog } from './EventCardEditDialog';
 import { ImageCropPage } from './ImageCropPage';
 import { ArticleCropPage } from './ArticleCropPage';
 import CircularsView from '../public/CircularsView';
@@ -65,26 +66,12 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
   // 担当者確認リンクのダイアログ（nullなら非表示）
   const [reviewLinkUrl, setReviewLinkUrl] = useState<string | null>(null);
-  const [eventCards, setEventCards] = useState<EventCard[]>([]);
-  /** 会場マスター（予定カードの場所欄の候補と、別名→正式名の置き換え用） */
-  const [venues, setVenues] = useState<Venue[]>([]);
-  useEffect(() => {
-    getVenuesSafe().then(setVenues);
-  }, []);
+  /** 号の予定カード（リンク記事の題名・号名付き。別の号の記事へのリンクも表示するため） */
+  const [eventCards, setEventCards] = useState<AdminEventCard[]>([]);
+  const reloadEventCards = async (newsletterId: string) => setEventCards(await getAdminEventCards({ newsletterId }));
   const [showEventExtract, setShowEventExtract] = useState(false);
-  /** インライン編集中のイベントカード（nullなら非編集） */
-  const [editingCard, setEditingCard] = useState<{
-    id: string;
-    title: string;
-    event_date: string;
-    event_time: string;
-    event_location: string;
-    /** 紹介文（週次配信の⭐一押し・予定ページに表示） */
-    description: string;
-    /** 週次配信に載せない（役員向け会議など） */
-    digest_exclude: boolean;
-  } | null>(null);
-  const [isSavingCard, setIsSavingCard] = useState(false);
+  /** 編集ダイアログで開いている予定カード（予定タブ・週次配信と同じダイアログ） */
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [showArticleCrop, setShowArticleCrop] = useState(false);
   /** 記事の手動追加中（二重送信防止＋ボタン内スピナー表示） */
   const [isAddingArticle, setIsAddingArticle] = useState(false);
@@ -171,7 +158,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
       console.log('✅ 記事読み込み完了:', articleData.length, '件');
 
       // イベントカードも取得
-      try { const cards = await getEventCards(newsletter.id); setEventCards(cards); } catch { setEventCards([]); }
+      try { await reloadEventCards(newsletter.id); } catch { setEventCards([]); }
 
     } catch (error: any) {
       console.error('❌ 記事読み込みエラー:', error);
@@ -779,8 +766,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                       linked_article_id: null,
                       display_order: eventCards.length,
                     });
-                    const cards = await getEventCards(selectedNewsletter.id);
-                    setEventCards(cards);
+                    await reloadEventCards(selectedNewsletter.id);
                   } catch (error) { console.error('イベント追加エラー:', error); showError('イベントを追加できませんでした。時間をおいてもう一度お試しください。'); }
                 }}
                 className="text-sm text-primary-600 hover:text-primary-800 font-medium flex items-center gap-1"
@@ -796,11 +782,17 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               existingCards={eventCards}
               onRegistered={async () => {
                 try {
-                  const cards = await getEventCards(selectedNewsletter.id);
-                  setEventCards(cards);
+                  await reloadEventCards(selectedNewsletter.id);
                 } catch { /* 再取得失敗時は既存表示を維持 */ }
               }}
               onClose={() => setShowEventExtract(false)}
+            />
+          )}
+          {editingCardId && (
+            <EventCardEditDialog
+              cardId={editingCardId}
+              onClose={() => setEditingCardId(null)}
+              onChanged={() => reloadEventCards(selectedNewsletter.id).catch(() => {})}
             />
           )}
           {eventCards.length === 0 ? (
@@ -808,103 +800,9 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {eventCards.map((card) => {
-                const linkedArticle = articles.find(a => a.id === card.linked_article_id);
-                if (editingCard?.id === card.id) {
-                  return (
-                    <div key={card.id} className="p-3 bg-primary-50/50 border border-primary-300 rounded-lg space-y-1.5">
-                      <div className="flex gap-2">
-                        <input
-                          type="date"
-                          value={editingCard.event_date}
-                          onChange={(e) => setEditingCard({ ...editingCard, event_date: e.target.value })}
-                          className="text-sm border border-slate-300 rounded px-2 py-1 w-36"
-                        />
-                        <input
-                          type="text"
-                          value={editingCard.event_time}
-                          placeholder="時間（例: 10:00-12:00）"
-                          onChange={(e) => setEditingCard({ ...editingCard, event_time: e.target.value })}
-                          className="text-sm border border-slate-300 rounded px-2 py-1 flex-1 min-w-0"
-                        />
-                      </div>
-                      <input
-                        type="text"
-                        value={editingCard.title}
-                        onChange={(e) => setEditingCard({ ...editingCard, title: e.target.value })}
-                        className="text-sm font-medium border border-slate-300 rounded px-2 py-1 w-full"
-                      />
-                      {/* 場所: 会場マスターの正式名を候補に出す。別名を入れて確定すると正式名に置き換わる */}
-                      <input
-                        type="text"
-                        list="venue-options-cards"
-                        value={editingCard.event_location}
-                        placeholder="場所（例: 自治会館）"
-                        onChange={(e) => setEditingCard({ ...editingCard, event_location: e.target.value })}
-                        onBlur={(e) => setEditingCard({ ...editingCard, event_location: resolveVenueName(e.target.value, venues) ?? '' })}
-                        className="text-sm border border-slate-300 rounded px-2 py-1 w-full"
-                      />
-                      <datalist id="venue-options-cards">
-                        {venues.map((v) => (
-                          <option key={v.id} value={v.name} />
-                        ))}
-                      </datalist>
-                      <textarea
-                        value={editingCard.description}
-                        placeholder="紹介文（1〜2文。週次配信の⭐一押しと予定ページに表示）"
-                        rows={2}
-                        onChange={(e) => setEditingCard({ ...editingCard, description: e.target.value })}
-                        className="text-xs border border-slate-300 rounded px-2 py-1 w-full resize-none leading-relaxed"
-                      />
-                      <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none" title="オンにすると週次LINE配信（今週のお知らせ）に載りません。カレンダーには載ります">
-                        <input
-                          type="checkbox"
-                          checked={editingCard.digest_exclude}
-                          onChange={(e) => setEditingCard({ ...editingCard, digest_exclude: e.target.checked })}
-                        />
-                        🚫 週次配信に載せない（役員向け会議など）
-                      </label>
-                      <div className="flex justify-end gap-2 pt-1">
-                        <button
-                          onClick={() => setEditingCard(null)}
-                          className="px-3 py-1 text-xs text-slate-600 hover:bg-slate-100 rounded"
-                        >
-                          キャンセル
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (!editingCard.title.trim()) return;
-                            setIsSavingCard(true);
-                            try {
-                              const saved = await updateEventCard(card.id, {
-                                title: editingCard.title.trim(),
-                                event_date: editingCard.event_date || null,
-                                event_time: editingCard.event_time.trim() || null,
-                                event_location: editingCard.event_location.trim() || null,
-                                description: editingCard.description.trim() || null,
-                                digest_exclude: editingCard.digest_exclude,
-                              });
-                              // DBに description 列が無い（マイグレーション未適用）と、紹介文だけ黙って落ちる。
-                              // 返ってきた行に列が無ければその旨を知らせる
-                              if (editingCard.description.trim() && !('description' in saved)) {
-                                showError(
-                                  '紹介文は保存されませんでした。DBに紹介文の列がありません（sql/migrations/2026-09-21-event-cards-description.sql を SQL Editor で実行してください）。'
-                                );
-                              }
-                              const cards = await getEventCards(selectedNewsletter.id);
-                              setEventCards(cards);
-                              setEditingCard(null);
-                            } catch (error) { console.error('イベント保存エラー:', error); showError('保存できませんでした。時間をおいてもう一度お試しください。'); }
-                            finally { setIsSavingCard(false); }
-                          }}
-                          disabled={isSavingCard || !editingCard.title.trim()}
-                          className="px-3 py-1 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded disabled:opacity-40 flex items-center gap-1"
-                        >
-                          {isSavingCard ? (<><Loader2 size={12} className="animate-spin" /> 保存しています…</>) : '保存'}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
+                const linkedArticle = card.linked_article;
+                /** リンク記事が別の号の記事なら、その号名を添える */
+                const linkedFrom = linkedArticle && linkedArticle.newsletter_id !== card.newsletter_id ? card.linked_article_newsletter_title : null;
                 return (
                   <div key={card.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
                     <div className="flex-1 min-w-0">
@@ -931,6 +829,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                       {linkedArticle ? (
                         <p className="text-xs text-primary-600 mt-0.5 flex items-center gap-2">
                           <span className="truncate">🔗 {linkedArticle.title}</span>
+                          {linkedFrom && <span className="shrink-0 text-[11px] text-slate-400">（{linkedFrom}）</span>}
                           <button
                             onClick={async () => {
                               if (!(await appConfirm({
@@ -939,8 +838,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                                 confirmLabel: '解除する',
                               }))) return;
                               await updateEventCard(card.id, { linked_article_id: null });
-                              const cards = await getEventCards(selectedNewsletter.id);
-                              setEventCards(cards);
+                              await reloadEventCards(selectedNewsletter.id);
                             }}
                             className="text-slate-400 hover:text-red-500 shrink-0"
                             title="記事リンクを解除"
@@ -950,23 +848,9 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         </p>
                       ) : (
                         <button
-                          onClick={async () => {
-                            const choices = articles.map((a, i) => `${i + 1}. ${a.title}`);
-                            const input = await appPrompt({
-                              title: 'リンクする記事を選択',
-                              message: 'タップして選んでください',
-                              choices,
-                              confirmLabel: 'リンクする',
-                            });
-                            if (input === null) return;
-                            const num = parseInt(input);
-                            if (num >= 1 && num <= articles.length) {
-                              await updateEventCard(card.id, { linked_article_id: articles[num - 1].id });
-                              const cards = await getEventCards(selectedNewsletter.id);
-                              setEventCards(cards);
-                            }
-                          }}
+                          onClick={() => setEditingCardId(card.id)}
                           className="text-xs text-amber-600 hover:text-amber-800 mt-0.5"
+                          title="編集ダイアログで、公開中の全号の記事から選べます"
                         >
                           ＋ 記事をリンク
                         </button>
@@ -974,15 +858,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     </div>
                     <div className="flex items-center shrink-0">
                       <button
-                        onClick={() => setEditingCard({
-                          id: card.id,
-                          title: card.title,
-                          event_date: card.event_date || '',
-                          event_time: card.event_time || '',
-                          event_location: card.event_location || '',
-                          description: card.description || '',
-                          digest_exclude: !!card.digest_exclude,
-                        })}
+                        onClick={() => setEditingCardId(card.id)}
                         className="p-1.5 text-slate-400 hover:text-primary-600 opacity-0 group-hover:opacity-100 transition"
                         title="編集"
                       >
@@ -996,8 +872,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                             danger: true,
                           }))) return;
                           await deleteEventCard(card.id);
-                          const cards = await getEventCards(selectedNewsletter.id);
-                          setEventCards(cards);
+                          await reloadEventCards(selectedNewsletter.id);
                         }}
                         className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
                         title="削除"

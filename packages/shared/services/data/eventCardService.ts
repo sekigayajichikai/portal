@@ -51,6 +51,8 @@ export interface PublicEventCard extends EventCard {
     source: string | null;
     thumbnail_url?: string | null;
     attachments?: Array<{ type?: string; url?: string; label?: string }> | null;
+    /** 記事の載っている号（管理画面の取得でだけ入る） */
+    newsletter_id?: string;
   } | null;
   /** 出典号の元PDF（source_pdf_url が無い場合のフォールバック＝号の先頭PDF） */
   newsletter_pdf_url?: string | null;
@@ -94,6 +96,79 @@ export async function getEventCardsFrom(fromDate: string): Promise<EventCardWith
     const { newsletters, ...card } = row;
     return { ...card, newsletter_title: newsletters?.title ?? null, newsletter_status: newsletters?.status ?? null };
   });
+}
+
+/**
+ * 管理画面（予定タブ・号の予定カード・編集ダイアログ）用の予定カード。
+ * 号の題名・状態・PDF一覧と、リンク記事（別の号の記事でもよい）の題名・写真・号名を添える。
+ * 週次配信の画像の元（topicImageSource）にもそのまま渡せるよう PublicEventCard の形に揃える。
+ */
+export interface AdminEventCard extends PublicEventCard {
+  newsletter_title: string | null;
+  /** 号の状態（draft / published / archived） */
+  newsletter_status: string | null;
+  /** 号の元PDF一覧（由来PDFの選択肢） */
+  newsletter_pdfs: Array<{ url: string; label: string }>;
+  /** リンク記事の載っている号の題名（同じ号なら出さない判断は画面側で） */
+  linked_article_newsletter_title?: string | null;
+}
+
+/**
+ * 管理画面用に予定カードを取得する（号の状態は問わない。下書き・旧版の号のカードも含む）。
+ * - newsletterId … その号のカードだけ（号の画面）
+ * - fromDate     … その日以降＋日付未定（予定タブの「今日以降」）
+ * どちらも無ければ全件（予定タブの「過去も表示」）。日付順・日付未定は末尾。
+ */
+export async function getAdminEventCards(opts: { newsletterId?: string; fromDate?: string } = {}): Promise<AdminEventCard[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続');
+  let query = supabase.from('event_cards').select(ADMIN_CARD_SELECT);
+  if (opts.newsletterId) query = query.eq('newsletter_id', opts.newsletterId);
+  if (opts.fromDate) query = query.or(`event_date.gte.${opts.fromDate},event_date.is.null`);
+  const { data, error } = await query
+    .order('event_date', { ascending: true, nullsFirst: false })
+    .order('display_order');
+  if (error) throw error;
+  return (data || []).map(toAdminEventCard);
+}
+
+/** 管理画面用に予定カードを1件取得する（編集ダイアログ用。無ければ null） */
+export async function getAdminEventCardById(id: string): Promise<AdminEventCard | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続');
+  const { data, error } = await supabase.from('event_cards').select(ADMIN_CARD_SELECT).eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ? toAdminEventCard(data) : null;
+}
+
+const ADMIN_CARD_SELECT =
+  '*, newsletters(title,status,source_pdf_url,source_pdf_urls), linked_article:articles!linked_article_id(id,title,source,thumbnail_url,attachments,newsletter_id,newsletters(title))';
+
+function toAdminEventCard(row: any): AdminEventCard {
+  const nl = row.newsletters;
+  const entries: any[] = Array.isArray(nl?.source_pdf_urls) ? nl.source_pdf_urls : [];
+  const pdfs = entries
+    .map((e: any, i: number) =>
+      typeof e === 'string'
+        ? { url: e, label: `PDF ${i + 1}` }
+        : e?.url
+          ? { url: e.url as string, label: (e.label || e.publisher || `PDF ${i + 1}`) as string }
+          : null
+    )
+    .filter((p): p is { url: string; label: string } => !!p);
+  if (pdfs.length === 0 && nl?.source_pdf_url) pdfs.push({ url: nl.source_pdf_url, label: 'PDF 1' });
+  const { newsletters: _n, linked_article, ...card } = row;
+  const { newsletters: articleNl, ...article } = linked_article ?? {};
+  return {
+    ...card,
+    linked_article: linked_article ? article : null,
+    linked_article_newsletter_title: linked_article ? (articleNl?.title ?? null) : null,
+    newsletter_pdf_url: pdfs[0]?.url ?? null,
+    source_pdf_label: card.source_pdf_url ? (pdfs.find((p) => p.url === card.source_pdf_url)?.label ?? null) : null,
+    newsletter_title: nl?.title ?? null,
+    newsletter_status: nl?.status ?? null,
+    newsletter_pdfs: pdfs,
+  };
 }
 
 /** 複数の号のイベントカードをまとめて取得（日付の近い順、日付未定は末尾） */

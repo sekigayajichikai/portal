@@ -10,6 +10,12 @@
    本番コード（`eventExtractionPrompt.ts`）からプロンプトを生成して Gemini 無料枠で実行し、`results/prod-gemini-3.6-flash.json` に保存する。
    無料枠は**モデルごとに 1分5回・1日20回**なので、13秒間隔で順次実行し 429/503 は待って再試行する。
    1日の上限に当たったら別モデル名（`... prod gemini-3.8-flash`）で続けられる。
+   **記事テキストからの抽出**（号の画面の「AIで抽出」の記事読み取り）は、登録済みの号の記事をDBから読んで同じように試せる:
+   ```
+   node scripts/schedule-test/run-gemini-articles.mjs "2026年10月号" 合同会議
+   ```
+   キーワードを付けると、それを含む記事の一節と、抽出結果に入ったかを表示する。1日の上限（PerDay）にかかったら再試行せずに止まる。
+
 2. **Claude Code のサブエージェント（Haiku/Sonnet）で読ませる**（Claude 側の比較用）
 
 ## 👉 いちばん短い頼み方（これをClaude Codeに言うだけ）

@@ -52,7 +52,6 @@ import {
 } from '@cc-saas/shared';
 import { Copy, Check, Download, RefreshCw, Loader2, Send, ExternalLink, MessageCircle, ShieldCheck, Users, Sparkles, Trash2, Pencil, Files } from 'lucide-react';
 import { showError, showToast, appConfirm, appPrompt } from '@/components/ui/feedback';
-import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 
 import {
   type Digest,
@@ -77,7 +76,8 @@ import {
 import { buildGreetingText, buildWeeklyMessages } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
 import { CropEditor } from './CropEditor';
-import { type HeroCrop, type CropAspect, normalizeCrop, resolveCrop, drawCropped, loadImageCanvas } from './heroCrop';
+import { EventCardEditDialog } from './EventCardEditDialog';
+import { type HeroCrop, type CropAspect, normalizeCrop, resolveCrop, drawCropped, loadImageCanvas, renderPdfFirstPage } from './heroCrop';
 
 const REPORT_NEWSLETTER_TITLE = '関ヶ谷レポート';
 /** canvas のフォント */
@@ -95,49 +95,6 @@ const IMAGE_MODES: Array<{ key: ImageMode; label: string; hint: string }> = [
 // ---------------------------------------------------------------------------
 // 配信画像
 // ---------------------------------------------------------------------------
-
-/** PDFの1ページ目を canvas に描いたもの（URLごとにキャッシュ） */
-const flyerCache = new Map<string, HTMLCanvasElement>();
-/** 読み込み中の Promise（同じPDFを同時に2回描かないため。開発モードの二重実行やメモリ節約） */
-const flyerInflight = new Map<string, Promise<HTMLCanvasElement>>();
-
-/** PDF 1ページ目を最大 1400px の canvas にレンダリングする（PdfThumbnail と同じ pdf.js 設定） */
-function renderPdfFirstPage(url: string): Promise<HTMLCanvasElement> {
-  const cached = flyerCache.get(url);
-  if (cached) return Promise.resolve(cached);
-  const inflight = flyerInflight.get(url);
-  if (inflight) return inflight;
-  const p = renderPdfFirstPageUncached(url).finally(() => flyerInflight.delete(url));
-  flyerInflight.set(url, p);
-  return p;
-}
-
-async function renderPdfFirstPageUncached(url: string): Promise<HTMLCanvasElement> {
-  const pdfjsLib = await import('pdfjs-dist');
-  const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
-  pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const doc = await pdfjsLib.getDocument({ data: await res.arrayBuffer(), ...PDFJS_DOC_OPTIONS }).promise;
-  try {
-    const page = await doc.getPage(1);
-    const base = page.getViewport({ scale: 1 });
-    const scale = 1400 / Math.max(base.width, base.height);
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(viewport.width);
-    canvas.height = Math.round(viewport.height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('canvas 2d context を取得できません');
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
-    flyerCache.set(url, canvas);
-    return canvas;
-  } finally {
-    doc.destroy();
-  }
-}
 
 /** 日本語向けの折り返し（1文字ずつ幅を測る）。maxLines を超えた分は末尾を「…」にする */
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
@@ -487,6 +444,8 @@ export const WeeklyDigest: React.FC = () => {
   /** 一押しごとの画像の切り出し（予定ID → {x,y,scale}）。初期値は予定カードの hero_crop（無ければ旧 hero_crop_y） */
   const [crops, setCrops] = useState<Record<string, HeroCrop>>({});
   const [savingCrop, setSavingCrop] = useState<string | null>(null);
+  /** 編集ダイアログで開いている予定（予定タブ・号の画面と同じダイアログ） */
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
   /** 元URL→短縮URL（取得できたものだけ入る） */
   const [shortUrls, setShortUrls] = useState<Record<string, string>>({});
   /** LINE 送信（Flex）: テキスト吹き出しの文、送信中のモード、直近の結果、履歴 */
@@ -788,7 +747,7 @@ export const WeeklyDigest: React.FC = () => {
   const excludeForever = async (card: PublicEventCard) => {
     const ok = await appConfirm({
       title: `「${card.title}」を今後も週次配信に載せませんか？`,
-      message: '予定カードに「週次配信に載せない」が付き、以後の今週のお知らせに出なくなります。カレンダーには載ります。戻すときは号の予定カードの編集でチェックを外してください。',
+      message: '予定カードに「週次配信に載せない」が付き、以後の今週のお知らせに出なくなります。カレンダーには載ります。戻すときは「予定」タブでこの予定を開き、チェックを外してください。',
       confirmLabel: '今後も載せない',
     });
     if (!ok) return;
@@ -820,7 +779,8 @@ export const WeeklyDigest: React.FC = () => {
       for (const t of digest.topics) if (!(t.id in n)) n[t.id] = normalizeCrop(t.hero_crop, t.hero_crop_y);
       return n;
     });
-  }, [topicKey]);
+    // cards: 編集ダイアログで保存したあと（下書きを消して読み直したとき）も、新しい値で埋め直す
+  }, [topicKey, cards]);
 
   /** 一押しの紹介文を予定カードに保存し、文面・画像に反映する */
   const saveDescription = async (topic: PublicEventCard) => {
@@ -1123,6 +1083,20 @@ export const WeeklyDigest: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {editingCardId && (
+        <EventCardEditDialog
+          cardId={editingCardId}
+          onClose={() => setEditingCardId(null)}
+          onChanged={() => {
+            // 紹介文・切り出しの下書きはカードの新しい値で作り直す（古い下書きが残らないように）
+            // 由来PDF・記事を変えたかもしれないので、カード画像も読み直す
+            const id = editingCardId;
+            setDescDrafts(({ [id]: _d, ...rest }) => rest);
+            setCrops(({ [id]: _c, ...rest }) => rest);
+            load().then(() => retryFlyer(id));
+          }}
+        />
+      )}
       <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1322,6 +1296,13 @@ export const WeeklyDigest: React.FC = () => {
                       ⭐ 一押し{digest.topics.length > 1 ? `${i + 1}` : ''}「{t.title}」の紹介文（1〜2文）
                     </label>
                     <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setEditingCardId(t.id)}
+                        className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+                        title="日時・場所・記事リンク・由来PDFなど、予定カードの全項目を編集します（予定タブと同じ画面）"
+                      >
+                        <Pencil size={12} /> この予定を編集
+                      </button>
                       {hasGeminiEventAccess() && (
                         <button
                           onClick={() => generateDescription(t)}

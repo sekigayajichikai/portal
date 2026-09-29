@@ -7,6 +7,8 @@
  *   x, y   … 枠の位置（0 = 左端/上端、1 = 右端/下端。動かせる範囲に対する割合）
  */
 
+import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
+
 export type CropAspect = '1:1' | '4:3' | '16:9';
 export const ASPECTS: Array<{ key: CropAspect; label: string; ratio: number }> = [
   { key: '1:1', label: '正方形', ratio: 1 },
@@ -74,6 +76,49 @@ export function drawCropped(src: HTMLCanvasElement | HTMLImageElement, crop: Her
   const { sx, sy, sw, sh } = cropRect(w, h, crop);
   ctx.drawImage(src, sx, sy, sw, sh, 0, 0, c.width, c.height);
   return c;
+}
+
+/** PDFの1ページ目を canvas に描いたもの（URLごとにキャッシュ。週次配信と予定の編集ダイアログで共有） */
+const flyerCache = new Map<string, HTMLCanvasElement>();
+/** 読み込み中の Promise（同じPDFを同時に2回描かないため。開発モードの二重実行やメモリ節約） */
+const flyerInflight = new Map<string, Promise<HTMLCanvasElement>>();
+
+/** PDF 1ページ目を最大 1400px の canvas にレンダリングする（PdfThumbnail と同じ pdf.js 設定） */
+export function renderPdfFirstPage(url: string): Promise<HTMLCanvasElement> {
+  const cached = flyerCache.get(url);
+  if (cached) return Promise.resolve(cached);
+  const inflight = flyerInflight.get(url);
+  if (inflight) return inflight;
+  const p = renderPdfFirstPageUncached(url).finally(() => flyerInflight.delete(url));
+  flyerInflight.set(url, p);
+  return p;
+}
+
+async function renderPdfFirstPageUncached(url: string): Promise<HTMLCanvasElement> {
+  const pdfjsLib = await import('pdfjs-dist');
+  const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const doc = await pdfjsLib.getDocument({ data: await res.arrayBuffer(), ...PDFJS_DOC_OPTIONS }).promise;
+  try {
+    const page = await doc.getPage(1);
+    const base = page.getViewport({ scale: 1 });
+    const scale = 1400 / Math.max(base.width, base.height);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas 2d context を取得できません');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
+    flyerCache.set(url, canvas);
+    return canvas;
+  } finally {
+    doc.destroy();
+  }
 }
 
 /** 画像URLを canvas に読み込む（Storage の公開URL。CORS 対応でないと canvas から取り出せないので crossOrigin を付ける） */

@@ -30,6 +30,8 @@ import { Newsletter, Article } from '@cc-saas/shared/types';
 import { Loader2, AlertCircle, X, Sparkles, Copy, Check, Plus } from 'lucide-react';
 import { ProcessingIndicator, showToast } from '@/components/ui/feedback';
 import { isSameEvent } from './eventMatch';
+import { inspectPdf, isOfficeNoticePdf, type PdfInfo } from './pdfInspect';
+import { PdfPagePeek } from './PdfPagePeek';
 
 /**
  * 編集可能なイベント候補（選択状態付き）
@@ -55,12 +57,12 @@ interface EditableCandidate extends EventCandidate {
 }
 
 /** 性質(kind)の表示メタ */
-const KIND_META: Record<EventKind, { label: string; icon: string; title: string }> = {
+export const KIND_META: Record<EventKind, { label: string; icon: string; title: string }> = {
   community: { label: '交流', icon: '🎉', title: '地域交流の催し（祭り・芸術祭・講演会・だれでも参加の集まり）' },
   support: { label: '支援', icon: '🤝', title: '福祉・健康・生活支援の案内（健康測定・相談会・介護者向け）' },
   class: { label: '教室', icon: '📚', title: '定例の教室・講座・サロン' },
 };
-const KIND_KEYS: EventKind[] = ['community', 'support', 'class'];
+export const KIND_KEYS: EventKind[] = ['community', 'support', 'class'];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -133,12 +135,12 @@ function splitEventTime(time: string | null): { start: string | null; end: strin
 }
 
 /** イベント種別の表示メタ（アイコン・ラベル） */
-const CATEGORY_META: Record<'reserve' | 'recurring' | 'open', { label: string; icon: string }> = {
+export const CATEGORY_META: Record<'reserve' | 'recurring' | 'open', { label: string; icon: string }> = {
   reserve: { label: '要予約', icon: '📝' },
   recurring: { label: '連続', icon: '🔁' },
   open: { label: '当日OK', icon: '🎪' },
 };
-const CATEGORY_KEYS = ['reserve', 'recurring', 'open'] as const;
+export const CATEGORY_KEYS = ['reserve', 'recurring', 'open'] as const;
 
 /**
  * 同時実行数を制限してタスクを処理する。
@@ -175,7 +177,7 @@ async function runWithConcurrency<T>(
  * 登録済み主催団体から絞り込んで選択でき、未登録の名前はその場で新規登録して選択できる。
  * ドロップダウンが長くならないよう、検索で候補を絞る方式。
  */
-const OrganizerSelect: React.FC<{
+export const OrganizerSelect: React.FC<{
   value: string | null;
   options: string[];
   onChange: (v: string | null) => void;
@@ -323,12 +325,14 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
   const [orgOptions, setOrgOptions] = useState<string[]>([]);
   /** 会場マスター（AIヒント・場所欄の候補・別名の正式名への置き換え用） */
   const [venues, setVenues] = useState<Venue[]>([]);
-  /** 抽出元PDF一覧（選択用）。label=媒体名, publisher=発行元 */
+  /** 抽出元PDF一覧（選択用）。label=媒体名, publisher=発行元, isOffice=班長・地区長向けの事務連絡 */
   const [pdfSources, setPdfSources] = useState<
-    { url: string; label: string; publisher: string; isJichikai: boolean }[]
+    { url: string; label: string; publisher: string; isJichikai: boolean; isOffice: boolean }[]
   >([]);
-  /** 抽出対象に選択したPDFのURL集合（既定は全選択） */
+  /** 抽出対象に選択したPDFのURL集合（既定は事務連絡を除く全部） */
   const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
+  /** PDFの中身（ページ数・文字量・スキャン画像か）。開いた後に順に調べる。AIは呼ばない */
+  const [pdfInfos, setPdfInfos] = useState<Record<string, PdfInfo>>({});
   /** 記事テキストも抽出対象に含めるか */
   const [includeArticles, setIncludeArticles] = useState(articles.length > 0);
   /**
@@ -390,24 +394,41 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
       // type==='source'（自治会のお知らせ）なら自治会関連。type未設定の旧データは自治会扱い(true)。
       const sources = rawEntries
         .map((e: any, i: number) => {
-          if (typeof e === 'string') return { url: e, label: `PDF ${i + 1}`, publisher: '', isJichikai: true };
+          if (typeof e === 'string') return { url: e, label: `PDF ${i + 1}`, publisher: '', isJichikai: true, isOffice: false };
           // 自治会のお知らせ(type='source')は記事化済みなので一覧から除外（記事テキストでカバー）
-          if (e?.url && e.type !== 'source')
+          if (e?.url && e.type !== 'source') {
+            const label = (e.label || e.publisher || `PDF ${i + 1}`) as string;
+            const publisher = (e.publisher || '') as string;
             return {
               url: e.url as string,
-              label: (e.label || e.publisher || `PDF ${i + 1}`) as string,
-              publisher: (e.publisher || '') as string,
+              label,
+              publisher,
               isJichikai: e.type ? e.type === 'source' : true,
+              // 班長・地区長向けの事務連絡は住民向けの催しではないので既定で外す
+              isOffice: isOfficeNoticePdf(label, publisher),
             };
+          }
           return null;
         })
         .filter(
-          (x): x is { url: string; label: string; publisher: string; isJichikai: boolean } =>
+          (x): x is { url: string; label: string; publisher: string; isJichikai: boolean; isOffice: boolean } =>
             !!x && x.url.length > 0
         );
       if (cancelled) return;
       setPdfSources(sources);
-      setSelectedUrls(new Set(sources.map((s) => s.url))); // 既定は全選択
+      // 既定は「班長・地区長向けの事務連絡を除く全部」
+      setSelectedUrls(new Set(sources.filter((s) => !s.isOffice).map((s) => s.url)));
+      // 各PDFの文字量を順に調べる（スキャン画像＝AIが読み違えやすいPDFに印を付けるため。AIは呼ばない）
+      for (const s of sources) {
+        if (cancelled) break;
+        try {
+          const info = await inspectPdf(s.url);
+          if (cancelled) break;
+          setPdfInfos((prev) => ({ ...prev, [s.url]: info }));
+        } catch (e) {
+          console.warn('PDFの中身を調べられませんでした:', s.label, e);
+        }
+      }
     })();
     return () => { cancelled = true; };
   }, [newsletter.source_pdf_url, newsletter.source_pdf_urls]);
@@ -731,31 +752,63 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                     </button>
                   </div>
                   <div className="space-y-1">
-                    {pdfSources.map((s) => (
-                      <label
-                        key={s.url}
-                        className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedUrls.has(s.url)}
-                          onChange={() => toggleUrl(s.url)}
-                          className="shrink-0"
-                        />
-                        <span
-                          className={`text-[11px] px-1.5 py-0.5 rounded shrink-0 font-medium ${s.isJichikai ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}
+                    {pdfSources.map((s) => {
+                      const info = pdfInfos[s.url];
+                      return (
+                        <label
+                          key={s.url}
+                          className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer hover:bg-slate-50 ${
+                            info?.isScan ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200'
+                          }`}
                         >
-                          {s.isJichikai ? '自治会' : '地域'}
-                        </span>
-                        <span className="text-sm text-slate-700 truncate">{s.label}</span>
-                        {s.publisher ? (
-                          <span className="text-xs text-slate-400 truncate shrink-0">発行元: {s.publisher}</span>
-                        ) : (
-                          <span className="text-xs text-slate-300 shrink-0">発行元なし</span>
-                        )}
-                      </label>
-                    ))}
+                          <input
+                            type="checkbox"
+                            checked={selectedUrls.has(s.url)}
+                            onChange={() => toggleUrl(s.url)}
+                            className="shrink-0"
+                          />
+                          <span
+                            className={`text-[11px] px-1.5 py-0.5 rounded shrink-0 font-medium ${s.isJichikai ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}
+                          >
+                            {s.isJichikai ? '自治会' : '地域'}
+                          </span>
+                          {s.isOffice && (
+                            <span
+                              className="text-[11px] px-1.5 py-0.5 rounded shrink-0 font-medium bg-slate-200 text-slate-600"
+                              title="班長・地区長向けの事務連絡です。住民向けの催しではないので、既定では抽出しません"
+                            >
+                              事務連絡
+                            </span>
+                          )}
+                          {info?.isScan && (
+                            <span
+                              className="text-[11px] px-1.5 py-0.5 rounded shrink-0 font-medium bg-amber-200 text-amber-900"
+                              title="文字データがないスキャン画像のPDFです。AIが目で見て読むため、日付や行事名を読み違えることがあります。抽出後に元のページと見比べてください"
+                            >
+                              ⚠ 画像PDF
+                            </span>
+                          )}
+                          <span className="text-sm text-slate-700 truncate">{s.label}</span>
+                          {s.publisher ? (
+                            <span className="text-xs text-slate-400 truncate shrink-0">発行元: {s.publisher}</span>
+                          ) : (
+                            <span className="text-xs text-slate-300 shrink-0">発行元なし</span>
+                          )}
+                        </label>
+                      );
+                    })}
                   </div>
+                  {pdfSources.some((s) => pdfInfos[s.url]?.isScan) && (
+                    <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                      ⚠ <strong>画像PDF</strong> は文字データを持たないスキャンです。AIが目で見て読むため、表の日付と行事名の対応を取り違えることがあります。
+                      抽出した後に、候補の「元のページと見比べる」で必ず確かめてください。
+                    </p>
+                  )}
+                  {pdfSources.some((s) => s.isOffice) && (
+                    <p className="text-[11px] text-slate-500">
+                      班長・地区長向けの<strong>事務連絡</strong>は、住民向けの催しではないので既定で外しています（必要ならチェックを付けてください）。
+                    </p>
+                  )}
                 </>
               ) : (
                 <p className="text-sm text-slate-400">この号には添付PDFがありません。</p>
@@ -862,6 +915,10 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                             原文: {c.source_text}
                           </p>
                         )}
+                        {/* スキャン画像のPDF由来は、元のページを開いて日付・行事名を見比べられるようにする */}
+                        {srcPdf && pdfInfos[srcPdf.url]?.isScan && (
+                          <PdfPagePeek url={srcPdf.url} label={srcPdf.label} pages={pdfInfos[srcPdf.url].pages} />
+                        )}
                         {/* 場所: 会場マスターの正式名を候補に出す（自由入力も可。入力を確定したとき別名なら正式名に置き換える） */}
                         <input
                           type="text"
@@ -922,6 +979,12 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                               title={`発行元/媒体: ${srcLabel}`}
                             >
                               📄 {srcLabel}
+                            </span>
+                          )}
+                          {/* スキャン画像のPDF由来は読み違いが起きやすいので、元のページを見比べられるようにする */}
+                          {srcPdf && pdfInfos[srcPdf.url]?.isScan && (
+                            <span className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-200 text-amber-900" title="文字データがないスキャン画像のPDFから読み取りました。日付の取り違えが起きやすいので、元のページと見比べてください">
+                              ⚠ 画像PDF
                             </span>
                           )}
                           {/* 種別（クリックで切替。もう一度押すと解除） */}
