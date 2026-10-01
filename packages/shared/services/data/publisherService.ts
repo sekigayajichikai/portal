@@ -1,8 +1,16 @@
 /**
  * 発行元マスター管理サービス
+ *
+ * 2026-10-01 に主催団体と一本化したので、実体は団体マスタ（organizers）の
+ * 「発行元として使う」団体。publishers テーブルはもう読まない（後日削除予定）。
+ * 回覧板の作成画面などが使っている形（Publisher）はそのまま保っている。
  */
 
-import { getSupabaseClient } from '../supabaseClient.js';
+import {
+  addOrganizer,
+  getOrganizersSafe,
+  type Organizer,
+} from './organizerService.js';
 
 export interface Publisher {
   id: string;
@@ -13,38 +21,31 @@ export interface Publisher {
   created_at: string;
 }
 
-/** 発行元一覧を取得（表示順） */
-export async function getPublishers(): Promise<Publisher[]> {
-  const supabase = getSupabaseClient();
-  if (!supabase) throw new Error('Supabase未接続です。');
-
-  const { data, error } = await supabase
-    .from('publishers')
-    .select('*')
-    .order('display_order', { ascending: true })
-    .order('name');
-
-  if (error) throw error;
-  return data || [];
+function toPublisher(o: Organizer): Publisher {
+  return {
+    id: o.id,
+    organization_id: o.organization_id,
+    name: o.name,
+    short_name: o.short_name,
+    display_order: o.display_order,
+    created_at: o.created_at,
+  };
 }
 
-/** 発行元を追加 */
+/** 発行元一覧を取得（表示順） */
+export async function getPublishers(): Promise<Publisher[]> {
+  const organizers = await getOrganizersSafe();
+  return organizers.filter((o) => o.use_as_publisher).map(toPublisher);
+}
+
+/** 発行元を追加（団体マスタに「発行元として使う」で登録する） */
 export async function addPublisher(name: string, shortName?: string, displayOrder?: number): Promise<Publisher> {
-  const supabase = getSupabaseClient();
-  if (!supabase) throw new Error('Supabase未接続です。');
-
-  const { data, error } = await supabase
-    .from('publishers')
-    .insert({ name, short_name: shortName || null, display_order: displayOrder ?? 100 })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+  const created = await addOrganizer(name, shortName, displayOrder, { useAsPublisher: true });
+  return toPublisher(created);
 }
 
 /** 発行元名の一覧を取得（AI用：名前だけの配列） */
 export async function getPublisherNames(): Promise<string[]> {
   const publishers = await getPublishers();
-  return publishers.map(p => p.name);
+  return publishers.map((p) => p.name);
 }

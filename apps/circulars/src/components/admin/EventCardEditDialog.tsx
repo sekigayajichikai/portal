@@ -13,8 +13,9 @@ import {
   updateEventCard,
   deleteEventCard,
   removeCalendarEventByCard,
-  getOrganizers,
+  getOrganizersSafe,
   addOrganizer,
+  resolveOrganizerName,
   getVenuesSafe,
   resolveVenueName,
   getArticleById,
@@ -24,6 +25,7 @@ import {
   type AdminEventCard,
   type EventCard,
   type Venue,
+  type Organizer,
 } from '@cc-saas/shared';
 import { Loader2, X, Trash2, Sparkles, Calendar } from 'lucide-react';
 import { showError, showToast, appConfirm } from '@/components/ui/feedback';
@@ -117,6 +119,7 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [venues, setVenues] = useState<Venue[]>([]);
+  const [orgs, setOrgs] = useState<Organizer[]>([]);
   const [orgOptions, setOrgOptions] = useState<string[]>([]);
   const [pickingArticle, setPickingArticle] = useState(false);
   /** 記事を選び直したときの表示用（題名・号名）。保存前の表示にだけ使う */
@@ -144,9 +147,10 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
         setLoadError('予定を読み込めませんでした。');
       });
     getVenuesSafe().then(setVenues);
-    getOrganizers()
-      .then((os) => setOrgOptions(os.map((o) => o.name)))
-      .catch(() => setOrgOptions([]));
+    getOrganizersSafe().then((os) => {
+      setOrgs(os);
+      setOrgOptions(os.filter((o) => o.use_as_organizer).map((o) => o.name));
+    });
   }, [cardId]);
 
   // 由来PDFがスキャン画像かを調べる（ブラウザ内の pdf.js。AIは呼ばない）
@@ -208,6 +212,9 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
       if ('event_location' in updates) {
         updates.event_location = resolveVenueName(updates.event_location ?? null, venues);
       }
+      if ('organizer' in updates) {
+        updates.organizer = resolveOrganizerName(updates.organizer ?? null, orgs);
+      }
       if (cropDirty && crop && cropSource) {
         const c = resolveCrop(crop, cropSource.width, cropSource.height);
         updates.hero_crop = c;
@@ -249,9 +256,10 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
 
   const handleCreateOrganizer = async (name: string) => {
     try {
-      await addOrganizer(name);
+      const created = await addOrganizer(name);
+      setOrgs((prev) => (prev.some((o) => o.name === name) ? prev : [...prev, created]));
     } catch {
-      // 既に存在／マスター未作成でも選択は通す
+      // 既に存在／マスタ未作成でも選択は通す
     }
     setOrgOptions((prev) => (prev.includes(name) ? prev : [...prev, name]));
   };

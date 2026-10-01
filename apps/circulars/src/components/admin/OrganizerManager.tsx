@@ -1,223 +1,280 @@
 /**
- * 主催団体マスター管理ダイアログ
+ * 団体マスタ管理（「マスタ」タブの中の1枚）
  *
- * イベントの主催団体を事前登録する。抽出ダイアログではここで登録した
- * 名前からクリックで選べるようになり、表記揺れを減らせる。
+ * 予定の主催と、回覧板PDFの発行元を1つの一覧でまとめて管理する（2026-10-01 一本化）。
+ * 会場マスタと同じく、別名（揺れた表記・誤字）に当たるものは正式名に自動で置き換える。
+ * 「主催」「発行元」のチェックで、どちらの候補に出すかを決める。
  */
 
-import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
-import { getOrganizers, addOrganizer, type Organizer } from '@cc-saas/shared';
-import { getSupabaseClient } from '@cc-saas/shared/services/supabaseClient';
-import { showError, appConfirm } from '@/components/ui/feedback';
+import React, { useEffect, useState } from 'react';
+import { Plus, Trash2, ArrowUp, ArrowDown, Users } from 'lucide-react';
+import {
+  getOrganizers,
+  addOrganizer,
+  updateOrganizer,
+  deleteOrganizer,
+  type Organizer,
+} from '@cc-saas/shared';
+import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 
-interface OrganizerManagerProps {
-  isOpen: boolean;
-  onClose: () => void;
-  /** true なら モーダルではなく「マスタ」タブの中の1枚として描く（閉じるボタン無し） */
-  inline?: boolean;
-}
+/** 「、」「,」「／」区切りの別名を配列に */
+const parseAliases = (s: string) =>
+  s
+    .split(/[、,，／/\n]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
 
-export const OrganizerManager: React.FC<OrganizerManagerProps> = ({ isOpen, onClose, inline = false }) => {
+export const OrganizerManager: React.FC = () => {
   const [organizers, setOrganizers] = useState<Organizer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newShortName, setNewShortName] = useState('');
+  const [newAliases, setNewAliases] = useState('');
+  const [newAsOrganizer, setNewAsOrganizer] = useState(true);
+  const [newAsPublisher, setNewAsPublisher] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [editShortName, setEditShortName] = useState('');
+  const [editAliases, setEditAliases] = useState('');
+  const [editAsOrganizer, setEditAsOrganizer] = useState(true);
+  const [editAsPublisher, setEditAsPublisher] = useState(false);
 
-  useEffect(() => {
-    if (isOpen) loadOrganizers();
-  }, [isOpen]);
-
-  const loadOrganizers = async () => {
+  const load = async () => {
     setIsLoading(true);
     try {
-      const data = await getOrganizers();
-      setOrganizers(data);
-    } catch (error) {
-      console.error('主催団体読み込みエラー:', error);
-      showError('主催団体を読み込めませんでした。マスターが未作成の可能性があります（マイグレーション未適用）。');
+      setOrganizers(await getOrganizers());
+      setUnavailable(false);
+    } catch (e) {
+      console.error('団体読み込みエラー:', e);
+      setUnavailable(true);
     } finally {
       setIsLoading(false);
     }
   };
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleAdd = async () => {
-    if (!newName.trim()) return;
+    const name = newName.trim();
+    if (!name) return;
     try {
-      await addOrganizer(newName.trim(), newShortName.trim() || undefined);
+      const order = organizers.length > 0 ? Math.max(...organizers.map((o) => o.display_order)) + 1 : 10;
+      await addOrganizer(name, undefined, order, {
+        aliases: parseAliases(newAliases),
+        useAsOrganizer: newAsOrganizer,
+        useAsPublisher: newAsPublisher,
+      });
       setNewName('');
-      setNewShortName('');
-      await loadOrganizers();
-    } catch (error) {
-      console.error('主催団体追加エラー:', error);
-      showError('追加できませんでした。時間をおいてもう一度お試しください。');
-    }
-  };
-
-  const handleDelete = async (id: string, name: string) => {
-    if (!(await appConfirm({
-      title: `「${name}」を削除しますか？`,
-      message: 'この操作は取り消せません。',
-      confirmLabel: '削除する',
-      danger: true,
-    }))) return;
-    try {
-      const supabase = getSupabaseClient();
-      if (!supabase) return;
-      await supabase.from('organizers').delete().eq('id', id);
-      await loadOrganizers();
-    } catch (error) {
-      console.error('主催団体削除エラー:', error);
-      showError('削除できませんでした。時間をおいてもう一度お試しください。');
+      setNewAliases('');
+      setNewAsOrganizer(true);
+      setNewAsPublisher(false);
+      await load();
+    } catch (e: any) {
+      console.error('団体追加エラー:', e);
+      showError(/duplicate|unique/i.test(String(e?.message)) ? `「${name}」はすでに登録されています。` : '追加できませんでした。');
     }
   };
 
   const handleUpdate = async (id: string) => {
+    const name = editName.trim();
+    if (!name) return;
     try {
-      const supabase = getSupabaseClient();
-      if (!supabase) return;
-      await supabase.from('organizers').update({
-        name: editName,
-        short_name: editShortName || null,
-      }).eq('id', id);
+      await updateOrganizer(id, {
+        name,
+        aliases: parseAliases(editAliases),
+        use_as_organizer: editAsOrganizer,
+        use_as_publisher: editAsPublisher,
+      });
       setEditingId(null);
-      await loadOrganizers();
-    } catch (error) {
-      console.error('主催団体更新エラー:', error);
-      showError('更新できませんでした。時間をおいてもう一度お試しください。');
+      await load();
+      showToast('団体を更新しました');
+    } catch (e) {
+      console.error('団体更新エラー:', e);
+      showError('更新できませんでした。');
     }
   };
 
-  const handleMove = async (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= organizers.length) return;
-
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-
-    const a = organizers[index];
-    const b = organizers[targetIndex];
+  const handleDelete = async (o: Organizer) => {
+    const ok = await appConfirm({
+      title: `「${o.name}」を削除しますか？`,
+      message: '予定カードに入っている主催の文字はそのまま残ります（マスタから消えるだけ）。',
+      confirmLabel: '削除する',
+      danger: true,
+    });
+    if (!ok) return;
     try {
-      await supabase.from('organizers').update({ display_order: b.display_order }).eq('id', a.id);
-      await supabase.from('organizers').update({ display_order: a.display_order }).eq('id', b.id);
-      await loadOrganizers();
-    } catch (error) {
-      console.error('主催団体並び替えエラー:', error);
-      showError('並び替えできませんでした。時間をおいてもう一度お試しください。');
+      await deleteOrganizer(o.id);
+      await load();
+    } catch (e) {
+      console.error('団体削除エラー:', e);
+      showError('削除できませんでした。');
     }
   };
 
-  if (!isOpen) return null;
+  const handleMove = async (index: number, dir: 'up' | 'down') => {
+    const j = dir === 'up' ? index - 1 : index + 1;
+    if (j < 0 || j >= organizers.length) return;
+    const a = organizers[index];
+    const b = organizers[j];
+    try {
+      // 表示順が同じだと入れ替わらないので、その場合は連番を振り直す
+      if (a.display_order === b.display_order) {
+        for (let i = 0; i < organizers.length; i++) await updateOrganizer(organizers[i].id, { display_order: (i + 1) * 10 });
+        const fresh = await getOrganizers();
+        const a2 = fresh[index];
+        const b2 = fresh[j];
+        await updateOrganizer(a2.id, { display_order: b2.display_order });
+        await updateOrganizer(b2.id, { display_order: a2.display_order });
+      } else {
+        await updateOrganizer(a.id, { display_order: b.display_order });
+        await updateOrganizer(b.id, { display_order: a.display_order });
+      }
+      await load();
+    } catch (e) {
+      console.error('団体並び替えエラー:', e);
+      showError('並び替えできませんでした。');
+    }
+  };
 
   return (
-    <div className={inline ? '' : 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4'}>
-      <div className={inline ? 'bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col' : 'bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col'}>
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-200">
-          <h3 className="font-bold text-lg text-slate-800">{inline ? '主催団体' : '主催団体の管理'}</h3>
-          {!inline && (
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition">
-              <X size={22} />
-            </button>
-          )}
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+      <div className="flex items-center gap-2 p-5 border-b border-slate-200">
+        <Users size={18} className="text-sky-600" />
+        <h3 className="font-bold text-lg text-slate-800">団体</h3>
+        <span className="text-xs text-slate-400">予定の主催と、回覧板の発行元</span>
+      </div>
+
+      {unavailable && (
+        <p className="m-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          団体マスタを読めませんでした。DBの列が足りないかもしれません（sql/migrations/2026-10-01-organizers-unify.sql）。
+        </p>
+      )}
+
+      {/* 追加 */}
+      <div className="p-4 border-b border-slate-100 bg-slate-50">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="正式名（必須。例: 釜利谷地区センター）"
+            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleAdd();
+            }}
+          />
+          <input
+            type="text"
+            value={newAliases}
+            onChange={(e) => setNewAliases(e.target.value)}
+            placeholder="別名（「、」区切り。例: 地区センター、金利谷地区センター）"
+            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleAdd();
+            }}
+          />
+          <button onClick={handleAdd} disabled={!newName.trim()} className="px-3 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition">
+            <Plus size={18} />
+          </button>
         </div>
-
-        {/* 追加フォーム */}
-        <div className="p-4 border-b border-slate-100 bg-slate-50">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="主催団体名（必須）"
-              className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
-            />
-            <input
-              type="text"
-              value={newShortName}
-              onChange={(e) => setNewShortName(e.target.value)}
-              placeholder="略称"
-              className="w-24 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
-            />
-            <button
-              onClick={handleAdd}
-              disabled={!newName.trim()}
-              className="px-3 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition"
-            >
-              <Plus size={18} />
-            </button>
-          </div>
+        <div className="flex flex-wrap items-center gap-4 mt-2">
+          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+            <input type="checkbox" checked={newAsOrganizer} onChange={(e) => setNewAsOrganizer(e.target.checked)} className="rounded border-slate-300" />
+            予定の主催に出す
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+            <input type="checkbox" checked={newAsPublisher} onChange={(e) => setNewAsPublisher(e.target.checked)} className="rounded border-slate-300" />
+            回覧板の発行元に出す
+          </label>
         </div>
+        <p className="text-[11px] text-slate-400 mt-1.5">
+          別名に登録した表記は、抽出時と予定カードの編集で自動的に正式名へ置き換わります。誤字を見つけたら別名に足しておくと、次から勝手に直ります。
+        </p>
+      </div>
 
-        {/* 一覧 */}
-        <div className={inline ? 'p-4 max-h-[60vh] overflow-y-auto' : 'flex-1 overflow-y-auto p-4'}>
-          <p className="text-xs text-slate-500 mb-3">上下ボタンで表示順を変更。名前をクリックで編集。</p>
-          {isLoading ? (
-            <p className="text-center text-slate-500 py-8">読み込み中...</p>
-          ) : organizers.length === 0 ? (
-            <p className="text-center text-slate-500 py-8">主催団体が登録されていません</p>
-          ) : (
-            <div className="space-y-1">
-              {organizers.map((org, index) => (
-                <div key={org.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg group">
-                  {/* 並び替えボタン */}
-                  <div className="flex flex-col shrink-0">
-                    <button
-                      onClick={() => handleMove(index, 'up')}
-                      disabled={index === 0}
-                      className="p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-20 transition"
-                    >
-                      <ArrowUp size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleMove(index, 'down')}
-                      disabled={index === organizers.length - 1}
-                      className="p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-20 transition"
-                    >
-                      <ArrowDown size={14} />
-                    </button>
-                  </div>
-
-                  {/* 順番 */}
-                  <span className="text-xs text-slate-400 w-6 text-center shrink-0">{index + 1}</span>
-
-                  {/* 名前 */}
-                  {editingId === org.id ? (
-                    <div className="flex gap-2 flex-1">
-                      <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
-                        className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm" autoFocus />
-                      <input type="text" value={editShortName} onChange={(e) => setEditShortName(e.target.value)}
-                        placeholder="略称" className="w-20 px-2 py-1 border border-slate-300 rounded text-sm" />
-                      <button onClick={() => handleUpdate(org.id)} className="text-xs px-2 py-1 bg-primary-600 text-white rounded">保存</button>
-                      <button onClick={() => setEditingId(null)} className="text-xs px-2 py-1 bg-slate-200 rounded">取消</button>
-                    </div>
-                  ) : (
-                    <>
-                      <div
-                        className="flex-1 cursor-pointer min-w-0"
-                        onClick={() => { setEditingId(org.id); setEditName(org.name); setEditShortName(org.short_name || ''); }}
-                      >
-                        <p className="text-sm font-medium text-slate-700 truncate">{org.name}</p>
-                        {org.short_name && <p className="text-xs text-slate-400">略称: {org.short_name}</p>}
-                      </div>
-                      <button
-                        onClick={() => handleDelete(org.id, org.name)}
-                        className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition shrink-0"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </>
-                  )}
+      {/* 一覧 */}
+      <div className="p-4">
+        <p className="text-xs text-slate-500 mb-3">上下ボタンで表示順を変更。名前をクリックで編集。</p>
+        {isLoading ? (
+          <p className="text-center text-slate-500 py-8">読み込み中...</p>
+        ) : organizers.length === 0 ? (
+          <p className="text-center text-slate-500 py-8">団体が登録されていません</p>
+        ) : (
+          <div className="space-y-1">
+            {organizers.map((o, index) => (
+              <div key={o.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg group">
+                <div className="flex flex-col shrink-0">
+                  <button onClick={() => handleMove(index, 'up')} disabled={index === 0} className="p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-20 transition">
+                    <ArrowUp size={14} />
+                  </button>
+                  <button onClick={() => handleMove(index, 'down')} disabled={index === organizers.length - 1} className="p-0.5 text-slate-400 hover:text-slate-600 disabled:opacity-20 transition">
+                    <ArrowDown size={14} />
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                <span className="text-xs text-slate-400 w-6 text-center shrink-0">{index + 1}</span>
+                {editingId === o.id ? (
+                  <div className="flex flex-col gap-2 flex-1">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm" autoFocus />
+                      <input
+                        type="text"
+                        value={editAliases}
+                        onChange={(e) => setEditAliases(e.target.value)}
+                        placeholder="別名（「、」区切り）"
+                        className="flex-1 px-2 py-1 border border-slate-300 rounded text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                        <input type="checkbox" checked={editAsOrganizer} onChange={(e) => setEditAsOrganizer(e.target.checked)} className="rounded border-slate-300" />
+                        主催
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                        <input type="checkbox" checked={editAsPublisher} onChange={(e) => setEditAsPublisher(e.target.checked)} className="rounded border-slate-300" />
+                        発行元
+                      </label>
+                      <div className="flex gap-1 ml-auto">
+                        <button onClick={() => handleUpdate(o.id)} className="text-xs px-2 py-1 bg-primary-600 text-white rounded">
+                          保存
+                        </button>
+                        <button onClick={() => setEditingId(null)} className="text-xs px-2 py-1 bg-slate-200 rounded">
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className="flex-1 cursor-pointer min-w-0"
+                      onClick={() => {
+                        setEditingId(o.id);
+                        setEditName(o.name);
+                        setEditAliases(o.aliases.join('、'));
+                        setEditAsOrganizer(o.use_as_organizer);
+                        setEditAsPublisher(o.use_as_publisher);
+                      }}
+                    >
+                      <p className="text-sm font-medium text-slate-700 truncate">
+                        {o.name}
+                        {o.use_as_publisher && (
+                          <span className="ml-2 align-middle text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">発行元</span>
+                        )}
+                        {!o.use_as_organizer && (
+                          <span className="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-500">主催に出さない</span>
+                        )}
+                      </p>
+                      {o.aliases.length > 0 && <p className="text-xs text-slate-400 truncate">別名: {o.aliases.join('、')}</p>}
+                    </div>
+                    <button onClick={() => handleDelete(o)} className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition shrink-0">
+                      <Trash2 size={14} />
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

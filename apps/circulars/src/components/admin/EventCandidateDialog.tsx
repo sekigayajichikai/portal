@@ -15,12 +15,14 @@ import {
   convertPdfUrlToBase64,
   addEventCard,
   updateEventCard,
-  getOrganizers,
+  getOrganizersSafe,
   addOrganizer,
+  resolveOrganizerName,
   getEventCardsFrom,
   getVenuesSafe,
   resolveVenueName,
   type Venue,
+  type Organizer,
   type EventCandidate,
   type EventKind,
   type EventCard,
@@ -323,6 +325,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
   const provider = getEventExtractionProvider();
   /** 登録済み主催団体の名前一覧（選択候補・AIヒント用） */
   const [orgOptions, setOrgOptions] = useState<string[]>([]);
+  const [orgs, setOrgs] = useState<Organizer[]>([]);
   /** 会場マスター（AIヒント・場所欄の候補・別名の正式名への置き換え用） */
   const [venues, setVenues] = useState<Venue[]>([]);
   /** 抽出元PDF一覧（選択用）。label=媒体名, publisher=発行元, isOffice=班長・地区長向けの事務連絡 */
@@ -359,9 +362,10 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
   /** 主催団体をマスターに新規登録して選択候補に反映（テーブル未作成でも選択は通す） */
   const handleCreateOrganizer = async (name: string): Promise<void> => {
     try {
-      await addOrganizer(name);
+      const created = await addOrganizer(name);
+      setOrgs((prev) => (prev.some((o) => o.name === name) ? prev : [...prev, created]));
     } catch {
-      // 既に存在／マスター未作成でも、ローカルの候補には加えて選択できるようにする
+      // 既に存在／マスタ未作成でも、ローカルの候補には加えて選択できるようにする
     }
     setOrgOptions((prev) => (prev.includes(name) ? prev : [...prev, name]));
   };
@@ -372,14 +376,10 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      let orgNames: string[] = [];
-      try {
-        orgNames = (await getOrganizers()).map((o) => o.name);
-      } catch {
-        orgNames = [];
-      }
+      const orgList = await getOrganizersSafe();
       if (cancelled) return;
-      setOrgOptions(orgNames);
+      setOrgs(orgList);
+      setOrgOptions(orgList.filter((o) => o.use_as_organizer).map((o) => o.name));
       const venueList = await getVenuesSafe();
       if (cancelled) return;
       setVenues(venueList);
@@ -545,8 +545,9 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
 
         merged.push({
           ...c,
-          // 場所は会場マスターの正式名に寄せる（別名に当たれば置き換え、当たらなければ原文のまま）
+          // 場所と主催はマスタの正式名に寄せる（別名に当たれば置き換え、当たらなければ原文のまま）
           event_location: resolveVenueName(c.event_location, venues),
+          organizer: resolveOrganizerName(c.organizer, orgs),
           weekly_topic: weeklyTopic,
           topicHints: hints,
           existingId: existing?.id ?? null,
@@ -963,7 +964,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                         <OrganizerSelect
                           value={c.organizer}
                           options={orgOptions}
-                          onChange={(v) => updateCandidate(i, { organizer: v })}
+                          onChange={(v) => updateCandidate(i, { organizer: resolveOrganizerName(v, orgs) })}
                           onCreate={handleCreateOrganizer}
                         />
                         <div className="flex items-center gap-2 flex-wrap">
