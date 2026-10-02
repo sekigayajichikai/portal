@@ -79,18 +79,46 @@ RLS は読み取りをエラーで断らない。**行が無いかのように0�
 - `book-system/supabase/migration_020_drop_passcode_column.sql`（元の列を削除）
 - `CC-SaaS/sql/migrations/2026-10-01-close-unused-tables.sql`（3テーブルを閉じる）
 
-## 第2段（未着手）: Supabase Auth を入れる
+## 第2段: Supabase Auth を入れる
 
-管理者アカウントを作り、両アプリのログインを置き換える。同じプロジェクトなので1つのアカウントで両方に入れる。
+管理者アカウントは**共用1つ**にした。画面にメール欄は出さず、パスワードだけを入力する運用のまま。
+アカウントは `sekigaya.dx@gmail.com`（Supabase の Authentication で作成、メール確認済み）。
+別のアドレスにする場合は `VITE_ADMIN_EMAIL` で上書きできる。
 
-- ポータル … `packages/shared/contexts/AuthContext.tsx` を `signInWithPassword` に差し替え。
-  書き込み箇所は触らなくてよい（同じクライアントがログイン状態を持つ）。
-  `supabase/functions/ai-proxy/index.ts` のトークン検証を Supabase のものに変える。
+**Supabase のパスワードと、Edge Function の `APP_PASSWORD` は同じ値にしておくこと。**
+ログインは Supabase Auth で通るが、AI の記事化と LINE 配信はまだ古い合言葉の中継を通るため、
+値が違うとログインはできてもその2つだけ動かなくなる。
+
+### ポータル（2026-10-02 実施済み）
+
+`packages/shared/contexts/AuthContext.tsx` を `signInWithPassword` に差し替えた。
+
+- ログイン状態は `getSession` / `onAuthStateChange` で追う。再読み込みしても続く。
+- **書き込み箇所は一切触っていない。** 同じクライアントがログイン状態を持つので、
+  以後の読み書きは自動的に「ログイン済みの人」として届く。
+- Edge Function 用のトークンもログイン時に取る（取れなくてもログインは成立）。
+- 開発時のローカル照合（`VITE_APP_PASSWORD`）は不要になったので削除した。
+- ローカルで確認済み: ログイン画面が出る / 古い印だけでは入れない / 画面はパスワード欄だけ /
+  間違ったパスワードは断られる / ログイン後に AI 抽出とリッチメニューが動く。
+- **既にログインしている人は、一度だけ再ログインが必要**（古い印では入れない）。
+
+### 残り（未着手）
+
 - カレンダー … `src/components/admin/AdminLogin.tsx` と `App.tsx` の入口を差し替え。
+  読み書きの入口（`supaFetch` 相当）が6ファイルにコピペされているので、まとめる必要がある。
 - 窓口7本 … `book-system/api/` の書き込み系を強い鍵に切り替え、先頭でログイン済みかを確かめる。
   `vite.config.ts` に同じ処理が書き写されているので両方直す。
+  あわせて `api/import.ts` に残した抜け道（`browser-upload`）を外す。
+- Edge Function 3本 … `x-app-token` の検証を Supabase の証明書に変え、`app-login` を廃止する。
+  関数の再デプロイが必要。これが済めば `APP_PASSWORD` の二重管理も終わる。
 - 合言葉の入れ替えはこのときに行う。いまパスワードだけ変えても、通行証に署名が無いので意味がない。
 - `set_org_passcode` の実行権限を、ログイン済みだけに絞る。
+
+### 片付けておきたいこと
+
+Vercel の本番環境変数に、7月の移行で消すはずだった `VITE_APP_PASSWORD` と
+`VITE_ANTHROPIC_API_KEY` が残っている。ビルド結果への混入は無いことを確認済み
+（`sk-ant-` / `AIzaSy` / `sk-or-v1` のいずれも含まれない）。参照するコードも無くなったので削除してよい。
 
 ## 第3段（未着手）: RLS のポリシーを入れる
 
