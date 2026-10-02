@@ -120,7 +120,41 @@ Vercel の本番環境変数に、7月の移行で消すはずだった `VITE_AP
 `VITE_ANTHROPIC_API_KEY` が残っている。ビルド結果への混入は無いことを確認済み
 （`sk-ant-` / `AIzaSy` / `sk-or-v1` のいずれも含まれない）。参照するコードも無くなったので削除してよい。
 
-## 第3段（未着手）: RLS のポリシーを入れる
+## 第3段: RLS のポリシーを入れる
+
+### 1歩目（2026-10-02 実施済み）: 内部テーブルとファイル置き場
+
+公開画面がまったく読まないテーブルと、ファイルの置き場だけを先に閉じた。
+`sql/migrations/2026-10-02-rls-internal-tables.sql`。
+
+| 対象 | 変えた内容 |
+|---|---|
+| `weekly_digest_drafts` / `weekly_digest_sends` / `line_rich_menus` / `pending_images` | ログイン済みだけ |
+| `publishers`（未使用） | ポリシーを置かず完全に閉じる |
+| Storage 3バケット | 読むのは誰でも、書くのはログイン済みだけ |
+
+**確認の結果**（公開鍵で実際に試した）
+
+| 試したこと | 結果 |
+|---|---|
+| 内部テーブル4つを読む | 中身があるのに0件 |
+| 3バケットにアップロード | `new row violates row-level security policy` で拒否 |
+| 回覧板・記事・予定を読む | これまでどおり読める |
+
+**あわせて直った不具合**: `weekly_digest_sends` は RLS が有効なのにポリシーが無く、
+公開鍵からは書けない状態だった。9月から配信を運用しているのに記録が0件だったので、
+送信履歴の保存が失敗し続けていたと思われる。
+
+### 残り（未着手）
+
+カレンダーアプリ（book-system）がまだ公開鍵のままなので、**そちらが触るテーブルは閉じられない**。
+`bookings` / `calendar_events` / `booking_*` / `import_*` / `app_settings` / `event_locations` が該当する。
+閉じると予約の承認も予定の編集も一斉に止まる。第2段の残り（カレンダーアプリの Auth 化）が先。
+
+公開画面が読むテーブル（`newsletters` / `articles` / `event_cards` / `venues` / `organizers` /
+`article_likes`）も残っている。方針は次のとおり。
+
+### 方針（参考）
 
 | 区分 | テーブル | 方針 |
 |---|---|---|
