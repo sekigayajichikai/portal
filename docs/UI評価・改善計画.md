@@ -72,6 +72,11 @@
 ## 3. 改善計画（順番）
 
 ### フェーズ0: 安全に渡せる状態にする（A群）← 今回の実施範囲
+
+> **進み具合（2026-10-02）**: A1〜A9 を実装済み（ブランチ `fix/phase0-safety`。portal 4f0eb2f・b164c96／book-system 8f53e7a・1336276）。
+> 残り: ① `sql/migrations/2026-10-02-trash-items.sql` を SQL Editor で実行、② 両ブランチを push してプレビューで確認、③ 本番へ。
+> A8 は「削除フラグ」ではなく「削除直前に控えを trash_items へ取る」方式にした（読み取り箇所と RLS を触らずに済み、公開側に削除済みが漏れる心配がない）。
+> 既知の制限: 号を戻しても「いいね」と保留画像は戻らない。予定を戻しても、予約との紐付け（event_id）は戻らない。
 進め方: まず両リポジトリを pull（book-system は最新化）→ 計画を `portal/docs/UI評価・改善計画.md` に保存 → 下記を book/portal それぞれブランチを切って実装 → lint/typecheck/test/build を通す → コミット（push・PR はユーザー確認後）。
 A8（論理削除＋ゴミ箱）はDB migration を伴うため、SQL は作成のみ・適用はユーザーが行う。
 - A1〜A4: CircularBoard の保存モデルを「追加したら即保存」に統一する。削除は DB も消す。確認文を実際の動作に合わせる。中止したら後続処理を捨てる（AbortController またはフラグ）。
