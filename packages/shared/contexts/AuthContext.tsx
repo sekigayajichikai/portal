@@ -3,11 +3,16 @@
  *
  * アプリケーション全体で認証状態を管理するためのReact Contextを提供します。
  *
- * 認証方式:
- * - 本番: Supabase Edge Function（app-login）でパスワードをサーバー側照合し、
- *   発行されたアプリトークンをlocalStorageに保存します。
- *   （パスワードはクライアントバンドルに含まれません）
- * - 開発: VITE_APP_PASSWORD が設定されていればローカル照合にフォールバックします。
+ * 認証方式（2026-10-02 に Supabase Auth へ移行）:
+ * - ログインは Supabase Auth。画面はパスワード欄だけのまま使えるよう、
+ *   メールアドレスは固定のもの（ADMIN_EMAIL）を裏で組み合わせる。
+ * - これにより、データベースへの読み書きが「ログイン済みの人」として届くようになる。
+ *   以前は管理画面の操作もすべて公開鍵のまま実行されており、
+ *   データベース側では管理者か住民かを見分けられなかった。
+ * - Edge Function（ai-proxy / line-broadcast / line-richmenu）は、まだ
+ *   app-login が発行する合言葉のトークンで守られている。再デプロイを避けるため、
+ *   ログイン時にそちらのトークンも取っておく。両者のパスワードは同じにしておくこと。
+ *   詳細と今後の段取りは docs/セキュリティ-RLS.md。
  *
  * @module contexts/AuthContext
  */
@@ -18,9 +23,17 @@ import { getSupabaseClient } from '../services/supabaseClient.js';
 import { AUTH_TOKEN_STORAGE_KEY } from '../services/ai/aiProxyClient.js';
 
 /**
- * 旧方式（開発用フォールバック）のlocalStorageキー
+ * 旧方式のlocalStorageキー（移行時の掃除にだけ使う）
  */
 const AUTH_STORAGE_KEY = 'cc-saas-auth';
+
+/**
+ * 管理者アカウントのメールアドレス。
+ * 画面にはメール欄を出さないので、ここで決めたものを使う。
+ * 別のアドレスでアカウントを作った場合は VITE_ADMIN_EMAIL で上書きできる。
+ */
+const ADMIN_EMAIL: string =
+  (import.meta as any).env?.VITE_ADMIN_EMAIL || 'sekigaya.dx@gmail.com';
 
 /**
  * 認証コンテキスト
@@ -37,17 +50,6 @@ interface AuthProviderProps {
 }
 
 /**
- * 開発モードのローカルパスワードを取得（本番ビルドでは常にundefined）
- */
-function getDevPassword(): string | undefined {
-  const env = (import.meta as any).env;
-  if (env?.DEV) {
-    return env?.VITE_APP_PASSWORD;
-  }
-  return undefined;
-}
-
-/**
  * 認証プロバイダーコンポーネント
  *
  * アプリケーション全体をこのプロバイダーでラップすることで、
@@ -61,50 +63,68 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   /**
-   * コンポーネントマウント時にlocalStorageから認証状態を復元
+   * マウント時に Supabase のログイン状態を復元し、以後の変化も追いかける。
+   * ログイン状態は Supabase のクライアントが持っていて、再読み込みしても続く。
    */
   useEffect(() => {
-    const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-    const legacyAuth = localStorage.getItem(AUTH_STORAGE_KEY);
-
-    if (token) {
-      // サーバー発行トークンあり
-      setIsAuthenticated(true);
-    } else if (legacyAuth === 'true' && getDevPassword()) {
-      // 開発モードのローカル認証のみ旧フラグを許可
-      setIsAuthenticated(true);
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+
+    let active = true;
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active) return;
+        setIsAuthenticated(!!data.session);
+        setIsLoading(false);
+      })
+      .catch(() => {
+        if (active) setIsLoading(false);
+      });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => {
+      active = false;
+      listener?.subscription?.unsubscribe();
+    };
   }, []);
 
   /**
    * ログイン処理
    *
-   * 開発モードではローカル照合、本番ではEdge Function（app-login）で
-   * サーバー側照合を行い、アプリトークンを保存します。
+   * パスワードを Supabase Auth に渡してログインする。
+   * あわせて Edge Function 用のトークンも取りに行く（失敗してもログインは成立させる）。
    *
    * @param {string} password - 入力されたパスワード
    * @returns {Promise<boolean>} ログイン成功ならtrue、失敗ならfalse
    */
   const login = async (password: string): Promise<boolean> => {
-    // 開発モード: ローカル照合（本番バンドルにはパスワードは含まれない）
-    const devPassword = getDevPassword();
-    if (devPassword) {
-      if (password === devPassword) {
-        setIsAuthenticated(true);
-        localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-        // Edge Function（ai-proxy / line-broadcast）はサーバー発行トークンで保護されているので、
-        // ローカルでもそれらを使えるよう、同じパスワードで app-login からトークンを取っておく（取れなくてもログインは成立）
-        void fetchAppToken(password);
-        return true;
-      }
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.error('Supabaseが未設定のため、ログインできません');
       return false;
     }
 
-    // 本番: サーバー側でパスワード照合
-    const ok = await fetchAppToken(password);
-    if (ok) setIsAuthenticated(true);
-    return ok;
+    const { error } = await supabase.auth.signInWithPassword({
+      email: ADMIN_EMAIL,
+      password,
+    });
+    if (error) {
+      console.warn('ログインできませんでした:', error.message);
+      return false;
+    }
+
+    // AI・LINE の機能は、まだ合言葉のトークンで守られている Edge Function を通る。
+    // 取れなくてもログイン自体は成立させる（その場合それらの機能だけが使えない）。
+    void fetchAppToken(password);
+    setIsAuthenticated(true);
+    return true;
   };
 
   /**
@@ -113,21 +133,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
    */
   const fetchAppToken = async (password: string): Promise<boolean> => {
     const supabase = getSupabaseClient();
-    if (!supabase) {
-      console.error('Supabaseが未設定のため、ログインできません');
-      return false;
-    }
+    if (!supabase) return false;
     try {
       const { data, error } = await supabase.functions.invoke('app-login', {
         body: { password },
       });
       if (error || !data?.token) {
+        console.warn('AI・LINE機能用のトークンを取得できませんでした。それらの機能だけ使えない場合があります。');
         return false;
       }
       localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, data.token);
       return true;
     } catch (e) {
-      console.error('ログイン処理でエラーが発生しました:', e);
+      console.error('トークンの取得でエラーが発生しました:', e);
       return false;
     }
   };
@@ -135,9 +153,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   /**
    * ログアウト処理
    *
-   * ログイン状態を解除し、localStorageから認証情報を削除します。
+   * Supabase のログイン状態を解除し、localStorage に残る古い情報も消します。
    */
   const logout = (): void => {
+    const supabase = getSupabaseClient();
+    void supabase?.auth.signOut();
     setIsAuthenticated(false);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
