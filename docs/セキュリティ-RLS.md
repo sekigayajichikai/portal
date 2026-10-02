@@ -165,11 +165,40 @@ Vercel の本番環境変数に、7月の移行で消すはずだった `VITE_AP
 公開鍵からは書けない状態だった。9月から配信を運用しているのに記録が0件だったので、
 送信履歴の保存が失敗し続けていたと思われる。
 
+### 2歩目（2026-10-02 実施済み）: カレンダー側のテーブル
+
+`sql/migrations/2026-10-02-rls-calendar-tables.sql`。
+
+| 対象 | 変えた内容 |
+|---|---|
+| `bookings` / `calendar_events` / `booking_organizations` / `booking_org_groups` | 読むのは誰でも、書くのはログイン済みだけ |
+| `booking_rooms` / `booking_time_slots` / `booking_equipment` / `booking_usage_categories` / `event_locations` | 同上 |
+| `import_batches` / `import_rows` / `app_settings` / `general_import_rows` | ログイン済みだけ |
+
+窓口（api/）は強い鍵で動くので、この制限を越えて書ける。予約の申し込みもインポートの反映も通る。
+
+**あわせて直したこと**
+- 予約一覧の団体名・題名が、一般の画面でも誰でも書き換えられた。`canEdit` を足して管理画面だけに。
+- `/api/booking` を強い鍵に切り替え（保護後も団体の予約申し込みが通るように）。
+
+**確認の結果**（公開鍵で実際に試した）
+
+| 試したこと | 結果 |
+|---|---|
+| 予約・予定・団体・時間帯を読む | 読める |
+| インポートの作業台・設定を読む | 0件 / 読めない |
+| 予定を作る | 401 |
+| 実在する予約・予定を書き換える | 0行が変わった |
+| 実在する予約を削除する | 0行が消えた |
+
+※ 存在しない行を狙った書き込みは、保護の有無にかかわらず「成功（0行）」に見える。
+   実在する行で、戻ってきた行数が0かどうかを見ること。
+
 ### 残り（未着手）
 
-カレンダーアプリ（book-system）がまだ公開鍵のままなので、**そちらが触るテーブルは閉じられない**。
-`bookings` / `calendar_events` / `booking_*` / `import_*` / `app_settings` / `event_locations` が該当する。
-閉じると予約の承認も予定の編集も一斉に止まる。第2段の残り（カレンダーアプリの Auth 化）が先。
+**団体ログインに署名が無い。** `api/auth.ts` が出すトークンは base64 で、誰でも作れる。
+`/api/booking` は事務局のログインを求めない作りなので、**いまは誰でも予約を作れる**。
+HMAC などで署名し、`/api/booking` で確かめるのが次の課題。
 
 公開画面が読むテーブル（`newsletters` / `articles` / `event_cards` / `venues` / `organizers` /
 `article_likes`）も残っている。方針は次のとおり。
