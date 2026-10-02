@@ -240,7 +240,7 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
 
   const remove = async () => {
     if (!card) return;
-    if (!(await appConfirm({ title: `「${card.title}」を削除しますか？`, message: 'カレンダー・週次配信からも消えます。元に戻せません。', confirmLabel: '削除する', danger: true }))) return;
+    if (!(await appConfirm({ title: `「${card.title}」を削除しますか？`, message: 'カレンダー・週次配信からも消えます。間違えたときは「ゴミ箱」から元に戻せます。', confirmLabel: '削除する', danger: true }))) return;
     try {
       await deleteEventCard(card.id);
       // カレンダーに載せていた場合は、そちらからも消す

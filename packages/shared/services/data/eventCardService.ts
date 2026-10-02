@@ -3,6 +3,7 @@
  */
 
 import { getSupabaseClient } from '../supabaseClient.js';
+import { fetchRowsForTrash, saveToTrash } from './trashService.js';
 
 export interface EventCard {
   id: string;
@@ -342,6 +343,8 @@ export async function updateEventCard(id: string, updates: Partial<EventCard>): 
 export async function deleteEventCard(id: string): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase未接続');
+  const rows = await fetchRowsForTrash('event_cards', 'id', id);
+  await saveToTrash('event_card', String(rows[0]?.title ?? '予定カード'), [{ table: 'event_cards', rows }]);
   const { error } = await supabase.from('event_cards').delete().eq('id', id);
   if (error) throw error;
 }

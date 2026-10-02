@@ -8,6 +8,7 @@
  */
 
 import { getSupabaseClient } from '../supabaseClient.js';
+import { fetchRowsForTrash, saveToTrash } from './trashService.js';
 import { Newsletter, Article } from '../../types/index.js';
 
 /**
@@ -350,6 +351,18 @@ export async function deleteNewsletter(newsletterId: string): Promise<void> {
 
   console.log('🗑️ Newsletterを削除中... ID:', newsletterId);
 
+  // 消える前に、号・記事・予定カードの控えをゴミ箱へ（一緒に消える記事と予定カードも戻せるように）
+  const [newsletterRows, articleRows, eventCardRows] = await Promise.all([
+    fetchRowsForTrash('newsletters', 'id', newsletterId),
+    fetchRowsForTrash('articles', 'newsletter_id', newsletterId),
+    fetchRowsForTrash('event_cards', 'newsletter_id', newsletterId),
+  ]);
+  await saveToTrash('newsletter', String(newsletterRows[0]?.title ?? '電子回覧板'), [
+    { table: 'newsletters', rows: newsletterRows },
+    { table: 'articles', rows: articleRows },
+    { table: 'event_cards', rows: eventCardRows },
+  ]);
+
   const { error } = await supabase
     .from('newsletters')
     .delete()
@@ -491,6 +504,9 @@ export async function deleteArticle(articleId: string): Promise<void> {
   }
 
   console.log('🗑️ 記事を削除中... ID:', articleId);
+
+  const articleRows = await fetchRowsForTrash('articles', 'id', articleId);
+  await saveToTrash('article', String(articleRows[0]?.title ?? '記事'), [{ table: 'articles', rows: articleRows }]);
 
   const { error } = await supabase
     .from('articles')

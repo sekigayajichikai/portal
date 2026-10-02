@@ -188,7 +188,7 @@ export const ReportBoard: React.FC = () => {
   const handleDelete = async (a: Article) => {
     const ok = await appConfirm({
       title: `「${a.title}」を削除しますか？`,
-      message: 'この操作は取り消せません。',
+      message: '間違えたときは、画面上の「ゴミ箱」から元に戻せます。',
       confirmLabel: '削除する',
       danger: true,
     });

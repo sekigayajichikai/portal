@@ -470,7 +470,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({
 
     if (!(await appConfirm({
       title: `「${article.title}」を削除しますか？`,
-      message: 'この操作は取り消せません。',
+      message: '間違えたときは、画面上の「ゴミ箱」から元に戻せます。',
       confirmLabel: '削除する',
       danger: true,
     }))) {

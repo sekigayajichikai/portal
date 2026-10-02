@@ -278,7 +278,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     // 確認ダイアログ
     const confirmed = await appConfirm({
       title: `「${newsletter.title}」を削除しますか？`,
-      message: `記事数: ${newsletter.article_count}件\nこの操作は取り消せません。`,
+      message: `記事数: ${newsletter.article_count}件\n記事と予定カードも一緒に削除します。間違えたときは「ゴミ箱」から元に戻せます。`,
       confirmLabel: '削除する',
       danger: true,
     });
