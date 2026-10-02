@@ -91,6 +91,36 @@ export async function cancelReview(newsletterId: string): Promise<Newsletter> {
 }
 
 /**
+ * 担当者の回答を待っている号・回答が届いた号の件数を数える（管理画面のバッジ用）
+ *
+ * 担当者が承認しても、こちらへ知らせが届く仕組みはない。
+ * 号を開き直すまで気づけないので、管理画面を開いたときに数だけ出す。
+ *
+ * @returns approved = 承認済みで公開待ち、changesRequested = 修正依頼が届いている
+ */
+export async function countReviewUpdates(): Promise<{ approved: number; changesRequested: number }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { approved: 0, changesRequested: 0 };
+
+  const { data, error } = await supabase
+    .from('newsletters')
+    .select('review_status')
+    .eq('status', 'draft')
+    .in('review_status', ['approved', 'changes_requested']);
+
+  if (error) {
+    console.warn('確認状況を数えられませんでした:', error.message);
+    return { approved: 0, changesRequested: 0 };
+  }
+
+  const rows = data ?? [];
+  return {
+    approved: rows.filter((r: any) => r.review_status === 'approved').length,
+    changesRequested: rows.filter((r: any) => r.review_status === 'changes_requested').length,
+  };
+}
+
+/**
  * 確認用トークンからNewsletterを取得（担当者の確認ページ用）
  *
  * @param token - 確認用トークン

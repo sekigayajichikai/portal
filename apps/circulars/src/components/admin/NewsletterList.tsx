@@ -445,32 +445,21 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 }}
                 disabled={isDuplicating}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors"
+                title="公開中のものはそのままに、直すための下書きを1つ作ります"
               >
                 {isDuplicating ? <Loader2 size={18} className="animate-spin" /> : <Copy size={18} />}
-                {isDuplicating ? '編集用コピーを作成しています…' : '編集する'}
+                {isDuplicating ? '編集用の下書きを作っています…' : '編集用の下書きを作る'}
               </button>
             )}
 
-            {/* プレビューボタン */}
+            {/* プレビュー（住民の画面で確かめる。別タブで全体を見る導線はモーダルの中に置いた） */}
             <button
               onClick={() => setShowPreview(true)}
               className="flex items-center gap-2 px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 font-medium transition-colors"
-              title="住民側の表示をプレビュー"
+              title="住民に見える形で確かめる（公開はされません）"
             >
               <Smartphone size={18} />
-              プレビュー
-            </button>
-
-            {/* 公開プレビュー（公開せずに住民ページ全タブを別タブで表示） */}
-            <button
-              onClick={() =>
-                window.open(`/?preview=${selectedNewsletter.id}`, '_blank', 'noopener')
-              }
-              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-200 font-medium transition-colors"
-              title="公開後の住民ページ（回覧板/レポート/カレンダー等の全タブ）を、公開せずに別タブで確認"
-            >
-              <Eye size={18} />
-              公開プレビュー
+              住民の画面で見る
             </button>
 
             {/* 担当者に確認依頼（下書きのみ） */}
@@ -499,7 +488,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 }}
                 disabled={articles.length === 0}
                 className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 font-medium transition-colors"
-                title="担当者に公開前の確認を依頼"
+                title={articles.length === 0 ? '記事が1つもないため依頼できません' : '担当者に公開前の確認を依頼'}
               >
                 <ClipboardCheck size={18} />
                 {selectedNewsletter.review_status === 'pending' ? '確認リンクを表示'
@@ -534,7 +523,13 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 }}
                 disabled={articles.length === 0 || selectedNewsletter.review_status !== 'approved'}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
-                title={selectedNewsletter.review_status === 'approved' ? '公開する' : '担当者の承認後に公開できます'}
+                title={
+                  articles.length === 0 ? '記事が1つもないため公開できません'
+                    : selectedNewsletter.review_status === 'approved' ? '公開する'
+                    : selectedNewsletter.review_status === 'pending' ? '担当者の承認を待っています'
+                    : selectedNewsletter.review_status === 'changes_requested' ? '修正依頼が届いています。直してから再度依頼してください'
+                    : 'まず「確認を依頼」を押してください'
+                }
               >
                 <Globe size={18} />
                 公開する
@@ -576,6 +571,31 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             </button>
           </div>
         </div>
+
+        {/* まだ確認を依頼していないとき（ここが抜けていて、公開ボタンが押せない理由が分からなかった） */}
+        {selectedNewsletter.status === 'draft' && !selectedNewsletter.review_status && (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-start gap-3">
+            <ClipboardCheck size={20} className="text-slate-500 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-slate-700">
+              <p className="font-bold">
+                {articles.length === 0 ? 'まだ記事がありません' : '公開するには、担当者の確認が必要です'}
+              </p>
+              <p className="mt-1">
+                {articles.length === 0 ? (
+                  <>
+                    上の「AIで抽出」からPDFを読み取るか、記事を手で足してください。
+                    記事が1つもないと、確認の依頼も公開もできません。
+                  </>
+                ) : (
+                  <>
+                    「確認を依頼」を押すと確認用リンクが出ます。それを担当の方に送り、
+                    承認されると「公開する」が押せるようになります。
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* 担当者確認の状況バナー（下書きのみ） */}
         {selectedNewsletter.status === 'draft' && selectedNewsletter.review_status === 'pending' && (
@@ -1354,7 +1374,6 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               </div>
               <p className="text-sm text-slate-600">
                 このリンクを開くと、ログインなしで回覧板のプレビューを確認して「承認」「修正依頼」を回答できます。
-                LINEやメールに貼り付けて送ってください。
               </p>
               <input
                 type="text"
@@ -1363,6 +1382,15 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 onFocus={(e) => e.currentTarget.select()}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-700"
               />
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-600 space-y-1">
+                <p className="font-bold text-slate-700">このあとの流れ</p>
+                <p>1. 下の「リンクをコピー」を押します。</p>
+                <p>2. LINE、メールなど、ふだん使っている方法で担当の方に送ります。</p>
+                <p>3. 担当の方が回答すると、この号に「承認済み」または「修正依頼」が付きます。</p>
+                <p className="text-slate-500">
+                  回答があってもお知らせは届きません。しばらくしてから、この画面を開いて確かめてください。
+                </p>
+              </div>
               <div className="flex gap-2 justify-end">
                 <button
                   onClick={() => setReviewLinkUrl(null)}
@@ -1401,10 +1429,20 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               <X size={24} className="text-slate-700" />
             </button>
 
-            {/* ラベル */}
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow text-sm font-medium text-slate-700 flex items-center gap-2">
-              <Smartphone size={16} />
-              プレビュー（{selectedNewsletter.status === 'draft' ? '下書き' : '公開済み'}）
+            {/* ラベルと、住民ページ全体を見る導線（以前は「公開プレビュー」という別ボタンだった） */}
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-2">
+              <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow text-sm font-medium text-slate-700 flex items-center gap-2">
+                <Smartphone size={16} />
+                {selectedNewsletter.status === 'draft' ? 'この下書きを住民の画面で見ています' : '公開中のものを住民の画面で見ています'}
+              </div>
+              <button
+                onClick={() => window.open(`/?preview=${selectedNewsletter.id}`, '_blank', 'noopener')}
+                className="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow text-sm font-medium text-slate-700 flex items-center gap-2 hover:bg-white transition"
+                title="レポートやカレンダーも含めた住民ページ全体を、別のタブで開きます（公開はされません）"
+              >
+                <Eye size={16} />
+                ページ全体を別タブで見る
+              </button>
             </div>
 
             {/* スマホフレーム */}

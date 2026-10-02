@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { AuthProvider, useAuth, PasswordLogin } from '@cc-saas/shared';
+import React, { useState, useEffect } from 'react';
+import { AuthProvider, useAuth, PasswordLogin, countReviewUpdates } from '@cc-saas/shared';
 import { CircularBoard } from '@/components/admin/CircularBoard';
 import { ReportBoard } from '@/components/admin/ReportBoard';
 import { WeeklyDigest } from '@/components/admin/WeeklyDigest';
@@ -20,6 +20,21 @@ function AdminContent() {
   const [mode, setMode] = useState<AdminMode>(() =>
     (['reports', 'weekly', 'richmenu', 'events', 'masters'].find((m) => m === new URLSearchParams(window.location.search).get('mode')) as AdminMode | undefined) ?? 'circulars'
   );
+
+  /**
+   * 担当者から回答が届いた号の数。
+   * 承認されても知らせは届かないので、管理画面を開いたときにタブのバッジで気づけるようにする。
+   * 回覧板タブに切り替えたときも数え直す（そこで公開すれば減るため）。
+   */
+  const [reviewUpdates, setReviewUpdates] = useState({ approved: 0, changesRequested: 0 });
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let active = true;
+    countReviewUpdates()
+      .then((r) => { if (active) setReviewUpdates(r); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [isAuthenticated, mode]);
 
   if (isLoading) {
     return (
@@ -85,6 +100,23 @@ function AdminContent() {
           >
             <FileText size={16} />
             電子回覧板
+            {/* 担当者から回答が届いた号の数。知らせが届く仕組みは無いので、ここで気づけるようにする */}
+            {reviewUpdates.approved > 0 && (
+              <span
+                className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[11px] font-bold"
+                title={`${reviewUpdates.approved}件が承認済みです。公開できます`}
+              >
+                承認 {reviewUpdates.approved}
+              </span>
+            )}
+            {reviewUpdates.changesRequested > 0 && (
+              <span
+                className="ml-1 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[11px] font-bold"
+                title={`${reviewUpdates.changesRequested}件に修正依頼が届いています`}
+              >
+                修正 {reviewUpdates.changesRequested}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setMode('reports')}
