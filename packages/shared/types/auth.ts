@@ -16,7 +16,24 @@
  */
 export interface AuthContextType {
   isAuthenticated: boolean;
-  login: (password: string) => Promise<boolean>;
+  login: (password: string) => Promise<LoginResult>;
   logout: () => void;
   isLoading: boolean;
+  /**
+   * AI・LINE 機能用のトークンを持っているか。
+   * false のときはログインはできているが、AI読み取りや LINE 配信だけが使えない。
+   */
+  aiReady: boolean;
+}
+
+/**
+ * ログインの結果。失敗したときは理由で画面の案内を変える
+ * - wrong-password: パスワード違い
+ * - network: 通信できなかった
+ * - server: サーバー側の設定や障害（入力した人のせいではない）
+ */
+export interface LoginResult {
+  ok: boolean;
+  /** 失敗したときだけ入る */
+  reason?: 'wrong-password' | 'network' | 'server';
 }

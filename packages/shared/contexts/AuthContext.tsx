@@ -18,9 +18,9 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { AuthContextType } from '../types/auth.js';
+import { AuthContextType, LoginResult } from '../types/auth.js';
 import { getSupabaseClient } from '../services/supabaseClient.js';
-import { AUTH_TOKEN_STORAGE_KEY } from '../services/ai/aiProxyClient.js';
+import { AUTH_TOKEN_STORAGE_KEY, getStoredAppToken } from '../services/ai/aiProxyClient.js';
 
 /**
  * 旧方式のlocalStorageキー（移行時の掃除にだけ使う）
@@ -34,6 +34,16 @@ const AUTH_STORAGE_KEY = 'cc-saas-auth';
  */
 const ADMIN_EMAIL: string =
   (import.meta as any).env?.VITE_ADMIN_EMAIL || 'sekigaya.dx@gmail.com';
+
+/**
+ * Supabase Auth のエラーを、画面で案内する理由に分ける。
+ * パスワード違いは 400 + "Invalid login credentials"。通信できないときは status が無い（0）。
+ */
+function classifyLoginError(error: { message?: string; status?: number }): 'wrong-password' | 'network' | 'server' {
+  if (/invalid login credentials/i.test(error.message ?? '')) return 'wrong-password';
+  if (!error.status || /fetch|network/i.test(error.message ?? '')) return 'network';
+  return 'server';
+}
 
 /**
  * 認証コンテキスト
@@ -61,6 +71,7 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [aiReady, setAiReady] = useState<boolean>(() => !!getStoredAppToken());
 
   /**
    * マウント時に Supabase のログイン状態を復元し、以後の変化も追いかける。
@@ -87,6 +98,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session);
+      // トークン切れで requireRelogin() からログアウトされた場合も、ここで状態がそろう
+      if (!session) setAiReady(false);
     });
 
     return () => {
@@ -102,29 +115,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
    * あわせて Edge Function 用のトークンも取りに行く（失敗してもログインは成立させる）。
    *
    * @param {string} password - 入力されたパスワード
-   * @returns {Promise<boolean>} ログイン成功ならtrue、失敗ならfalse
+   * @returns {Promise<LoginResult>} 成功、または失敗の理由（画面の案内を変えるため）
    */
-  const login = async (password: string): Promise<boolean> => {
+  const login = async (password: string): Promise<LoginResult> => {
     const supabase = getSupabaseClient();
     if (!supabase) {
       console.error('Supabaseが未設定のため、ログインできません');
-      return false;
+      return { ok: false, reason: 'server' };
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: ADMIN_EMAIL,
-      password,
-    });
+    let error;
+    try {
+      ({ error } = await supabase.auth.signInWithPassword({
+        email: ADMIN_EMAIL,
+        password,
+      }));
+    } catch (e) {
+      console.warn('ログインの通信に失敗しました:', e);
+      return { ok: false, reason: 'network' };
+    }
     if (error) {
       console.warn('ログインできませんでした:', error.message);
-      return false;
+      return { ok: false, reason: classifyLoginError(error) };
     }
 
     // AI・LINE の機能は、まだ合言葉のトークンで守られている Edge Function を通る。
-    // 取れなくてもログイン自体は成立させる（その場合それらの機能だけが使えない）。
-    void fetchAppToken(password);
+    // 取れなくてもログイン自体は成立させる（その場合それらの機能だけが使えず、管理画面に案内を出す）。
+    setAiReady(await fetchAppToken(password));
     setIsAuthenticated(true);
-    return true;
+    return { ok: true };
   };
 
   /**
@@ -159,6 +178,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const supabase = getSupabaseClient();
     void supabase?.auth.signOut();
     setIsAuthenticated(false);
+    setAiReady(false);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
   };
@@ -168,6 +188,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     login,
     logout,
     isLoading,
+    aiReady,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

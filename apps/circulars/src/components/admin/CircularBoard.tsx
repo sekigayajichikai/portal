@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Circular,
   PublicEvent,
@@ -14,6 +14,7 @@ import {
   filterDuplicateArticles,
   deleteArticle,
   addPdfUrlToNewsletter,
+  removePdfUrlFromNewsletter,
 } from '@cc-saas/shared';
 // 統合AIサービスを使用（Anthropic/OpenRouterを自動選択）
 import { extractArticlesFromPDF, extractBriefArticleFromPDF, convertPDFToBase64, extractPDFMetadata } from '@cc-saas/shared/services/ai/aiService';
@@ -87,7 +88,13 @@ export const CircularBoard: React.FC = () => {
     title: string;       // PDFのタイトル（例: 関ヶ谷だより）
     issueNumber: string; // 号数（例: 第123号）
     pdfId: string;       // 一意識別子
+    pdfUrl: string;      // 号に添付したPDFのURL（削除時に号から外す）
+    articleIds: string[]; // このPDFから保存した記事のID（削除時に一緒に消す）
   }[]>([]);
+  /** 重複ダイアログで保留中の記事がどのPDFから来たか */
+  const [pendingPdfId, setPendingPdfId] = useState<string | null>(null);
+  /** AI読み取りの実行番号。中止すると進み、古い実行の結果は捨てる */
+  const opRunRef = useRef(0);
   const [accumulatedArticles, setAccumulatedArticles] = useState<Article[]>([]);
   const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
   const [isProcessingPDF, setIsProcessingPDF] = useState(false);
@@ -105,9 +112,6 @@ export const CircularBoard: React.FC = () => {
   const [publisherOptions, setPublisherOptions] = useState<string[]>([]);
   const [pendingPDFBase64, setPendingPDFBase64] = useState<string | null>(null);
   const [isMetadataLoading, setIsMetadataLoading] = useState(false);
-
-  // Supabase保存の状態
-  const [isSaving, setIsSaving] = useState(false);
 
   // 編集モードの状態
   const [isEditMode, setIsEditMode] = useState(false);
@@ -143,84 +147,54 @@ export const CircularBoard: React.FC = () => {
   };
 
   /**
-   * 電子回覧板と記事をSupabaseに保存
+   * 抽出した記事をその号に保存し、DB上のID付きの記事を返す
    *
-   * Newsletter作成時に即座に保存されるため、この関数は編集モードでのみ使用されます。
+   * 号は作成した時点でDBにあるので、記事は「追加したら即保存」に統一している。
+   * （以前は重複ダイアログの有無で保存タイミングが変わり、取り消し・削除の結果が画面とDBで食い違っていた）
    */
-  const handleSaveNewsletter = async () => {
-    setIsSaving(true);
-    try {
-      if (isEditMode && editingNewsletterId) {
-        // 編集モード：新規記事のみを追加
-        console.log('📝 編集モード：新規記事を追加中...');
+  const saveArticlesToCurrentNewsletter = async (articles: Article[]): Promise<Article[]> => {
+    const newsletterId = editingNewsletterId || currentNewsletter?.id;
+    if (!newsletterId || articles.length === 0) return [];
+    const articlesToAdd = articles.map((article) => ({
+      organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
+      title: article.title,
+      category: article.category,
+      article_type: article.article_type,
+      priority: article.priority,
+      control_date: article.control_date,
+      headline: article.headline,
+      brief: article.brief,
+      summary: article.summary,
+      content: article.content,
+      tags: article.tags,
+      visibility: article.visibility,
+      source: article.source,
+      attachments: article.attachments,
+      thumbnail_url: article.thumbnail_url,
+      display_order: null,
+      is_pinned: article.is_pinned,
+    }));
+    return addArticlesToNewsletter(newsletterId, articlesToAdd);
+  };
 
-        // 新規記事のみをフィルタ（idがa-で始まるのは新規作成した記事）
-        const newArticles = accumulatedArticles.filter(
-          (article) => !article.id || article.id.startsWith('a-')
-        );
+  /** PDFの一覧に、保存できた記事のIDを記録する（PDFを削除するときに一緒に消すため） */
+  const recordSavedArticleIds = (pdfId: string | null, saved: Article[]) => {
+    if (!pdfId) return;
+    setUploadedPDFs((prev) =>
+      prev.map((p) =>
+        p.pdfId === pdfId ? { ...p, articleIds: saved.map((a) => a.id), articleCount: saved.length } : p
+      )
+    );
+  };
 
-        if (newArticles.length === 0) {
-          showToast('追加する新規記事がありません', 'info');
-          setIsSaving(false);
-          return;
-        }
-
-        // 記事データを準備
-        const articlesToAdd = newArticles.map((article) => ({
-          organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
-          title: article.title,
-          category: article.category,
-          article_type: article.article_type,
-          priority: article.priority,
-          control_date: article.control_date,
-          headline: article.headline,
-          brief: article.brief,
-          summary: article.summary,
-          content: article.content,
-          tags: article.tags,
-          visibility: article.visibility,
-          source: article.source,
-          attachments: article.attachments,
-          thumbnail_url: article.thumbnail_url,
-          display_order: null,
-          is_pinned: article.is_pinned,
-        }));
-
-        console.log('💾 記事追加開始:', {
-          newsletterId: editingNewsletterId,
-          newArticleCount: articlesToAdd.length,
-        });
-
-        // 新規記事を追加
-        const addedArticles = await addArticlesToNewsletter(editingNewsletterId, articlesToAdd);
-
-        showToast(`新しい記事を${addedArticles.length}件追加しました。「保存済み一覧」タブで確認できます。`);
-
-        // 状態をリセット
-        setAccumulatedArticles([]);
-        setUploadedPDFs([]);
-        setNewsletterTitle('');
-        setIsEditMode(false);
-        setEditingNewsletterId(null);
-        setCurrentNewsletter(null);
-
-        // 保存済みタブに切り替え
-        setActiveTab('saved');
-
-        console.log('✅ 記事追加完了:', addedArticles.length, '件');
-      } else {
-        // 新規作成モードでは来ないはず（作成時に即保存されるため）
-        console.warn('⚠️ 編集モードではありません。Newsletter作成時に既に保存されているはずです。');
-        showToast('この回覧板は保存済みです。「保存済み一覧」タブから編集モードで開いてください。', 'info');
-        setIsSaving(false);
-        return;
-      }
-    } catch (error: any) {
-      console.error('❌ 保存エラー:', error);
-      showError('保存できませんでした。時間をおいてもう一度お試しください。');
-    } finally {
-      setIsSaving(false);
-    }
+  /** 処理中のAI読み取りを中止する。番号を進めると、あとから戻ってきた結果は捨てられる */
+  const cancelInFlight = () => {
+    opRunRef.current += 1;
+    setIsProcessingPDF(false);
+    setIsMetadataLoading(false);
+    setShowMetadataDialog(false);
+    setPendingPDFBase64(null);
+    setProcessingStage(null);
   };
 
   const handleCreate = async () => {
@@ -370,6 +344,7 @@ export const CircularBoard: React.FC = () => {
       return;
     }
 
+    const runId = ++opRunRef.current;
     setIsProcessingPDF(true);
     setIsMetadataLoading(true);
     setProcessingStage('PDFを読み込んでいます…');
@@ -377,6 +352,7 @@ export const CircularBoard: React.FC = () => {
     try {
       // PDFをBase64に変換
       const pdfBase64 = await convertPDFToBase64(selectedPDF);
+      if (runId !== opRunRef.current) return;
       setPendingPDFBase64(pdfBase64);
 
       // AIでメタデータ提案（登録済みの発行元一覧を渡して発行元も推測させる）
@@ -390,6 +366,8 @@ export const CircularBoard: React.FC = () => {
       }
       setPublisherOptions(publisherNames);
       const metadata = await extractPDFMetadata(pdfBase64, publisherNames);
+      // 「中止する」が押されていたら、ダイアログを出さずに捨てる
+      if (runId !== opRunRef.current) return;
       console.log('🔍 CircularBoard: AIから取得したメタデータ:', metadata);
 
       setSuggestedMetadata(metadata);
@@ -399,12 +377,15 @@ export const CircularBoard: React.FC = () => {
       console.log('🔍 CircularBoard: ダイアログを表示します。現在のsuggestedMetadata:', metadata);
       setShowMetadataDialog(true);
     } catch (error) {
+      if (runId !== opRunRef.current) return;
       console.error('メタデータ抽出エラー:', error);
       showError('PDFを読み込めませんでした。時間をおいてもう一度お試しください。');
     } finally {
-      setIsProcessingPDF(false);
-      setIsMetadataLoading(false);
-      setProcessingStage(null);
+      if (runId === opRunRef.current) {
+        setIsProcessingPDF(false);
+        setIsMetadataLoading(false);
+        setProcessingStage(null);
+      }
     }
   };
 
@@ -419,6 +400,11 @@ export const CircularBoard: React.FC = () => {
     if (!currentNewsletter || !selectedPDF || !pendingPDFBase64) {
       return;
     }
+
+    const runId = ++opRunRef.current;
+    const isCancelled = () => runId !== opRunRef.current;
+    /** 号に添付済みのPDF URL（中止されたら号から外す） */
+    let attachedPdfUrl: string | null = null;
 
     setShowMetadataDialog(false);
     setIsProcessingPDF(true);
@@ -443,9 +429,15 @@ export const CircularBoard: React.FC = () => {
         let thumbUrl = '';
         try { thumbUrl = await generatePdfThumbnail(selectedPDF); } catch (e) { console.warn('⚠️ サムネイル生成スキップ:', e); }
         await addPdfUrlToNewsletter(currentNewsletter.id, uploadResult.url, pdfLabel, publisher || undefined, pdfType as any, thumbUrl);
+        attachedPdfUrl = uploadResult.url;
         console.log('✅ Newsletter PDF URL 追加完了');
       } catch (pdfUrlError) {
         console.warn('⚠️ PDF URL追加をスキップ:', pdfUrlError);
+        showToast('PDFを号に添付できませんでした（記事の読み取りは続けます）。あとで「PDFを追加」からやり直してください。', 'error');
+      }
+      if (isCancelled()) {
+        if (attachedPdfUrl) await removePdfUrlFromNewsletter(currentNewsletter.id, attachedPdfUrl).catch(() => {});
+        return;
       }
 
       if (extractionMode === 'brief') {
@@ -494,6 +486,12 @@ export const CircularBoard: React.FC = () => {
 
       console.log(`⏱️ 抽出処理時間: ${(result.processingTime / 1000).toFixed(1)}秒`);
 
+      // 読み取り中に「中止する」が押されていたら、記事は保存せず添付したPDFも外す
+      if (isCancelled()) {
+        if (attachedPdfUrl) await removePdfUrlFromNewsletter(currentNewsletter.id, attachedPdfUrl).catch(() => {});
+        return;
+      }
+
       // 重複検出を実行
       const duplicates = findDuplicateArticles(newArticles, accumulatedArticles, 0.8);
 
@@ -507,48 +505,25 @@ export const CircularBoard: React.FC = () => {
           title: title,
           issueNumber: issueNumber,
           pdfId: pdfId,
+          pdfUrl: attachedPdfUrl ?? '',
+          articleIds: [],
         },
       ]);
 
       if (duplicates.length > 0) {
-        // 重複が見つかった場合、ダイアログを表示
+        // 重複が見つかった場合、ダイアログで選んでもらってから保存する
         console.log(`⚠️ ${duplicates.length}件の重複を検出しました`);
         setDetectedDuplicates(duplicates);
         setPendingNewArticles(newArticles);
+        setPendingPdfId(pdfId);
         setShowDuplicateDialog(true);
       } else {
-        // 重複なし — 編集モード(Newsletter既存)なら即座にDBに保存
-        if (isEditMode && editingNewsletterId) {
-          setProcessingStage('記事を保存しています…');
-          console.log('💾 抽出した記事をSupabaseに自動保存中...');
-          const articlesToSave = newArticles.map((article) => ({
-            organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
-            title: article.title,
-            category: article.category,
-            article_type: article.article_type,
-            priority: article.priority,
-            control_date: article.control_date,
-            headline: article.headline,
-            brief: article.brief,
-            summary: article.summary,
-            content: article.content,
-            tags: article.tags,
-            visibility: article.visibility,
-            source: article.source,
-            attachments: article.attachments,
-            thumbnail_url: article.thumbnail_url,
-            display_order: null,
-            is_pinned: article.is_pinned,
-          }));
-          const savedArticles = await addArticlesToNewsletter(editingNewsletterId, articlesToSave);
-          console.log(`✅ ${savedArticles.length}件の記事をSupabaseに保存しました`);
-
-          // 保存済み記事（DB上のID付き）をローカル状態に追加
-          setAccumulatedArticles(prev => [...prev, ...savedArticles]);
-        } else {
-          // 新規作成モード：ローカル状態にのみ追加
-          setAccumulatedArticles(prev => [...prev, ...newArticles]);
-        }
+        // 重複なし — すぐにDBへ保存
+        setProcessingStage('記事を保存しています…');
+        const savedArticles = await saveArticlesToCurrentNewsletter(newArticles);
+        console.log(`✅ ${savedArticles.length}件の記事をSupabaseに保存しました`);
+        setAccumulatedArticles(prev => [...prev, ...savedArticles]);
+        recordSavedArticleIds(pdfId, savedArticles);
 
         // 選択をクリア
         setSelectedPDF(null);
@@ -563,11 +538,14 @@ export const CircularBoard: React.FC = () => {
         showToast(message);
       }
     } catch (error: any) {
+      if (isCancelled()) return;
       console.error('記事抽出エラー:', error);
       showError('記事を抽出できませんでした。時間をおいてもう一度お試しください。');
     } finally {
-      setIsProcessingPDF(false);
-      setProcessingStage(null);
+      if (!isCancelled()) {
+        setIsProcessingPDF(false);
+        setProcessingStage(null);
+      }
     }
   };
 
@@ -676,17 +654,8 @@ export const CircularBoard: React.FC = () => {
    * 電子回覧板編集のリセット
    */
   const handleResetNewsletter = async () => {
-    if (accumulatedArticles.length > 0) {
-      const ok = await appConfirm({
-        title: '編集中の内容をリセットしますか？',
-        message: '追加した記事はすべて取り消されます。',
-        confirmLabel: 'リセットする',
-        danger: true,
-      });
-      if (!ok) {
-        return;
-      }
-    }
+    // 記事は追加した時点で保存済みなので、ここでは画面を閉じるだけ（取り消しはしない）
+    cancelInFlight();
     setCurrentNewsletter(null);
     setAccumulatedArticles([]);
     setUploadedPDFs([]);
@@ -701,18 +670,16 @@ export const CircularBoard: React.FC = () => {
    */
   const handleStartEdit = async (newsletter: Newsletter & { article_count: number }) => {
     try {
-      // 編集中のデータがある場合は確認
-      if (currentNewsletter && accumulatedArticles.length > 0) {
+      // 作業中のAI読み取りがあれば止める（記事は保存済みなので破棄の確認は不要）
+      if (isProcessingPDF) {
         const ok = await appConfirm({
-          title: '編集中の内容を破棄して開きますか？',
-          message: '現在編集中の内容は失われます。',
-          confirmLabel: '破棄して開く',
-          danger: true,
+          title: 'PDFの読み取り中です。中止して別の号を開きますか？',
+          message: '読み取り中のPDFの記事は追加されません。すでに追加済みの記事はそのまま残ります。',
+          confirmLabel: '中止して開く',
         });
-        if (!ok) {
-          return;
-        }
+        if (!ok) return;
       }
+      cancelInFlight();
 
       console.log('📝 編集モードを開始:', newsletter.title);
 
@@ -751,7 +718,7 @@ export const CircularBoard: React.FC = () => {
 
     const ok = await appConfirm({
       title: `「${pdf.title}」を削除しますか？`,
-      message: 'このPDFから抽出された記事も一緒に削除されます。',
+      message: `このPDFと、そこから作った記事${pdf.articleIds.length}件を号から削除します。`,
       confirmLabel: '削除する',
       danger: true,
     });
@@ -759,77 +726,92 @@ export const CircularBoard: React.FC = () => {
       return;
     }
 
-    // このPDFから抽出された記事を削除
-    const pdfSource = `${pdf.title}${pdf.issueNumber ? ` ${pdf.issueNumber}` : ''}`;
-    setAccumulatedArticles(prev => prev.filter(article => article.source !== pdfSource));
-
-    // PDFリストから削除
-    setUploadedPDFs(prev => prev.filter(p => p.pdfId !== pdfId));
-
-    showToast(`「${pdf.title}」とその記事を削除しました`);
+    // 画面だけでなくDBからも消す。途中で失敗したら、消せた分だけ画面に反映して知らせる
+    const deletedIds: string[] = [];
+    try {
+      for (const id of pdf.articleIds) {
+        await deleteArticle(id);
+        deletedIds.push(id);
+      }
+      if (pdf.pdfUrl && currentNewsletter) {
+        await removePdfUrlFromNewsletter(currentNewsletter.id, pdf.pdfUrl);
+      }
+      setUploadedPDFs(prev => prev.filter(p => p.pdfId !== pdfId));
+      showToast(`「${pdf.title}」とその記事を削除しました`);
+    } catch (error) {
+      console.error('❌ PDF削除エラー:', error);
+      setUploadedPDFs(prev =>
+        prev.map(p => (p.pdfId === pdfId ? { ...p, articleIds: p.articleIds.filter(id => !deletedIds.includes(id)) } : p))
+      );
+      showError('一部を削除できませんでした。時間をおいてもう一度「削除」を押してください。');
+    } finally {
+      setAccumulatedArticles(prev => prev.filter(article => !deletedIds.includes(article.id)));
+    }
   };
 
   /**
    * 重複検出ダイアログで確定ボタンが押された時の処理
    */
-  const handleDuplicateConfirm = (action: DuplicateAction, selectedPairs: DuplicatePair[]) => {
+  const handleDuplicateConfirm = async (action: DuplicateAction, selectedPairs: DuplicatePair[]) => {
     setShowDuplicateDialog(false);
 
-    let finalArticles: Article[];
-
-    switch (action) {
-      case 'keep-both':
-        // 両方残す：そのまま全て追加
-        finalArticles = [...accumulatedArticles, ...pendingNewArticles];
-        break;
-
-      case 'keep-new':
-        // 新しいものを優先：既存の重複記事を除外
-        finalArticles = filterDuplicateArticles(
-          [...accumulatedArticles, ...pendingNewArticles],
-          selectedPairs,
-          true
-        );
-        break;
-
-      case 'keep-existing':
-        // 既存を優先：新しい重複記事を除外
-        finalArticles = filterDuplicateArticles(
-          [...accumulatedArticles, ...pendingNewArticles],
-          selectedPairs,
-          false
-        );
-        break;
+    // 保存する新しい記事と、DBから消す既存の記事を決める
+    let toSave = pendingNewArticles;
+    let toRemove: Article[] = [];
+    if (action === 'keep-new') {
+      // 新しいものを優先：既存の重複記事はDBからも消す
+      const kept = filterDuplicateArticles(accumulatedArticles, selectedPairs, true);
+      toRemove = accumulatedArticles.filter(a => !kept.includes(a));
+    } else if (action === 'keep-existing') {
+      // 既存を優先：新しい重複記事は保存しない
+      toSave = filterDuplicateArticles(pendingNewArticles, selectedPairs, false);
     }
 
-    setAccumulatedArticles(finalArticles);
-
-    // 選択をクリア
-    setSelectedPDF(null);
-    setPendingPDFBase64(null);
-    setPendingNewArticles([]);
-    setDetectedDuplicates([]);
-
-    const addedCount = finalArticles.length - accumulatedArticles.length;
-    showToast(`記事を${addedCount}件追加しました（合計${finalArticles.length}件）`);
+    await finishPendingArticles(toSave, toRemove);
   };
 
   /**
-   * 重複検出ダイアログをキャンセル
+   * 重複検出ダイアログをキャンセル（重複を気にせず、すべて追加する）
    */
-  const handleDuplicateCancel = () => {
+  const handleDuplicateCancel = async () => {
     setShowDuplicateDialog(false);
+    await finishPendingArticles(pendingNewArticles, []);
+  };
 
-    // 新しい記事を全て追加（重複を無視）
-    setAccumulatedArticles(prev => [...prev, ...pendingNewArticles]);
+  /** 重複ダイアログの結果をDBに反映する（保存→既存の削除） */
+  const finishPendingArticles = async (toSave: Article[], toRemove: Article[]) => {
+    const pdfId = pendingPdfId;
+    setIsProcessingPDF(true);
+    setProcessingStage('記事を保存しています…');
+    const removedIds: string[] = [];
+    try {
+      const saved = await saveArticlesToCurrentNewsletter(toSave);
+      setAccumulatedArticles(prev => [...prev, ...saved]);
+      recordSavedArticleIds(pdfId, saved);
 
-    // 選択をクリア
-    setSelectedPDF(null);
-    setPendingPDFBase64(null);
-    setPendingNewArticles([]);
-    setDetectedDuplicates([]);
+      for (const article of toRemove) {
+        await deleteArticle(article.id);
+        removedIds.push(article.id);
+      }
 
-    showToast('重複チェックをスキップし、すべての記事を追加しました', 'info');
+      showToast(
+        removedIds.length > 0
+          ? `記事を${saved.length}件追加し、重なっていた古い記事を${removedIds.length}件削除しました`
+          : `記事を${saved.length}件追加しました`
+      );
+    } catch (error) {
+      console.error('❌ 記事保存エラー:', error);
+      showError('記事を保存できませんでした。時間をおいて、もう一度PDFを追加してください。');
+    } finally {
+      setAccumulatedArticles(prev => prev.filter(a => !removedIds.includes(a.id)));
+      setIsProcessingPDF(false);
+      setProcessingStage(null);
+      setSelectedPDF(null);
+      setPendingPDFBase64(null);
+      setPendingNewArticles([]);
+      setPendingPdfId(null);
+      setDetectedDuplicates([]);
+    }
   };
 
   /**
@@ -900,15 +882,15 @@ export const CircularBoard: React.FC = () => {
         <div className="flex items-center gap-2 text-sm text-slate-600 mb-3">
           <button
             onClick={async () => {
-              if (uploadedPDFs.length > 0) {
+              if (isProcessingPDF) {
                 const ok = await appConfirm({
-                  title: '編集をやめて一覧に戻りますか？',
-                  message: '追加したPDFの変更は破棄されます。',
-                  confirmLabel: '破棄して戻る',
-                  danger: true,
+                  title: 'PDFの読み取り中です。中止して一覧に戻りますか？',
+                  message: '読み取り中のPDFの記事は追加されません。すでに追加済みの記事は保存されています。',
+                  confirmLabel: '中止して戻る',
                 });
                 if (!ok) return;
               }
+              setReturnToNewsletterId(editingNewsletterId);
               setActiveTab('saved');
               await handleResetNewsletter();
             }}
@@ -1155,9 +1137,8 @@ export const CircularBoard: React.FC = () => {
                   <button
                     onClick={() => {
                       setReturnToNewsletterId(editingNewsletterId);
+                      cancelInFlight();
                       setSelectedPDF(null);
-                      setPendingPDFBase64(null);
-                      setIsProcessingPDF(false);
                       setIsEditMode(false);
                       setEditingNewsletterId(null);
                       setCurrentNewsletter(null);
@@ -1318,12 +1299,9 @@ export const CircularBoard: React.FC = () => {
                         />
                         <button
                           onClick={() => {
-                            setIsProcessingPDF(false);
-                            setIsMetadataLoading(false);
-                            setShowMetadataDialog(false);
-                            setPendingPDFBase64(null);
+                            cancelInFlight();
                             setSelectedPDF(null);
-                            setProcessingStage(null);
+                            showToast('読み取りを中止しました。このPDFの記事は追加していません。', 'info');
                           }}
                           className="w-full px-4 py-2 border border-slate-300 text-slate-500 rounded-lg hover:bg-slate-50 text-sm transition"
                         >
@@ -1354,32 +1332,15 @@ export const CircularBoard: React.FC = () => {
                       {isEditMode ? (
                         <>
                           記事一覧 ({accumulatedArticles.length}件)
-                          <span className="text-sm font-normal text-slate-500 ml-2">
-                            既存: {accumulatedArticles.filter(a => a.id && !a.id.startsWith('a-')).length}件 /
-                            新規: {accumulatedArticles.filter(a => !a.id || a.id.startsWith('a-')).length}件
-                          </span>
                         </>
                       ) : (
                         `抽出された記事 (${accumulatedArticles.length}件)`
                       )}
                     </h3>
-                    <button
-                      onClick={handleSaveNewsletter}
-                      disabled={isSaving}
-                      className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
-                    >
-                      {isSaving ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin" />
-                          {isEditMode ? '追加中...' : '保存中...'}
-                        </>
-                      ) : (
-                        <>
-                          <Save size={16} />
-                          {isEditMode ? '追加の記事を保存' : '保存する'}
-                        </>
-                      )}
-                    </button>
+                    <span className="flex items-center gap-1.5 text-sm text-green-700">
+                      <Check size={16} />
+                      記事は追加した時点で保存されています
+                    </span>
                   </div>
 
                   <ArticleList

@@ -13,7 +13,7 @@ import { appConfirm } from '@/components/ui/feedback';
 type AdminMode = 'circulars' | 'reports' | 'weekly' | 'richmenu' | 'events' | 'masters';
 
 function AdminContent() {
-  const { isAuthenticated, isLoading, logout } = useAuth();
+  const { isAuthenticated, isLoading, logout, aiReady } = useAuth();
   // URLの ?mode=reports で直接レポート画面を開ける（ブックマーク用）
   const [mode, setMode] = useState<AdminMode>(() =>
     (['reports', 'weekly', 'richmenu', 'events', 'masters'].find((m) => m === new URLSearchParams(window.location.search).get('mode')) as AdminMode | undefined) ?? 'circulars'
@@ -56,6 +56,12 @@ function AdminContent() {
           </button>
         </div>
       </header>
+      {!aiReady && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm text-amber-800">
+          AI の読み取りと LINE 配信の準備ができていません。いったん「ログアウト」して、もう一度ログインしてください。
+          それでもこの表示が消えないときは、サーバー側のパスワード設定がずれています。管理担当に連絡してください（それ以外の作業はそのまま続けられます）。
+        </div>
+      )}
       {/* 作成対象の切替: 電子回覧板 / 関ヶ谷レポート / 週次配信 / リッチメニュー / 予定 / マスタ */}
       <div className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 flex gap-1">

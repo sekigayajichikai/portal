@@ -24,6 +24,23 @@ export function getStoredAppToken(): string | null {
   return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
 }
 
+/** トークンが使えなくなったときに画面に出す文言 */
+export const RELOGIN_MESSAGE =
+  'ログインし直しが必要です。ログイン画面に戻りますので、もう一度パスワードを入れてください。';
+
+/**
+ * AI・LINE 用のトークンが拒否されたときの後始末。
+ * 保存済みトークンを捨て、Supabase のログインも解除してログイン画面に戻す。
+ * （以前は「再読み込みして」と案内していたが、Supabase のログインが残るため
+ *   再読み込みしてもログイン画面が出ず、ログアウトを知らないと抜け出せなかった）
+ */
+export function requireRelogin(): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  }
+  void getSupabaseClient()?.auth.signOut();
+}
+
 /**
  * AIプロキシが利用可能かどうか（Supabaseが設定されているか）
  */
@@ -68,13 +85,11 @@ export async function invokeAIProxy<T = unknown>(
       }
     }
 
-    // トークンが無効（別環境の古いトークンが残っている等）: 保存済みトークンを
-    // 破棄して再ログインを促す。放置すると全AI機能が失敗し続けるため。
+    // トークンが無効（別環境の古いトークンが残っている等）: ログイン画面に戻す。
+    // 放置すると全AI機能が失敗し続けるため。
     if (context?.status === 401 || detail === 'Unauthorized') {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-      }
-      throw new Error('ログインの有効期限が切れました。ページを再読み込みして、もう一度ログインしてください。');
+      requireRelogin();
+      throw new Error(RELOGIN_MESSAGE);
     }
 
     throw new Error(`AI呼び出しに失敗しました: ${detail}`);

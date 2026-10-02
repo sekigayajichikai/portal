@@ -8,7 +8,7 @@
  */
 
 import { getSupabaseClient } from '../supabaseClient.js';
-import { getStoredAppToken, AUTH_TOKEN_STORAGE_KEY } from '../ai/aiProxyClient.js';
+import { getStoredAppToken, requireRelogin, RELOGIN_MESSAGE } from '../ai/aiProxyClient.js';
 
 export type RichMenuOp =
   | 'list'
@@ -72,13 +72,8 @@ export async function richMenuApi<T = any>(op: RichMenuOp, params: Record<string
       }
     }
     if (context?.status === 401 || detail === 'Unauthorized') {
-      const hadToken = typeof localStorage !== 'undefined' && !!localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-      if (typeof localStorage !== 'undefined') localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-      throw new Error(
-        hadToken
-          ? 'ログインの有効期限が切れました。ページを再読み込みして、もう一度ログインしてください。'
-          : 'サーバーのログイン情報がありません。いったんログアウトして、もう一度ログインしてください。'
-      );
+      requireRelogin();
+      throw new Error(RELOGIN_MESSAGE);
     }
     throw new Error(`LINE の操作に失敗しました（${op}）: ${detail}`);
   }

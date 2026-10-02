@@ -44,11 +44,18 @@ export const PasswordLogin: React.FC = () => {
     }
 
     // ログイン処理（サーバー側照合のため非同期）
-    const success = await login(password);
+    const result = await login(password);
 
-    if (!success) {
-      setError('パスワードが正しくありません');
-      setPassword(''); // パスワードをクリア
+    if (!result.ok) {
+      // 理由ごとに「次に何をすればよいか」を出す。パスワード違い以外では入力を消さない
+      if (result.reason === 'wrong-password') {
+        setError('パスワードが違います。大文字・小文字や全角・半角も確かめて、もう一度入力してください。');
+        setPassword('');
+      } else if (result.reason === 'network') {
+        setError('インターネットにつながっていないようです。接続を確かめてから、もう一度「ログイン」を押してください。');
+      } else {
+        setError('サーバーの不具合でログインできませんでした。時間をおいても直らないときは、管理担当に連絡してください。');
+      }
     }
 
     setIsLoading(false);
@@ -100,7 +107,7 @@ export const PasswordLogin: React.FC = () => {
 
         {/* フッター */}
         <div className="mt-6 text-center text-sm text-gray-500">
-          <p>URLを知っている方のみアクセスできます</p>
+          <p>パスワードがわからないときは、自治会の管理担当に確認してください</p>
         </div>
       </div>
     </div>
