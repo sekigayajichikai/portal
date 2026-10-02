@@ -102,18 +102,41 @@ export async function getNewsletterByReviewToken(token: string): Promise<Newslet
     throw new Error('Supabase未接続です。環境変数を確認してください。');
   }
 
-  const { data, error } = await supabase
-    .from('newsletters')
-    .select('*')
-    .eq('review_token', token)
-    .maybeSingle();
+  // 公開前の号は、ログインしていない人には見せない決まりにしてある。
+  // 確認リンクだけは例外なので、合言葉を渡して1件だけ返す関数を通す。
+  const { data, error } = await supabase.rpc('get_newsletter_by_review_token', { p_token: token });
 
   if (error) {
     console.error('❌ 確認ページ取得エラー:', error);
     throw error;
   }
 
-  return data ?? null;
+  const row = Array.isArray(data) ? data[0] : data;
+  return (row as Newsletter) ?? null;
+}
+
+/** 確認用トークンから、その号の記事を取得（担当者の確認ページ用） */
+export async function getArticlesByReviewToken(token: string): Promise<any[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続です。環境変数を確認してください。');
+  const { data, error } = await supabase.rpc('get_articles_by_review_token', { p_token: token });
+  if (error) {
+    console.error('❌ 確認ページの記事取得エラー:', error);
+    throw error;
+  }
+  return (data as any[]) ?? [];
+}
+
+/** 確認用トークンから、その号の予定カードを取得（担当者の確認ページ用） */
+export async function getEventCardsByReviewToken(token: string): Promise<any[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続です。環境変数を確認してください。');
+  const { data, error } = await supabase.rpc('get_event_cards_by_review_token', { p_token: token });
+  if (error) {
+    console.error('❌ 確認ページの予定取得エラー:', error);
+    throw error;
+  }
+  return (data as any[]) ?? [];
 }
 
 /**
@@ -139,24 +162,21 @@ export async function submitReview(
     throw new Error('Supabase未接続です。環境変数を確認してください。');
   }
 
-  const { data, error } = await supabase
-    .from('newsletters')
-    .update({
-      review_status: verdict,
-      reviewed_at: new Date().toISOString(),
-      review_comment: comment?.trim() || null,
-      reviewer_name: reviewerName?.trim() || null,
-    })
-    .eq('review_token', token)
-    .eq('review_status', 'pending')
-    .select()
-    .single();
+  // 回覧板そのものはログインしていないと書き換えられない。
+  // 担当者はログインしないので、合言葉を渡して確認の結果だけを書き込む関数を通す。
+  const { data, error } = await supabase.rpc('submit_review_by_token', {
+    p_token: token,
+    p_verdict: verdict,
+    p_comment: comment ?? null,
+    p_reviewer: reviewerName ?? null,
+  });
 
-  if (error) {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (error || !row) {
     console.error('❌ 確認結果の保存エラー:', error);
     throw new Error('確認結果を保存できませんでした。すでに回答済みか、リンクが無効になっている可能性があります。');
   }
 
   console.log(`✅ 確認結果を保存: ${verdict}`);
-  return data;
+  return row as Newsletter;
 }

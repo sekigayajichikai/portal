@@ -154,7 +154,7 @@ export default function ReviewPage() {
       </header>
 
       <main className="flex-1 max-w-3xl w-full mx-auto p-4 pb-52">
-        <CircularsView isSimpleMode={false} previewNewsletterId={newsletter.id} />
+        <CircularsView isSimpleMode={false} previewNewsletterId={newsletter.id} reviewToken={token ?? undefined} />
       </main>
 
       {/* 回答バー */}

@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Newsletter, Article, getNewsletters, getArticlesByNewsletterId, getArticleById, getPublishers, getEventCardsForNewsletters, toggleLike, getLikeCounts, getMyLikes, type Publisher, type EventCard } from '@cc-saas/shared';
+import { Newsletter, Article, getNewsletters, getArticlesByNewsletterId, getArticleById, getPublishers, getEventCardsForNewsletters, toggleLike, getLikeCounts, getMyLikes, getNewsletterByReviewToken, getArticlesByReviewToken, getEventCardsByReviewToken, type Publisher, type EventCard } from '@cc-saas/shared';
 import { FileText, AlertCircle, ChevronDown, ChevronUp, ChevronRight, Loader2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -17,6 +17,11 @@ import { PdfThumbnail } from './PdfThumbnail';
 interface CircularsViewProps {
   isSimpleMode: boolean;
   previewNewsletterId?: string;
+  /**
+   * 公開前確認リンクの合言葉。渡されたときは、公開前の号もこの合言葉で取り出す。
+   * 公開前の号はログインしていない人には見えない決まりなので、確認ページだけの例外。
+   */
+  reviewToken?: string;
   /** 回覧板一覧から除外する号のタイトル（例: レポート専用枠「関ヶ谷レポート」） */
   excludeNewsletterTitles?: string[];
 }
@@ -89,7 +94,7 @@ const getArticleLength = (article: Article): ArticleLength => {
   return 'long';
 };
 
-const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNewsletterId, excludeNewsletterTitles }) => {
+const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNewsletterId, reviewToken, excludeNewsletterTitles }) => {
   const [newsletters, setNewsletters] = useState<(Newsletter & { article_count: number })[]>([]);
   const [selectedNewsletterId, setSelectedNewsletterId] = useState<string | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -118,9 +123,21 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
       setIsLoading(true);
       setError(null);
       try {
-        const data = previewNewsletterId
-          ? await getNewsletters()
-          : await getNewsletters('published');
+        // 公開前確認リンクのときは、合言葉でその1件だけを取る。
+        // 公開済みの号は誰でも読めるので、一覧とあわせて並べる。
+        type NewsletterRow = Newsletter & { article_count: number };
+        let data: NewsletterRow[];
+        if (reviewToken) {
+          const [previewed, published] = await Promise.all([
+            getNewsletterByReviewToken(reviewToken),
+            getNewsletters('published'),
+          ]);
+          data = previewed && !published.some((n) => n.id === previewed.id)
+            ? [{ article_count: 0, ...(previewed as Newsletter) } as NewsletterRow, ...published]
+            : published;
+        } else {
+          data = await getNewsletters('published');
+        }
         const filtered = excludeNewsletterTitles && excludeNewsletterTitles.length > 0
           ? data.filter((n) => !excludeNewsletterTitles.includes(n.title))
           : data;
@@ -148,7 +165,12 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
       setIsLoadingArticles(true);
       setError(null);
       try {
-        const data = await getArticlesByNewsletterId(selectedNewsletterId);
+        // 公開前の号の記事は、ログインしていない人には見えない。
+        // 確認リンクのときだけ、合言葉で取り出す。
+        const isPreviewing = !!reviewToken && selectedNewsletterId === previewNewsletterId;
+        const data = isPreviewing
+          ? ((await getArticlesByReviewToken(reviewToken!)) as Article[])
+          : await getArticlesByNewsletterId(selectedNewsletterId);
         const visible = data.filter(a => a.visibility === 'public' || a.visibility === 'members-only');
 
         const sorted = visible.sort((a, b) => {
@@ -214,11 +236,15 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
 
   useEffect(() => {
     if (newsletters.length === 0) return;
-    // プレビュー時は「公開済みの号＋プレビュー中の号」、通常時は取得済みの全号（＝公開済み）
-    const targetIds = previewNewsletterId
-      ? newsletters.filter(n => n.status === 'published' || n.id === previewNewsletterId).map(n => n.id)
-      : newsletters.map(n => n.id);
-    getEventCardsForNewsletters(targetIds).then(cards => {
+    // 公開済みの号の予定はそのまま取れる。確認中の号の分だけ、合言葉で足す。
+    const publishedIds = newsletters.filter(n => n.status === 'published').map(n => n.id);
+    const load = reviewToken
+      ? Promise.all([
+          getEventCardsForNewsletters(publishedIds),
+          getEventCardsByReviewToken(reviewToken).catch(() => [] as EventCard[]),
+        ]).then(([a, b]) => [...a, ...(b as EventCard[])])
+      : getEventCardsForNewsletters(newsletters.map(n => n.id));
+    load.then(cards => {
       const now = new Date();
       now.setHours(0, 0, 0, 0);
       // 過ぎていないイベントのみ、今日から近い順に表示（日付未定は末尾）
@@ -234,7 +260,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
       });
       setEventCards(upcoming);
     }).catch(() => setEventCards([]));
-  }, [newsletters, previewNewsletterId]);
+  }, [newsletters, previewNewsletterId, reviewToken]);
 
   const [carouselIndex, setCarouselIndex] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
