@@ -297,6 +297,15 @@ export const EventsPanel: React.FC = () => {
         </div>
       </div>
 
+      {/* 黄色の印の意味。ツールチップだけでは気づけないので、一覧の上に小さく出す */}
+      {visible.some((c) => unknownVenue(c.event_location) || unknownOrganizer(c.organizer)) && (
+        <p className="mb-2 text-xs text-slate-500">
+          <span className="bg-yellow-100 text-yellow-900 px-1 rounded">黄色</span>
+          {' '}の場所・主催は、マスタに登録がありません。
+          施設名が抜けていないか確かめて、よく使うものはマスタに登録してください。
+        </p>
+      )}
+
       <div className="bg-white rounded-xl border border-slate-200">
         {loading && cards.length === 0 ? (
           <p className="p-8 text-center text-slate-400 flex items-center justify-center gap-2">
@@ -341,12 +350,18 @@ export const EventsPanel: React.FC = () => {
                     {(c.event_location || c.organizer || c.linked_article) && (
                       <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5 pl-[5.75rem] flex-wrap">
                         {c.event_location && (
-                          <span className={unknownVenue(c.event_location) ? 'bg-yellow-100 text-yellow-900 px-1 rounded' : ''} title={unknownVenue(c.event_location) ? '会場マスタに無い表記です' : ''}>
+                          <span
+                            className={unknownVenue(c.event_location) ? 'bg-yellow-100 text-yellow-900 px-1 rounded' : ''}
+                            title={unknownVenue(c.event_location) ? '会場マスタに登録がありません。施設名が抜けていないか確かめてください（例:「多目的ホール」→「西金沢地域ケアプラザ 多目的ホール」）' : ''}
+                          >
                             📍 {c.event_location}
                           </span>
                         )}
                         {c.organizer && (
-                          <span className={unknownOrganizer(c.organizer) ? 'bg-yellow-100 text-yellow-900 px-1 rounded' : ''} title={unknownOrganizer(c.organizer) ? '主催団体マスタに無い表記です' : ''}>
+                          <span
+                            className={unknownOrganizer(c.organizer) ? 'bg-yellow-100 text-yellow-900 px-1 rounded' : ''}
+                            title={unknownOrganizer(c.organizer) ? '団体マスタに登録がありません。表記が合っているか確かめるか、マスタに登録してください' : ''}
+                          >
                             🏛 {c.organizer}
                           </span>
                         )}
@@ -412,33 +427,7 @@ export const EventsPanel: React.FC = () => {
                 <X size={18} />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-4">
-              {comparing.map((side, i) => {
-                const other = comparing[1 - i];
-                // どちらが新しい号のものか。同じ催しが続けて告知されたとき、
-                // あとの号の方が新しい案内であることが多い（ただし読み落としもあるので、鵜呑みにしない）
-                const isNewer = newerSide(comparing) === i;
-                return (
-                  <div
-                    key={side.id}
-                    className={`border rounded-lg p-3 flex flex-col ${isNewer ? 'border-sky-300 bg-sky-50/30' : 'border-slate-200'}`}
-                  >
-                    {isNewer && (
-                      <p className="mb-2 text-[11px] font-bold text-sky-700">あとの号に載っていた方</p>
-                    )}
-                    <CompareRows card={side} other={other} />
-                    <button
-                      onClick={() => merge(side, other)}
-                      disabled={merging}
-                      className="mt-3 px-3 py-1.5 text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-40 flex items-center justify-center gap-1"
-                    >
-                      {merging && <Loader2 size={14} className="animate-spin" />}
-                      {i === 0 ? '左を残す' : '右を残す'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+            <CompareTable pair={comparing} merging={merging} onKeep={(keep, drop) => merge(keep, drop)} />
             <div className="px-4 pb-4 text-xs text-slate-500 space-y-1">
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="inline-flex items-center gap-1">
@@ -449,8 +438,10 @@ export const EventsPanel: React.FC = () => {
                   <span className="inline-block w-3 h-3 rounded bg-rose-50 border border-rose-300" />
                   こちらに無い
                 </span>
-                <span className="inline-flex items-center gap-1 text-emerald-800 font-bold">太字の緑</span>
-                <span>こちらにだけある</span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded bg-emerald-50 border border-emerald-300" />
+                  こちらにだけある
+                </span>
               </p>
               <p>
                 食い違いは、同じ催しでも号によって読み取りがぶれたために起きることがあります。
@@ -504,39 +495,90 @@ function compareRowsOf(c: AdminEventCard): Array<[string, string | null]> {
 }
 
 /**
- * 見比べ用の1件分の表示
+ * 見比べの表（項目ごとに左右を1行に並べる）
  *
- * 片方にしか無い値、両方にあるが食い違う値に色を付ける。
- * 同じ催しが2つの号に載っていると、読み取りのぶれで中身が食い違うことがあり、
+ * 以前は左右を別々の箱にしていたため、片方に見出しが付いたり紹介文の行数が違うと
+ * 項目の高さがずれて見比べにくかった。項目を1行にまとめて必ず揃うようにする。
+ *
+ * 片方にしか無い値、両方にあるが食い違う値には色を付ける。
+ * 同じ催しが2つの号に載っていると読み取りのぶれで中身が食い違うことがあり、
  * どちらを残すかで住民に伝わる情報が変わるため（例: 片方だけ「要予約・締切あり」）。
  */
-const CompareRows: React.FC<{ card: AdminEventCard; other: AdminEventCard }> = ({ card: c, other }) => {
-  const rows = compareRowsOf(c);
-  const otherRows = new Map(compareRowsOf(other));
+const CompareTable: React.FC<{
+  pair: [AdminEventCard, AdminEventCard];
+  merging: boolean;
+  onKeep: (keep: AdminEventCard, drop: AdminEventCard) => void;
+}> = ({ pair, merging, onKeep }) => {
+  const left = compareRowsOf(pair[0]);
+  const rightMap = new Map(compareRowsOf(pair[1]));
+  const newer = newerSide(pair);
+
+  /** 片側のセル。相手と見比べて色を変える */
+  const cell = (v: string | null, o: string | null, comparable: boolean) => {
+    const differs = comparable && (v ?? '') !== (o ?? '');
+    const conflict = differs && !!v && !!o;
+    const onlyHere = differs && !!v && !o;
+    const missing = differs && !v && !!o;
+    return (
+      <div
+        className={`px-2 py-1 rounded break-words min-w-0 ${
+          conflict ? 'bg-amber-50 text-amber-900 font-bold'
+            : onlyHere ? 'bg-emerald-50 text-emerald-800 font-bold'
+            : missing ? 'bg-rose-50/60 text-rose-400'
+            : v ? 'text-slate-800' : 'text-slate-300'
+        }`}
+      >
+        {v || (missing ? '— こちらには無い' : '—')}
+      </div>
+    );
+  };
 
   return (
-    <dl className="text-xs space-y-1 flex-1">
-      {rows.map(([k, v]) => {
-        const o = otherRows.get(k) ?? null;
-        // 「号」と「由来PDF」は必ず違うので、違いの印は付けない
-        const comparable = k !== '号' && k !== '由来PDF';
-        const differs = comparable && (v ?? '') !== (o ?? '');
-        const onlyHere = differs && !!v && !o;
-        const conflict = differs && !!v && !!o;
-        const missingHere = differs && !v && !!o;
-
-        return (
-          <div
-            key={k}
-            className={`flex gap-2 rounded px-1 -mx-1 ${conflict ? 'bg-amber-50' : missingHere ? 'bg-rose-50/60' : ''}`}
-          >
-            <dt className={`w-16 shrink-0 ${differs ? 'text-slate-500 font-bold' : 'text-slate-400'}`}>{k}</dt>
-            <dd className={`break-words min-w-0 ${v ? (conflict ? 'text-amber-900 font-bold' : onlyHere ? 'text-emerald-800 font-bold' : 'text-slate-800') : 'text-rose-400'}`}>
-              {v || (missingHere ? '— こちらには無い' : '—')}
-            </dd>
+    <div className="flex-1 overflow-y-auto p-4">
+      {/* 見出し行（どちらが新しい号か） */}
+      <div className="grid grid-cols-[5.5rem_1fr_1fr] gap-x-2 text-xs mb-1">
+        <div />
+        {[0, 1].map((i) => (
+          <div key={i} className={`px-2 py-1 rounded font-bold ${newer === i ? 'bg-sky-50 text-sky-700' : 'text-slate-500'}`}>
+            {pair[i].newsletter_title ?? '号不明'}
+            {newer === i && <span className="ml-1 font-normal">（あとの号）</span>}
           </div>
-        );
-      })}
-    </dl>
+        ))}
+      </div>
+
+      {/* 項目ごとに左右を1行で */}
+      <div className="grid grid-cols-[5.5rem_1fr_1fr] gap-x-2 gap-y-0.5 text-xs items-start">
+        {left.map(([k, v]) => {
+          if (k === '号') return null; // 見出し行に出したので省く
+          const o = rightMap.get(k) ?? null;
+          // 由来PDFは必ず違うので、違いの印は付けない
+          const comparable = k !== '由来PDF';
+          const differs = comparable && (v ?? '') !== (o ?? '');
+          return (
+            <React.Fragment key={k}>
+              <div className={`px-1 py-1 text-right ${differs ? 'text-slate-600 font-bold' : 'text-slate-400'}`}>{k}</div>
+              {cell(v, o, comparable)}
+              {cell(o, v, comparable)}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {/* どちらを残すか */}
+      <div className="grid grid-cols-[5.5rem_1fr_1fr] gap-x-2 mt-4">
+        <div />
+        {[0, 1].map((i) => (
+          <button
+            key={i}
+            onClick={() => onKeep(pair[i], pair[1 - i])}
+            disabled={merging}
+            className="px-3 py-2 text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-40 flex items-center justify-center gap-1"
+          >
+            {merging && <Loader2 size={14} className="animate-spin" />}
+            {i === 0 ? '左を残す' : '右を残す'}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 };
