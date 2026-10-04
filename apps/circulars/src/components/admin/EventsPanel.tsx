@@ -415,9 +415,18 @@ export const EventsPanel: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-4">
               {comparing.map((side, i) => {
                 const other = comparing[1 - i];
+                // どちらが新しい号のものか。同じ催しが続けて告知されたとき、
+                // あとの号の方が新しい案内であることが多い（ただし読み落としもあるので、鵜呑みにしない）
+                const isNewer = newerSide(comparing) === i;
                 return (
-                  <div key={side.id} className="border border-slate-200 rounded-lg p-3 flex flex-col">
-                    <CompareRows card={side} />
+                  <div
+                    key={side.id}
+                    className={`border rounded-lg p-3 flex flex-col ${isNewer ? 'border-sky-300 bg-sky-50/30' : 'border-slate-200'}`}
+                  >
+                    {isNewer && (
+                      <p className="mb-2 text-[11px] font-bold text-sky-700">あとの号に載っていた方</p>
+                    )}
+                    <CompareRows card={side} other={other} />
                     <button
                       onClick={() => merge(side, other)}
                       disabled={merging}
@@ -430,9 +439,25 @@ export const EventsPanel: React.FC = () => {
                 );
               })}
             </div>
-            <p className="px-4 pb-4 text-xs text-slate-500">
-              残す側の空欄は、消す側の値で埋めます（題名・日付など残す側に値があるものは変えません）。別の予定なら閉じてください。
-            </p>
+            <div className="px-4 pb-4 text-xs text-slate-500 space-y-1">
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded bg-amber-50 border border-amber-300" />
+                  中身が食い違う
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 rounded bg-rose-50 border border-rose-300" />
+                  こちらに無い
+                </span>
+                <span className="inline-flex items-center gap-1 text-emerald-800 font-bold">太字の緑</span>
+                <span>こちらにだけある</span>
+              </p>
+              <p>
+                食い違いは、同じ催しでも号によって読み取りがぶれたために起きることがあります。
+                迷ったら、行の📎から元のPDFを見比べてください。
+              </p>
+              <p>残す側の空欄は、消す側の値で埋めます（題名・日付など残す側に値があるものは変えません）。別の予定なら閉じてください。</p>
+            </div>
           </div>
         </div>
       )}
@@ -440,12 +465,30 @@ export const EventsPanel: React.FC = () => {
   );
 };
 
-/** 見比べ用の1件分の表示 */
-const CompareRows: React.FC<{ card: AdminEventCard }> = ({ card: c }) => {
-  const rows: Array<[string, React.ReactNode]> = [
+/**
+ * 見比べている2件のうち、あとの号に載っていた方（0 or 1）を返す。判断できなければ -1。
+ *
+ * 同じ催しが続けて告知されることがあり、あとの号の方が新しい案内であることが多い。
+ * ただし読み落としで中身が欠けている場合もあるので、印を出すだけで自動では選ばない。
+ * 号の発行日が分からないときは、カードが作られた順で代用する。
+ */
+function newerSide(pair: [AdminEventCard, AdminEventCard]): number {
+  const key = (c: AdminEventCard) => c.newsletter_issue_date ?? c.created_at ?? '';
+  const a = key(pair[0]);
+  const b = key(pair[1]);
+  if (!a || !b || a === b) return -1;
+  return a > b ? 0 : 1;
+}
+
+/**
+ * 見比べ用に、1件分を「項目名 → 中身」の並びにする。
+ * 2件を突き合わせて違いを見つけるため、文字列で取り出す。
+ */
+function compareRowsOf(c: AdminEventCard): Array<[string, string | null]> {
+  return [
     ['号', `${c.newsletter_title ?? '号不明'}${c.newsletter_status && STATUS_BADGE[c.newsletter_status] ? `（${STATUS_BADGE[c.newsletter_status].label}）` : ''}`],
     ['題名', c.title],
-    ['日付', `${mdw(c.event_date)} ${c.event_time ?? ''}`],
+    ['日付', `${mdw(c.event_date)} ${c.event_time ?? ''}`.trim()],
     ['場所', c.event_location],
     ['主催', c.organizer],
     ['種別', c.category ? CATEGORY_META[c.category].label : null],
@@ -458,14 +501,42 @@ const CompareRows: React.FC<{ card: AdminEventCard }> = ({ card: c }) => {
     ['由来PDF', c.source_pdf_url ? c.source_pdf_label ?? 'あり' : null],
     ['配信除外', c.digest_exclude ? '🚫 載せない' : null],
   ];
+}
+
+/**
+ * 見比べ用の1件分の表示
+ *
+ * 片方にしか無い値、両方にあるが食い違う値に色を付ける。
+ * 同じ催しが2つの号に載っていると、読み取りのぶれで中身が食い違うことがあり、
+ * どちらを残すかで住民に伝わる情報が変わるため（例: 片方だけ「要予約・締切あり」）。
+ */
+const CompareRows: React.FC<{ card: AdminEventCard; other: AdminEventCard }> = ({ card: c, other }) => {
+  const rows = compareRowsOf(c);
+  const otherRows = new Map(compareRowsOf(other));
+
   return (
     <dl className="text-xs space-y-1 flex-1">
-      {rows.map(([k, v]) => (
-        <div key={k} className="flex gap-2">
-          <dt className="w-16 shrink-0 text-slate-400">{k}</dt>
-          <dd className={v ? 'text-slate-800 break-words min-w-0' : 'text-slate-300'}>{v || '—'}</dd>
-        </div>
-      ))}
+      {rows.map(([k, v]) => {
+        const o = otherRows.get(k) ?? null;
+        // 「号」と「由来PDF」は必ず違うので、違いの印は付けない
+        const comparable = k !== '号' && k !== '由来PDF';
+        const differs = comparable && (v ?? '') !== (o ?? '');
+        const onlyHere = differs && !!v && !o;
+        const conflict = differs && !!v && !!o;
+        const missingHere = differs && !v && !!o;
+
+        return (
+          <div
+            key={k}
+            className={`flex gap-2 rounded px-1 -mx-1 ${conflict ? 'bg-amber-50' : missingHere ? 'bg-rose-50/60' : ''}`}
+          >
+            <dt className={`w-16 shrink-0 ${differs ? 'text-slate-500 font-bold' : 'text-slate-400'}`}>{k}</dt>
+            <dd className={`break-words min-w-0 ${v ? (conflict ? 'text-amber-900 font-bold' : onlyHere ? 'text-emerald-800 font-bold' : 'text-slate-800') : 'text-rose-400'}`}>
+              {v || (missingHere ? '— こちらには無い' : '—')}
+            </dd>
+          </div>
+        );
+      })}
     </dl>
   );
 };

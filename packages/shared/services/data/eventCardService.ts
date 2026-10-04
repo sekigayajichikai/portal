@@ -108,6 +108,8 @@ export interface AdminEventCard extends PublicEventCard {
   newsletter_title: string | null;
   /** 号の状態（draft / published / archived） */
   newsletter_status: string | null;
+  /** 号の発行日。同じ催しが2つの号に載っているとき、どちらが新しい案内かの目安に使う */
+  newsletter_issue_date?: string | null;
   /** 号の元PDF一覧（由来PDFの選択肢） */
   newsletter_pdfs: Array<{ url: string; label: string }>;
   /** リンク記事の載っている号の題名（同じ号なら出さない判断は画面側で） */
@@ -143,7 +145,7 @@ export async function getAdminEventCardById(id: string): Promise<AdminEventCard 
 }
 
 const ADMIN_CARD_SELECT =
-  '*, newsletters(title,status,source_pdf_url,source_pdf_urls), linked_article:articles!linked_article_id(id,title,source,thumbnail_url,attachments,newsletter_id,newsletters(title))';
+  '*, newsletters(title,status,issue_date,source_pdf_url,source_pdf_urls), linked_article:articles!linked_article_id(id,title,source,thumbnail_url,attachments,newsletter_id,newsletters(title))';
 
 function toAdminEventCard(row: any): AdminEventCard {
   const nl = row.newsletters;
@@ -168,6 +170,7 @@ function toAdminEventCard(row: any): AdminEventCard {
     source_pdf_label: card.source_pdf_url ? (pdfs.find((p) => p.url === card.source_pdf_url)?.label ?? null) : null,
     newsletter_title: nl?.title ?? null,
     newsletter_status: nl?.status ?? null,
+    newsletter_issue_date: nl?.issue_date ?? null,
     newsletter_pdfs: pdfs,
   };
 }
