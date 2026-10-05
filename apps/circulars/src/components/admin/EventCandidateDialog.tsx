@@ -3,7 +3,7 @@
  *
  * 回覧板の記事群からAIが抽出したイベント候補を一覧表示し、
  * 人が確認・修正した上でイベントカードとして登録するダイアログです。
- * book-system（自治会カレンダー）連携用のJSONコピー機能も備えます。
+ * カレンダーへ載せるのは予定タブの「カレンダーに反映」（CalendarSyncDialog）。
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -29,12 +29,11 @@ import {
   type EventCardWithNewsletter,
 } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
-import { Loader2, AlertCircle, X, Sparkles, Copy, Check, Plus } from 'lucide-react';
+import { Loader2, AlertCircle, X, Sparkles, Check, Plus } from 'lucide-react';
 import { ProcessingIndicator, showToast } from '@/components/ui/feedback';
 import { isSameEvent } from './eventMatch';
 import { inspectPdf, isOfficeNoticePdf, type PdfInfo } from './pdfInspect';
 import { PdfPagePeek } from './PdfPagePeek';
-import { publicSiteUrl } from '@/lib/siteUrl';
 
 /**
  * 編集可能なイベント候補（選択状態付き）
@@ -123,18 +122,6 @@ interface EventCandidateDialogProps {
   onRegistered: () => void;
   /** 閉じる時のコールバック */
   onClose: () => void;
-}
-
-/**
- * event_time（例: "10:00-12:00", "13時～"）を開始・終了時刻に分解する
- */
-function splitEventTime(time: string | null): { start: string | null; end: string | null } {
-  if (!time) return { start: null, end: null };
-  const match = time.match(/^(\d{1,2}:\d{2})\s*[-～〜]\s*(\d{1,2}:\d{2})$/);
-  if (match) return { start: match[1], end: match[2] };
-  const single = time.match(/^(\d{1,2}:\d{2})/);
-  if (single) return { start: single[1], end: null };
-  return { start: null, end: null };
 }
 
 /** イベント種別の表示メタ（アイコン・ラベル） */
@@ -317,7 +304,6 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
   const [started, setStarted] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   /** 抽出対象の内訳（記事件数・PDF件数・PDF読み取り失敗数） */
   const [sourceInfo, setSourceInfo] = useState<{ articles: number; pdfs: number; pdfFailed: number } | null>(null);
   /** 抽出の進捗（順次処理のため件数で見せる） */
@@ -672,27 +658,6 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
       setError(err?.message ?? 'イベントカードの登録に失敗しました');
       setIsRegistering(false);
     }
-  };
-
-  /**
-   * book-system（自治会カレンダー）連携形式のJSONをクリップボードにコピー
-   */
-  const handleCopyJson = async () => {
-    const rows = selectedCandidates.map((c) => {
-      const { start, end } = splitEventTime(c.event_time);
-      return {
-        date: c.event_date,
-        title: c.title,
-        location: c.event_location,
-        org_name: c.organizer,
-        start_time: start,
-        end_time: end,
-        article_url: publicSiteUrl(),
-      };
-    });
-    await window.navigator.clipboard.writeText(JSON.stringify(rows, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -1122,16 +1087,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
 
         {/* フッター（確認・登録） */}
         {started && !isExtracting && candidates.length > 0 && (
-          <div className="flex items-center justify-between gap-3 p-4 border-t border-slate-200">
-            <button
-              onClick={handleCopyJson}
-              disabled={selectedCandidates.length === 0}
-              className="text-sm text-slate-600 hover:text-slate-800 flex items-center gap-1.5 disabled:opacity-40"
-              title="自治会カレンダー連携用のJSONをコピー"
-            >
-              {copied ? <Check size={15} className="text-green-600" /> : <Copy size={15} />}
-              {copied ? 'コピーしました' : 'カレンダー用JSONをコピー'}
-            </button>
+          <div className="flex items-center justify-end gap-3 p-4 border-t border-slate-200">
             <div className="flex items-center gap-2">
               <button
                 onClick={onClose}

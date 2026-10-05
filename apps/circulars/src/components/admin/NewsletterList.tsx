@@ -795,41 +795,26 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               </button>
               <button
                 onClick={async () => {
+                  // 名前だけ聞いて作り、日付・時間・場所などは予定タブと同じ編集ダイアログで入れる（B4）
                   const title = await appPrompt({
                     title: 'イベント名を入力',
+                    message: '次の画面で、日付（カレンダーから選べます）・時間・場所・主催などを入れます。',
                     placeholder: '例: 秋祭り',
                     confirmLabel: '次へ',
                   });
                   if (!title?.trim()) return;
-                  const date = await appPrompt({
-                    title: '開催日を入力',
-                    message: '例: 2026-05-09（未定なら空欄のままOK）',
-                    confirmLabel: '次へ',
-                  });
-                  if (date === null) return;
-                  const time = await appPrompt({
-                    title: '時間を入力',
-                    message: '例: 10:00-12:00（未定なら空欄のままOK）',
-                    confirmLabel: '次へ',
-                  });
-                  if (time === null) return;
-                  const location = await appPrompt({
-                    title: '場所を入力',
-                    message: '例: 自治会館（未定なら空欄のままOK）',
-                    confirmLabel: '追加する',
-                  });
-                  if (location === null) return;
                   try {
-                    await addEventCard({
+                    const card = await addEventCard({
                       newsletter_id: selectedNewsletter.id,
                       title: title.trim(),
-                      event_date: date?.trim() || null,
-                      event_time: time?.trim() || null,
-                      event_location: location?.trim() || null,
+                      event_date: null,
+                      event_time: null,
+                      event_location: null,
                       linked_article_id: null,
                       display_order: eventCards.length,
                     });
                     await reloadEventCards(selectedNewsletter.id);
+                    setEditingCardId(card.id);
                   } catch (error) { console.error('イベント追加エラー:', error); showError('イベントを追加できませんでした。時間をおいてもう一度お試しください。'); }
                 }}
                 className="text-sm text-primary-600 hover:text-primary-800 font-medium flex items-center gap-1"
