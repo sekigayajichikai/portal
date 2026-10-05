@@ -67,6 +67,9 @@ import {
   buildDigest,
   renderText,
   topicChoices,
+  topicDeadline,
+  topicDeadlineText,
+  addDays,
   availableLinkKinds,
   LINK_KIND_LABEL,
   LINK_KINDS,
@@ -228,6 +231,8 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer:
         line(`${md(t0.event_date!)} ${t0.title}`, { bold: true, size: 44 });
         const topicSub = [t0.event_location, audienceFee(t0)].filter(Boolean).join(' ');
         if (topicSub) line(topicSub, { color: '#6b665c', size: 32 });
+        const dl0 = topicDeadline(t0, d);
+        if (dl0) line(topicDeadlineText(dl0), { bold: dl0.thisWeek, color: dl0.thisWeek ? '#c0392b' : '#6b665c', size: 34 });
       }
       y += 16;
     }
@@ -247,6 +252,10 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer:
   const when = `${md(t.event_date!)}${shortTime(t.event_time)}`;
   const place = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ');
   const meta = [t.target_audience, t.fee].filter(Boolean).join('・');
+  // 申込が要る一押しは締切を添える（今週締切なら赤字）
+  const dl = topicDeadline(t, d);
+  const dlText = dl ? topicDeadlineText(dl) : '';
+  const dlColor = dl?.thisWeek ? '#c0392b' : '#6b665c';
 
   // ---- 一押しのみ（文字） ----
   if (effective === 'topic') {
@@ -260,6 +269,12 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer:
     font(52, true);
     ctx.fillText(when, 60, y);
     y += 90;
+    if (dlText) {
+      ctx.fillStyle = dlColor;
+      font(42, true);
+      ctx.fillText(dlText, 60, y - 20);
+      y += 50;
+    }
     ctx.fillStyle = '#2d2a26';
     font(64, true);
     for (const l of wrapText(ctx, t.title, W - 120, 2)) {
@@ -308,13 +323,19 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer:
     // 下の文字エリア: 日時1行＋タイトル最大2行＋場所1行。タイトルが1行で収まれば場所を詰める
     font(44, true);
     const titleLines = wrapText(ctx, t.title, W - 120, 2);
-    const bottomH = 60 + 40 + titleLines.length * 54 + 44;
+    const bottomH = 60 + 40 + titleLines.length * 54 + 44 + (dlText ? 46 : 0);
     drawFlyer(ctx, flyer!, 60, 150, W - 120, H - 150 - bottomH - 20);
     let y = H - bottomH + 30;
     ctx.fillStyle = '#1d4ed8';
     font(36, true);
     ctx.fillText(when, 60, y);
     y += 52;
+    if (dlText) {
+      ctx.fillStyle = dlColor;
+      font(32, true);
+      ctx.fillText(dlText, 60, y - 6);
+      y += 46;
+    }
     ctx.fillStyle = '#2d2a26';
     font(44, true);
     for (const l of titleLines) {
@@ -348,6 +369,15 @@ function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer:
   font(40, true);
   ctx.fillText(when, rx, y);
   y += 66;
+  if (dlText) {
+    ctx.fillStyle = dlColor;
+    font(30, true);
+    for (const l of wrapText(ctx, dlText, rw, 2)) {
+      ctx.fillText(l, rx, y - 12);
+      y += 42;
+    }
+    y += 8;
+  }
   ctx.fillStyle = '#2d2a26';
   font(44, true);
   for (const l of wrapText(ctx, t.title, rw, 2)) {
@@ -1228,7 +1258,13 @@ export const WeeklyDigest: React.FC = () => {
                 )}
               </div>
               <div className="grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
-                {[...choices.starred.map((c) => ({ c, star: true })), ...choices.others.map((c) => ({ c, star: false }))].map(({ c, star }) => {
+                {[
+                  ...choices.starred.map((c) => ({ c, star: true })),
+                  ...choices.dueThisWeek.map((c) => ({ c, star: false })),
+                  ...choices.others.map((c) => ({ c, star: false })),
+                ].map(({ c, star }) => {
+                  // 今週が申込締切のものは印を付ける（開催が先でも、申込のリマインドとして一押しにできる）
+                  const due = topicDeadline(c, { from: baseDate, to: addDays(baseDate, 6) });
                   const on = currentTopicIds.includes(c.id);
                   const order = currentTopicIds.indexOf(c.id);
                   const disabled = !on && currentTopicIds.length >= MAX_TOPICS;
@@ -1239,6 +1275,11 @@ export const WeeklyDigest: React.FC = () => {
                       <span className="truncate">
                         {star ? '⭐ ' : ''}
                         {md(c.event_date!)} {c.title}
+                        {due?.thisWeek && (
+                          <span className="ml-1 text-[10px] px-1 rounded bg-red-100 text-red-700 font-bold">
+                            ⏰今週締切 {md(due.deadline)}{due.guessed ? '頃' : ''}
+                          </span>
+                        )}
                       </span>
                     </label>
                   );

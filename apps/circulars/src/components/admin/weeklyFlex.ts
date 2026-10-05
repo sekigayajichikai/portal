@@ -14,7 +14,7 @@
  */
 
 import type { LineMessage, PublicEventCard } from '@cc-saas/shared';
-import { type Digest, type LinkKind, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading, hasDetailLink } from './weeklyDigestCore';
+import { type Digest, type LinkKind, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading, hasDetailLink, topicDeadline, topicDeadlineText } from './weeklyDigestCore';
 
 /**
  * 配色は「役割別＝リンク先の色」（2026-09-21 決定）:
@@ -43,7 +43,13 @@ export interface FlexBuildOptions {
 export function buildGreetingText(d: Digest): string {
   const lines = [digestHeading(d)];
   if (d.topics.length > 0) {
-    const parts = d.topics.map((t) => `${md(t.event_date!)} の「${t.title}」`);
+    const parts = d.topics.map((t) => {
+      // 今週が申込締切の一押しは、開催日より締切を先に伝える
+      const dl = topicDeadline(t, d);
+      return dl?.thisWeek
+        ? `「${t.title}」（申込は今週 ${md(dl.deadline)}${dl.guessed ? '頃' : ''}まで）`
+        : `${md(t.event_date!)} の「${t.title}」`;
+    });
     lines.push(`⭐ 今週の一押しは ${parts.join(' と ')}です。`);
   }
   lines.push('今週の予定と申込は、下のカードをスワイプしてご覧ください 👇');
@@ -154,6 +160,9 @@ function topicBubble(d: Digest, opts: FlexBuildOptions) {
     }
     items.push(text(t.title, { weight: 'bold', size: 'lg', margin: 'md' }));
     items.push(text(`${md(t.event_date!)}${t.event_time ? ` ${t.event_time}` : ''}`, { size: 'md', color: BLUE, weight: 'bold' }));
+    // 申込が要るものは締切。今週締切なら赤字で目立たせる（申込のリマインド）
+    const dl = topicDeadline(t, d);
+    if (dl) items.push(text(topicDeadlineText(dl), dl.thisWeek ? { size: 'md', color: RED, weight: 'bold' } : { size: 'sm', color: '#666666' }));
     const place = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
     if (place) items.push(text(`📍 ${place}`, { size: 'sm', color: '#666666' }));
     if (t.description) items.push(text(t.description, { size: 'md', color: '#333333', margin: 'md' }));

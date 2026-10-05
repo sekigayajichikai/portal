@@ -145,6 +145,36 @@ export async function shortenUrl(url: string): Promise<string> {
 /** 申込が必要な予定（締切付き） */
 export type ApplyItem = PublicEventCard & { deadline: string; deadlineGuessed: boolean };
 
+/** 「申込が必要」= 要予約、または締切が入っているもの（定員制の連続講座など） */
+export const needsApply = (c: PublicEventCard) => c.category === 'reserve' || !!c.apply_deadline;
+
+/** 申込締切。締切が不明なら開催7日前を仮締切（guessed）にする。申込不要なら null */
+export const applyDeadline = (c: PublicEventCard): { deadline: string; guessed: boolean } | null => {
+  if (!needsApply(c) || !c.event_date) return null;
+  return c.apply_deadline ? { deadline: c.apply_deadline, guessed: false } : { deadline: addDays(c.event_date, -7), guessed: true };
+};
+
+/**
+ * 一押しに添える申込締切（2026-10-05）。
+ * 開催は先でも「今週中に申し込まないと間に合わない」ものを一押しにして、締切を目立たせるため。
+ * 締切がもう過ぎていれば null。配信の週（from〜to）の中なら thisWeek
+ */
+export interface TopicDeadline {
+  deadline: string;
+  guessed: boolean;
+  thisWeek: boolean;
+}
+export const topicDeadline = (c: PublicEventCard, week: { from: string; to: string }): TopicDeadline | null => {
+  const a = applyDeadline(c);
+  if (!a || a.deadline < week.from) return null;
+  return { ...a, thisWeek: a.deadline <= week.to };
+};
+/** 「⏰ 申込は今週 10/9(金)まで！」/「📝 申込締切 10/20(火)」 */
+export const topicDeadlineText = (t: TopicDeadline) =>
+  t.thisWeek
+    ? `⏰ 申込は今週 ${md(t.deadline)}${t.guessed ? '頃' : ''}まで！お早めに`
+    : `📝 申込締切 ${md(t.deadline)}${t.guessed ? '頃' : ''}`;
+
 export interface Digest {
   from: string;
   to: string;
@@ -208,9 +238,6 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
     const auto = topicPool.find((c) => c.event_date! <= applyUntil) ?? topicPool[0] ?? null;
     topics = auto ? [auto] : [];
   }
-  // 「申込が必要」= 要予約、または締切が入っているもの（定員制の連続講座など）
-  const needsApply = (c: PublicEventCard) => c.category === 'reserve' || !!c.apply_deadline;
-
   // 今週の予定: 申込不要のもので、配信日から7日間に開催（上限 LIMITS.events）。
   // 一押しにした予定は、週の外（最大4週間先）でも必ず重ねて載せ、上限にも数えない（2026-09-27/28 ユーザー指示。
   // 一押しカードだけだと一覧から抜けて見えるため）。並びは全体を日付順にする
@@ -219,7 +246,6 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
     .filter((c) => !needsApply(c) && c.event_date! <= to && !topicIdSet.has(c.id))
     .sort(byDate)
     .slice(0, LIMITS.events);
-  const events = [...topics, ...weekEvents].sort(byDate);
 
   // 申込受付中: 申込が必要で、締切（不明なら開催7日前）が14日以内
   const apply = future
@@ -232,7 +258,15 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
     .filter((c) => c.deadline >= from && c.deadline <= applyUntil)
     .sort((a, b) => (a.deadline < b.deadline ? -1 : 1));
   const urgent = apply.filter((c) => c.deadline <= urgentUntil);
-  const applyRest = apply.filter((c) => c.deadline > urgentUntil).slice(0, LIMITS.apply);
+  // 一押しは件数上限で落とさない
+  const applyRest = apply
+    .filter((c) => c.deadline > urgentUntil)
+    .filter((c, i) => i < LIMITS.apply || topicIdSet.has(c.id));
+
+  // 一押しを「今週の予定」に重ねるのは、申込の欄に載っていないときだけ。
+  // 申込の一押し（開催は先・締切が今週など）が今週の予定に「11/20 …」と並ぶと紛らわしいため（2026-10-05）
+  const inApplyLists = new Set([...urgent, ...applyRest].map((c) => c.id));
+  const events = [...topics.filter((t) => t.event_date! <= to || !inApplyLists.has(t.id)), ...weekEvents].sort(byDate);
 
   // 新しいレポート: 直近14日に公開（updated_at 基準）
   const since = addDays(baseDate, -14);
@@ -243,13 +277,26 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
   return { from, to, topics, reports: recentReports, events, apply: applyRest, urgent };
 }
 
-/** 一押しの選択肢（⭐候補を先に、その後は開催日順のその他の予定）。画面のプルダウン用 */
-export function topicChoices(cards: PublicEventCard[], baseDate: string): { starred: PublicEventCard[]; others: PublicEventCard[] } {
+/**
+ * 一押しの選択肢。画面のチェック一覧用。並びは
+ *   ⭐候補 → ⏰今週が申込締切のもの → その他（開催日順）
+ * 開催が4週間より先でも、今週が申込締切なら選べる（申込のリマインドとして一押しにするため）
+ */
+export function topicChoices(
+  cards: PublicEventCard[],
+  baseDate: string
+): { starred: PublicEventCard[]; dueThisWeek: PublicEventCard[]; others: PublicEventCard[] } {
   const until = addDays(baseDate, 28);
+  const week = { from: baseDate, to: addDays(baseDate, 6) };
+  const isDue = (c: PublicEventCard) => !!topicDeadline(c, week)?.thisWeek;
   const future = cards
-    .filter((c) => c.event_date && c.event_date >= baseDate && c.event_date <= until && !c.digest_exclude)
+    .filter((c) => c.event_date && c.event_date >= baseDate && !c.digest_exclude && (c.event_date <= until || isDue(c)))
     .sort((a, b) => (a.event_date! < b.event_date! ? -1 : 1));
-  return { starred: future.filter((c) => c.weekly_topic), others: future.filter((c) => !c.weekly_topic) };
+  return {
+    starred: future.filter((c) => c.weekly_topic),
+    dueThisWeek: future.filter((c) => !c.weekly_topic && isDue(c)),
+    others: future.filter((c) => !c.weekly_topic && !isDue(c)),
+  };
 }
 
 /** 見出し「【関ヶ谷自治会 今週のお知らせ】9/21(月)〜9/27(日)」 */
@@ -272,6 +319,9 @@ export function renderText(d: Digest, opts: TextOptions = {}): string {
     d.topics.forEach((t, i) => {
       if (i > 0) lines.push('');
       lines.push(`${md(t.event_date!)}${shortTime(t.event_time)} ${t.title}`);
+      // 申込が要るものは締切を添える（今週締切なら強めに）
+      const dl = topicDeadline(t, d);
+      if (dl) lines.push(topicDeadlineText(dl));
       // 紹介文（1〜2文）。タイトルの直下に置く
       if (t.description) lines.push(t.description);
       const sub = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
