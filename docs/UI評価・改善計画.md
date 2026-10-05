@@ -7,7 +7,7 @@
 
 > **進み具合（2026-10-06）**: 団体マスタの一本化（2章の手順3のDB部分、C5・B11）が済んだ。
 > 団体の名簿は `booking_organizations` だけになり、portal・book-system の両方がこれを読み書きする（詳細は `マスタ管理.md`）。
-> 残り: 旧 `organizers` テーブルの削除（`sql/migrations/2026-10-06-drop-organizers.sql`、未適用）と、団体の編集画面を1つにすること（フェーズ3の手順2で行う）。
+> 旧 `organizers` テーブルも 2026-10-06 に削除済み（控えは `organizers_backup_20261006`）。残りは団体の編集画面を1つにすること（フェーズ3の手順2で行う）。
 
 ---
 
@@ -66,7 +66,7 @@
 1. `apps/calendar` として monorepo に移す。`packages/shared` の AuthContext・Supabase クライアント・ダイアログを共通で使う。
 2. portal の `/admin` に「予定・会館」タブ群（予定／取込／申請／団体）を追加する。book の `AdminDashboard` 各タブを移植する。
    「団体」タブは、portal の `OrganizerManager`（別名・主催/発行元の候補）と book の団体設定（グループ・取込キーワード・パスコード・予約可否）を1画面にまとめる。
-3. ~~主催者マスタと団体マスタを1つにまとめ、表記ゆれをなくす。~~ → DB は 2026-10-05 に一本化済み（`booking_organizations`）。残りは旧 `organizers` の削除と、上の手順2での編集画面の一本化。
+3. ~~主催者マスタと団体マスタを1つにまとめ、表記ゆれをなくす。~~ → DB は 2026-10-05 に一本化済み（`booking_organizations`）。旧 `organizers` も 2026-10-06 に削除済み。残りは上の手順2での編集画面の一本化。
 4. 回覧板の公開時に自動でカレンダーへ反映する（今の「カレンダーに反映」の手押しをなくす）。
 5. book の `/api` 書き込みを廃止し、RLS 付きの Supabase 直接書き込み、または Edge Function にまとめる（C3 も一緒に解消）。
 
