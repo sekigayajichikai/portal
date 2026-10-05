@@ -2,25 +2,19 @@
  * 週次配信（今週のお知らせ）の下書きを自動で組み立てる画面
  *
  * 公開中の予定カード（event_cards）と公開中のレポート記事から、
- * 公式LINEで毎週流す文面と画像を、AIを使わず決まったルールで生成する。
- * 生成した文面は編集してからコピーし、LINE公式アカウントに貼って配信する（送信自体は手動）。
+ * 公式LINEで毎週流すカード（テキスト＋⭐一押し＋カルーセル）を、AIを使わず決まったルールで組み立て、この画面から送る。
+ * （コピペ用の配信文・1040×1040 の配信画像は使わなくなったので 2026-10-05 に削除）
  *
  * 構成と件数上限（情報量が増えすぎないように固定）:
  *   ⭐ 今週の一押し … 最大2件（⭐配信候補のうち直近のもの、または人が選ぶ。紹介文と、チラシPDF／記事への直リンクを添える。どちらも無ければリンク無し）
- *   人が決めたこと（一押しの選択・外した予定・リンク先・手で直した文・画像の種類）は配信日ごとの下書き（weekly_digest_drafts）に自動保存する
+ *   人が決めたこと（一押しの選択・外した予定・リンク先・手で直した吹き出し）は配信日ごとの下書き（weekly_digest_drafts）に自動保存する
  *   📰 新しいレポート … 最大2件（直近14日に公開されたレポート）
  *   📅 今週の予定 … 最大6件（open / recurring / 種別なし。配信日から7日間）
  *   📝 申込受付中 … 最大4件（reserve。締切が14日以内。締切不明は開催7日前を仮締切）
- *   ⏰ 締切間近 … 締切が3日以内のもの（申込受付中から抜き出して先頭に）
+ *   ⏰ 締切間近 … 締切が配信の週（配信日から7日間）のうちのもの（申込受付中から抜き出して先頭に）
  *
  * 配信のタイミングは「開催日」ではなく「行動が必要な日（申込締切）」で決める。
- * 要予約のイベントは開催の2〜3週間前に「申込受付中」で初めて登場し、締切3日前に「締切間近」で再掲される。
- *
- * 配信画像（1040×1040・リッチメッセージ用）は4種類から選ぶ:
- *   flyer  … 一押しの出典PDF（チラシ）1ページ目を画像にして、日付とタイトルを添える（既定）
- *   topic  … 一押しだけを文字で大きく（チラシが無いときの自動フォールバック）
- *   hybrid … 上にチラシ＋紹介文、下に今週の予定・申込を数行
- *   list   … 従来の文字一覧
+ * 要予約のイベントは開催の2〜3週間前に「申込受付中」で初めて登場し、締切の週に「締切間近」で再掲される。
  *
  * 仕様: docs/週次配信.md
  */
@@ -35,6 +29,11 @@ import {
   uploadWeeklyImage,
   recordWeeklyDigestSend,
   getWeeklyDigestSends,
+  createWeeklyDigestSchedule,
+  getWeeklyDigestSchedules,
+  cancelWeeklyDigestSchedule,
+  getLineQuota,
+  type LineQuota,
   getArticleById,
   convertPdfUrlToBase64,
   generateEventDescriptionWithGemini,
@@ -49,26 +48,21 @@ import {
   type LineMessage,
   type LineSendMode,
   type WeeklyDigestSend,
+  type WeeklyDigestSchedule,
 } from '@cc-saas/shared';
-import { Copy, Check, Download, RefreshCw, Loader2, Send, ExternalLink, MessageCircle, ShieldCheck, Users, Sparkles, Trash2, Pencil, Files } from 'lucide-react';
+import { Copy, Check, RefreshCw, Loader2, Send, MessageCircle, ShieldCheck, Users, Sparkles, Trash2, Pencil, Files, Clock } from 'lucide-react';
 import { showError, showToast, appConfirm, appPrompt } from '@/components/ui/feedback';
 
 import {
-  type Digest,
   LIMITS,
-  CHAR_GUIDE,
+  siteUrl,
   ymd,
   md,
-  shortTime,
-  audienceFee,
   topicLink,
   topicImageSource,
-  shortenUrl,
   buildDigest,
-  renderText,
   topicChoices,
   topicDeadline,
-  topicDeadlineText,
   addDays,
   availableLinkKinds,
   LINK_KIND_LABEL,
@@ -83,368 +77,33 @@ import { EventCardEditDialog } from './EventCardEditDialog';
 import { type HeroCrop, type CropAspect, normalizeCrop, resolveCrop, drawCropped, loadImageCanvas, renderPdfFirstPage } from './heroCrop';
 
 const REPORT_NEWSLETTER_TITLE = '関ヶ谷レポート';
-/** canvas のフォント */
-const FONT = '"Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif';
-
-/** 配信画像の種類 */
-type ImageMode = 'flyer' | 'topic' | 'hybrid' | 'list';
-const IMAGE_MODES: Array<{ key: ImageMode; label: string; hint: string }> = [
-  { key: 'flyer', label: '一押しチラシ', hint: '一押しの出典PDF（チラシ）をそのまま画像に。チラシが無ければ「一押しのみ」で描きます' },
-  { key: 'topic', label: '一押しのみ（文字）', hint: '一押し1件だけを大きな文字で。写真なし' },
-  { key: 'hybrid', label: 'チラシ＋今週の予定', hint: '上にチラシと紹介文、下に今週の予定・申込を数行' },
-  { key: 'list', label: '文字一覧（従来）', hint: '一押し＋今週の予定・申込を文字だけで一覧' },
-];
-
-// ---------------------------------------------------------------------------
-// 配信画像
-// ---------------------------------------------------------------------------
-
-/** 日本語向けの折り返し（1文字ずつ幅を測る）。maxLines を超えた分は末尾を「…」にする */
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
-  const lines: string[] = [];
-  let cur = '';
-  const isWordChar = (c: string) => /[A-Za-z0-9]/.test(c);
-  for (const ch of text.replace(/\s*\n\s*/g, ' ')) {
-    if (ctx.measureText(cur + ch).width > maxWidth && cur) {
-      // 英数字の単語（LINE / YouTube 等）は途中で切らず、単語ごと次の行へ送る
-      let head = cur;
-      let carry = '';
-      if (isWordChar(ch)) {
-        const m = cur.match(/[A-Za-z0-9]+$/);
-        if (m && m[0].length < cur.length) {
-          head = cur.slice(0, -m[0].length);
-          carry = m[0];
-        }
-      }
-      lines.push(head.trimEnd());
-      cur = carry + ch;
-      if (lines.length === maxLines) break;
-    } else {
-      cur += ch;
-    }
-  }
-  if (lines.length < maxLines) {
-    if (cur) lines.push(cur);
-  } else if (cur) {
-    // 収まらなかった: 最終行の末尾を省略記号に
-    let last = lines[maxLines - 1];
-    while (ctx.measureText(last + '…').width > maxWidth && last.length > 1) last = last.slice(0, -1);
-    lines[maxLines - 1] = last + '…';
-  }
-  return lines;
-}
-
-/** チラシ画像を枠内に「収まるように」白いカード＋影付きで描く */
-function drawFlyer(ctx: CanvasRenderingContext2D, flyer: HTMLCanvasElement, x: number, y: number, w: number, h: number) {
-  const scale = Math.min(w / flyer.width, h / flyer.height);
-  const dw = Math.round(flyer.width * scale);
-  const dh = Math.round(flyer.height * scale);
-  const dx = Math.round(x + (w - dw) / 2);
-  const dy = Math.round(y + (h - dh) / 2);
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.22)';
-  ctx.shadowBlur = 24;
-  ctx.shadowOffsetY = 10;
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(dx, dy, dw, dh);
-  ctx.restore();
-  ctx.drawImage(flyer, dx, dy, dw, dh);
-  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(dx + 1, dy + 1, dw - 2, dh - 2);
-}
-
-/**
- * 配信用の画像（1040×1040）を canvas で描く。
- * flyer / hybrid でチラシ画像が無いときは topic（一押しのみ）にフォールバックする。
- */
-function drawImage(canvas: HTMLCanvasElement, d: Digest, mode: ImageMode, flyer: HTMLCanvasElement | null) {
-  const W = 1040;
-  const H = 1040;
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d')!;
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = '#faf7f2';
-  ctx.fillRect(0, 0, W, H);
-
-  const font = (size: number, bold = false) => {
-    ctx.font = `${bold ? 'bold ' : ''}${size}px ${FONT}`;
-  };
-  const footer = () => {
-    ctx.fillStyle = '#8a8578';
-    font(28);
-    ctx.textAlign = 'left';
-    ctx.fillText('詳しくは回覧板サイト（公式LINEのメニューから）', 60, H - 44);
-  };
-  /** 赤い見出し帯（従来版・一押しのみ版） */
-  const bigHeader = () => {
-    ctx.fillStyle = '#c0392b';
-    ctx.fillRect(0, 0, W, 150);
-    ctx.fillStyle = '#fff';
-    font(56, true);
-    ctx.fillText('関ヶ谷自治会 今週のお知らせ', 60, 95);
-    font(32);
-    ctx.fillText(`${md(d.from)}〜${md(d.to)}`, 60, 138);
-  };
-  /** 細い見出し帯（チラシ版・ハイブリッド版）。左に「⭐ 今週の一押し」、右に期間 */
-  const slimHeader = () => {
-    ctx.fillStyle = '#c0392b';
-    ctx.fillRect(0, 0, W, 120);
-    ctx.fillStyle = '#fff';
-    font(48, true);
-    ctx.textAlign = 'left';
-    ctx.fillText('⭐ 今週の一押し', 60, 80);
-    // 右側は2段（媒体名／期間）で小さく
-    ctx.textAlign = 'right';
-    font(26);
-    ctx.fillText('関ヶ谷自治会 今週のお知らせ', W - 60, 52);
-    ctx.fillText(`${md(d.from)}〜${md(d.to)}`, W - 60, 92);
-    ctx.textAlign = 'left';
-  };
-  /** 今週の予定・申込の行（画像用） */
-  const rows: string[] = [];
-  for (const c of d.urgent) rows.push(`⏰ ${c.title} 締切${md(c.deadline)}`);
-  for (const c of d.events) rows.push(`${md(c.event_date!)} ${c.title}`);
-  for (const c of d.apply) rows.push(`📝 ${c.title} 締切${md(c.deadline)}`);
-
-  // フォールバック: チラシが必要なモードでチラシが無い → 一押しのみ。一押し自体が無い → 従来の一覧
-  let effective: ImageMode = mode;
-  if ((mode === 'flyer' || mode === 'hybrid') && !flyer) effective = 'topic';
-  if ((effective === 'topic' || effective === 'flyer' || effective === 'hybrid') && d.topics.length === 0) effective = 'list';
-
-  // ---- 従来の文字一覧 ----
-  if (effective === 'list') {
-    bigHeader();
-    let y = 230;
-    const line = (text: string, opts: { bold?: boolean; color?: string; size?: number } = {}) => {
-      ctx.fillStyle = opts.color ?? '#2d2a26';
-      font(opts.size ?? 36, opts.bold);
-      let t = text;
-      while (ctx.measureText(t).width > W - 120 && t.length > 4) t = t.slice(0, -2) + '…';
-      ctx.fillText(t, 60, y);
-      y += (opts.size ?? 36) + 22;
-    };
-    if (d.topics.length > 0) {
-      line('⭐ 今週の一押し', { bold: true, color: '#a93226', size: 40 });
-      for (const t0 of d.topics) {
-        line(`${md(t0.event_date!)} ${t0.title}`, { bold: true, size: 44 });
-        const topicSub = [t0.event_location, audienceFee(t0)].filter(Boolean).join(' ');
-        if (topicSub) line(topicSub, { color: '#6b665c', size: 32 });
-        const dl0 = topicDeadline(t0, d);
-        if (dl0) line(topicDeadlineText(dl0), { bold: dl0.thisWeek, color: dl0.thisWeek ? '#c0392b' : '#6b665c', size: 34 });
-      }
-      y += 16;
-    }
-    if (rows.length > 0) {
-      line('📅 今週の予定・申込', { bold: true, color: '#a93226', size: 40 });
-      for (const r of rows.slice(0, 8)) {
-        if (y > H - 120) break;
-        line(r);
-      }
-    }
-    footer();
-    return;
-  }
-
-  // 一押しが2件あっても配信画像（1040×1040）は先頭の1件で描く
-  const t = d.topics[0];
-  const when = `${md(t.event_date!)}${shortTime(t.event_time)}`;
-  const place = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ');
-  const meta = [t.target_audience, t.fee].filter(Boolean).join('・');
-  // 申込が要る一押しは締切を添える（今週締切なら赤字）
-  const dl = topicDeadline(t, d);
-  const dlText = dl ? topicDeadlineText(dl) : '';
-  const dlColor = dl?.thisWeek ? '#c0392b' : '#6b665c';
-
-  // ---- 一押しのみ（文字） ----
-  if (effective === 'topic') {
-    bigHeader();
-    let y = 250;
-    ctx.fillStyle = '#a93226';
-    font(40, true);
-    ctx.fillText('⭐ 今週の一押し', 60, y);
-    y += 80;
-    ctx.fillStyle = '#1d4ed8';
-    font(52, true);
-    ctx.fillText(when, 60, y);
-    y += 90;
-    if (dlText) {
-      ctx.fillStyle = dlColor;
-      font(42, true);
-      ctx.fillText(dlText, 60, y - 20);
-      y += 50;
-    }
-    ctx.fillStyle = '#2d2a26';
-    font(64, true);
-    for (const l of wrapText(ctx, t.title, W - 120, 2)) {
-      ctx.fillText(l, 60, y);
-      y += 82;
-    }
-    y += 6;
-    ctx.fillStyle = '#6b665c';
-    font(34);
-    if (place) {
-      for (const l of wrapText(ctx, `📍 ${place}`, W - 120, 2)) {
-        ctx.fillText(l, 60, y);
-        y += 48;
-      }
-      y += 4;
-    }
-    if (meta) {
-      ctx.fillText(meta, 60, y);
-      y += 52;
-    }
-    if (t.description) {
-      y += 18;
-      font(38);
-      const lines = wrapText(ctx, t.description, W - 150, 3);
-      ctx.fillStyle = '#c0392b';
-      ctx.fillRect(60, y - 40, 6, lines.length * 58 - 8);
-      ctx.fillStyle = '#2d2a26';
-      for (const l of lines) {
-        ctx.fillText(l, 90, y);
-        y += 58;
-      }
-    }
-    const others = rows.length;
-    if (others > 0) {
-      ctx.fillStyle = '#8a8578';
-      font(30);
-      ctx.fillText(`ほかにも今週の予定・申込が ${others} 件。文面をご覧ください`, 60, H - 110);
-    }
-    footer();
-    return;
-  }
-
-  // ---- 一押しチラシ ----
-  if (effective === 'flyer') {
-    slimHeader();
-    // 下の文字エリア: 日時1行＋タイトル最大2行＋場所1行。タイトルが1行で収まれば場所を詰める
-    font(44, true);
-    const titleLines = wrapText(ctx, t.title, W - 120, 2);
-    const bottomH = 60 + 40 + titleLines.length * 54 + 44 + (dlText ? 46 : 0);
-    drawFlyer(ctx, flyer!, 60, 150, W - 120, H - 150 - bottomH - 20);
-    let y = H - bottomH + 30;
-    ctx.fillStyle = '#1d4ed8';
-    font(36, true);
-    ctx.fillText(when, 60, y);
-    y += 52;
-    if (dlText) {
-      ctx.fillStyle = dlColor;
-      font(32, true);
-      ctx.fillText(dlText, 60, y - 6);
-      y += 46;
-    }
-    ctx.fillStyle = '#2d2a26';
-    font(44, true);
-    for (const l of titleLines) {
-      ctx.fillText(l, 60, y);
-      y += 54;
-    }
-    ctx.fillStyle = '#6b665c';
-    font(28);
-    const sub = [place ? `📍 ${place}` : null, meta || null].filter(Boolean).join('　');
-    if (sub) {
-      const [l] = wrapText(ctx, sub, W - 120, 1);
-      ctx.fillText(l, 60, y);
-    }
-    ctx.fillStyle = '#8a8578';
-    font(26);
-    ctx.textAlign = 'right';
-    ctx.fillText('タップで詳しく', W - 60, H - 30);
-    ctx.textAlign = 'left';
-    return;
-  }
-
-  // ---- チラシ＋今週の予定 ----
-  slimHeader();
-  // 左: チラシ
-  drawFlyer(ctx, flyer!, 60, 150, 430, 520);
-  // 右: 一押しの文字
-  const rx = 530;
-  const rw = W - rx - 60;
-  let y = 200;
-  ctx.fillStyle = '#1d4ed8';
-  font(40, true);
-  ctx.fillText(when, rx, y);
-  y += 66;
-  if (dlText) {
-    ctx.fillStyle = dlColor;
-    font(30, true);
-    for (const l of wrapText(ctx, dlText, rw, 2)) {
-      ctx.fillText(l, rx, y - 12);
-      y += 42;
-    }
-    y += 8;
-  }
-  ctx.fillStyle = '#2d2a26';
-  font(44, true);
-  for (const l of wrapText(ctx, t.title, rw, 2)) {
-    ctx.fillText(l, rx, y);
-    y += 58;
-  }
-  y += 4;
-  ctx.fillStyle = '#6b665c';
-  font(28);
-  if (place) {
-    for (const l of wrapText(ctx, `📍 ${place}`, rw, 2)) {
-      ctx.fillText(l, rx, y);
-      y += 40;
-    }
-  }
-  if (meta) {
-    ctx.fillText(meta, rx, y);
-    y += 40;
-  }
-  if (t.description) {
-    y += 14;
-    ctx.fillStyle = '#2d2a26';
-    font(30);
-    for (const l of wrapText(ctx, t.description, rw, 4)) {
-      if (y > 660) break;
-      ctx.fillText(l, rx, y);
-      y += 44;
-    }
-  }
-  // 下: 今週の予定・申込（最大4行。残りは右下に件数だけ）
-  let ly = 740;
-  if (rows.length > 0) {
-    ctx.fillStyle = '#a93226';
-    font(34, true);
-    ctx.fillText('📅 今週の予定・申込', 60, ly);
-    ly += 50;
-    ctx.fillStyle = '#2d2a26';
-    font(30);
-    const max = 4;
-    for (const r of rows.slice(0, max)) {
-      const [l] = wrapText(ctx, r, W - 120, 1);
-      ctx.fillText(l, 60, ly);
-      ly += 44;
-    }
-    if (rows.length > max) {
-      // 収まらない分はフッターの文言に含めて1行にまとめる（重なり防止）
-      ctx.fillStyle = '#8a8578';
-      font(28);
-      ctx.fillText(`ほか ${rows.length - max} 件と詳しい内容は回覧板サイトへ（公式LINEのメニューから）`, 60, H - 44);
-      return;
-    }
-  }
-  footer();
-}
-
 // ---------------------------------------------------------------------------
 // 画面
 // ---------------------------------------------------------------------------
+
+/** Date → datetime-local の値（"2026-10-12T07:00"。端末の時刻で） */
+const toLocalInput = (d: Date) => {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+/** "10/12(月) 07:00" */
+const fmtDateTime = (iso: string) => {
+  const d = new Date(iso);
+  return `${md(ymd(d))} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+const SCHEDULE_STATUS_LABEL: Record<WeeklyDigestSchedule['status'], { label: string; cls: string }> = {
+  scheduled: { label: '予約中', cls: 'bg-amber-100 text-amber-800' },
+  sending: { label: '送信中', cls: 'bg-blue-100 text-blue-700' },
+  sent: { label: '送信済み', cls: 'bg-emerald-50 text-emerald-700' },
+  failed: { label: '失敗', cls: 'bg-red-100 text-red-700' },
+  canceled: { label: '取消', cls: 'bg-slate-100 text-slate-500' },
+};
 
 export const WeeklyDigest: React.FC = () => {
   const [baseDate, setBaseDate] = useState<string>(ymd(new Date()));
   const [cards, setCards] = useState<PublicEventCard[]>([]);
   const [reports, setReports] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
-  const [text, setText] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [imageMode, setImageMode] = useState<ImageMode>('flyer');
   /** 一押しごとのチラシ（PDF 1ページ目を描いた canvas。予定ID → canvas。null は無し／失敗） */
   const [flyers, setFlyers] = useState<Record<string, HTMLCanvasElement | null>>({});
   const [flyerStates, setFlyerStates] = useState<Record<string, 'loading' | 'error' | 'idle'>>({});
@@ -455,8 +114,7 @@ export const WeeklyDigest: React.FC = () => {
   const [generatingDesc, setGeneratingDesc] = useState<string | null>(null);
   /** 一押しごとのリンク先の指定（予定ID → pdf / article。無ければ自動） */
   const [linkKinds, setLinkKinds] = useState<Record<string, LinkKind>>({});
-  /** 文面・吹き出しを手で直したか（立っていると自動生成で上書きしない。下書きにも残す） */
-  const [textEdited, setTextEdited] = useState(false);
+  /** 吹き出しを手で直したか（立っていると自動生成で上書きしない。下書きにも残す） */
   const [greetingEdited, setGreetingEdited] = useState(false);
   /** 下書き（配信日ごとに複数）: 一覧、いま開いている下書きの id と名前、保存状態、最後に保存した時刻 */
   const [drafts, setDrafts] = useState<WeeklyDigestDraft[]>([]);
@@ -476,14 +134,17 @@ export const WeeklyDigest: React.FC = () => {
   const [savingCrop, setSavingCrop] = useState<string | null>(null);
   /** 編集ダイアログで開いている予定（予定タブ・号の画面と同じダイアログ） */
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
-  /** 元URL→短縮URL（取得できたものだけ入る） */
-  const [shortUrls, setShortUrls] = useState<Record<string, string>>({});
   /** LINE 送信（Flex）: テキスト吹き出しの文、送信中のモード、直近の結果、履歴 */
   const [greeting, setGreeting] = useState('');
   const [sending, setSending] = useState<LineSendMode | null>(null);
   const [sendNote, setSendNote] = useState<string | null>(null);
   const [history, setHistory] = useState<WeeklyDigestSend[]>([]);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** 予約配信: 一覧、日時の入力欄（datetime-local の値）、予約中かどうか */
+  const [schedules, setSchedules] = useState<WeeklyDigestSchedule[]>([]);
+  const [scheduleAt, setScheduleAt] = useState('');
+  const [scheduling, setScheduling] = useState(false);
+  /** 今月の LINE 通数（取れなければ null で表示しない） */
+  const [quota, setQuota] = useState<LineQuota | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -531,12 +192,10 @@ export const WeeklyDigest: React.FC = () => {
       excluded_ids: Array.from(excluded).sort(),
       link_kinds: linkKinds as Record<string, string>,
       greeting: greetingEdited ? greeting : null,
-      text: textEdited ? text : null,
-      image_mode: imageMode,
     }),
-    [topicIds, excluded, linkKinds, greeting, greetingEdited, text, textEdited, imageMode]
+    [topicIds, excluded, linkKinds, greeting, greetingEdited]
   );
-  const DEFAULT_DRAFT_KEY = JSON.stringify({ topic_ids: null, excluded_ids: [], link_kinds: {}, greeting: null, text: null, image_mode: 'flyer' });
+  const DEFAULT_DRAFT_KEY = JSON.stringify({ topic_ids: null, excluded_ids: [], link_kinds: {}, greeting: null });
 
   /** 下書きの表示名（名前が無ければ「配信日の下書き」） */
   const draftLabel = (d: Pick<WeeklyDigestDraft, 'base_date' | 'name'>) => d.name?.trim() || `${md(d.base_date)} の下書き`;
@@ -546,9 +205,7 @@ export const WeeklyDigest: React.FC = () => {
     setTopicIds(undefined);
     setExcluded(new Set());
     setLinkKinds({});
-    setTextEdited(false);
     setGreetingEdited(false);
-    setImageMode('flyer');
     lastDraftRef.current = DEFAULT_DRAFT_KEY;
     draftIdRef.current = null;
     draftNameRef.current = null;
@@ -562,30 +219,20 @@ export const WeeklyDigest: React.FC = () => {
     const topic = Array.isArray(d.topic_ids) ? (d.topic_ids as string[]) : undefined;
     const ex = Array.isArray(d.excluded_ids) ? (d.excluded_ids as string[]) : [];
     const lk = (d.link_kinds && typeof d.link_kinds === 'object' ? d.link_kinds : {}) as Record<string, LinkKind>;
-    const mode = (['flyer', 'topic', 'hybrid', 'list'] as ImageMode[]).includes(d.image_mode as ImageMode) ? (d.image_mode as ImageMode) : 'flyer';
     setTopicIds(topic);
     setExcluded(new Set(ex));
     setLinkKinds(lk);
-    setImageMode(mode);
     if (d.greeting != null) {
       setGreeting(d.greeting);
       setGreetingEdited(true);
     } else {
       setGreetingEdited(false);
     }
-    if (d.text != null) {
-      setText(d.text);
-      setTextEdited(true);
-    } else {
-      setTextEdited(false);
-    }
     lastDraftRef.current = JSON.stringify({
       topic_ids: topic ?? null,
       excluded_ids: [...ex].sort(),
       link_kinds: lk,
       greeting: d.greeting ?? null,
-      text: d.text ?? null,
-      image_mode: mode,
     });
     draftIdRef.current = d.id;
     draftNameRef.current = d.name;
@@ -739,10 +386,14 @@ export const WeeklyDigest: React.FC = () => {
   );
   /** いま一押しになっている予定のID（自動のときも含む） */
   const currentTopicIds = fullDigest.topics.map((t) => t.id);
-  /** 一押しのチェックを切り替える（自動状態からの操作は、いまの自動の1件を起点にする） */
+  /**
+   * 一押しのチェックを切り替える（自動状態からの操作は、いまの自動の1件を起点にする）。
+   * 起点は保存値ではなく「いま実際に一押しになっているもの」。下書きに残った選べない予定のID
+   * （「今後も載せない」にした・消した・過ぎた予定）で上限に達したことになり、チェックできなくなるのを防ぐ
+   */
   const toggleTopic = (id: string) =>
-    setTopicIds((prev) => {
-      const base = prev ?? currentTopicIds;
+    setTopicIds(() => {
+      const base = currentTopicIds;
       if (base.includes(id)) return base.filter((x) => x !== id);
       if (base.length >= MAX_TOPICS) return base;
       return [...base, id];
@@ -812,7 +463,7 @@ export const WeeklyDigest: React.FC = () => {
     // cards: 編集ダイアログで保存したあと（下書きを消して読み直したとき）も、新しい値で埋め直す
   }, [topicKey, cards]);
 
-  /** 一押しの紹介文を予定カードに保存し、文面・画像に反映する */
+  /** 一押しの紹介文を予定カードに保存し、カードに反映する */
   const saveDescription = async (topic: PublicEventCard) => {
     const description = (descDrafts[topic.id] ?? '').trim() || null;
     setSavingDesc(topic.id);
@@ -901,30 +552,6 @@ export const WeeklyDigest: React.FC = () => {
     }
   };
 
-  /** 一押しごとのリンク（指定があればそれ、無ければ自動。チラシも記事も無ければ null） */
-  const topicLinks = useMemo(() => digest.topics.map((t) => ({ topic: t, link: topicLink(t, linkKinds[t.id]) })), [digest.topics, linkKinds]);
-
-  // 一押しのリンクを短縮URLにする（取得できたら文面を作り直す）
-  const linkUrlsKey = topicLinks.map((x) => x.link?.url ?? '').join('|');
-  useEffect(() => {
-    let cancelled = false;
-    for (const { link } of topicLinks) {
-      if (!link || shortUrls[link.url]) continue;
-      shortenUrl(link.url).then((s) => {
-        if (!cancelled && s !== link.url) setShortUrls((prev) => ({ ...prev, [link.url]: s }));
-      });
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [linkUrlsKey]);
-
-  // データや配信日が変わったら文面を作り直す（手で直した後は上書きしない。「作り直す」で自動に戻す）
-  useEffect(() => {
-    if (textEdited) return;
-    setText(renderText(digest, { shortUrls, linkKinds }));
-  }, [digest, shortUrls, linkKinds, textEdited]);
-
   /** 読み込み失敗の理由（予定ID → メッセージ）。「もう一度読み込む」で消す */
   const [flyerErrors, setFlyerErrors] = useState<Record<string, string>>({});
   const [flyerReload, setFlyerReload] = useState(0);
@@ -969,34 +596,6 @@ export const WeeklyDigest: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicKey, flyerReload]);
 
-  /** 配信画像（1040×1040）用: 先頭の一押しのチラシ（全体） */
-  const firstFlyer = digest.topics[0] ? (flyers[digest.topics[0].id] ?? null) : null;
-  const firstSrc = digest.topics[0] ? topicImageSource(digest.topics[0]) : null;
-  const firstFlyerState = digest.topics[0] ? (flyerStates[digest.topics[0].id] ?? 'idle') : 'idle';
-
-  useEffect(() => {
-    if (canvasRef.current) drawImage(canvasRef.current, digest, imageMode, firstFlyer);
-  }, [digest, imageMode, firstFlyer]);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showError('コピーできませんでした。文面を選択してコピーしてください。');
-    }
-  };
-
-  const download = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const a = document.createElement('a');
-    a.href = canvas.toDataURL('image/png');
-    a.download = `weekly-${baseDate}-${imageMode}.png`;
-    a.click();
-  };
-
   // ---- LINE 送信（Flex） ----
 
   // テキスト吹き出しの既定文（一押しが変わったら作り直す。手で直した後は上書きしない。「作り直す」で戻す）
@@ -1006,9 +605,27 @@ export const WeeklyDigest: React.FC = () => {
   }, [digest, greetingEdited]);
 
   const loadHistory = () => getWeeklyDigestSends(8).then(setHistory);
+  const loadSchedules = () => getWeeklyDigestSchedules(8).then(setSchedules);
+  const loadQuota = () => getLineQuota().then(setQuota);
   useEffect(() => {
     loadHistory();
+    loadSchedules();
+    loadQuota();
+    // 予約が送られると状態が変わるので、開いている間は1分ごとに読み直す
+    const timer = setInterval(() => {
+      loadSchedules();
+      loadHistory();
+      loadQuota();
+    }, 60_000);
+    return () => clearInterval(timer);
   }, []);
+
+  // 予約日時の初期値: 配信日の朝7時（もう過ぎていれば、いまから1時間後の5分刻み）
+  useEffect(() => {
+    const morning = new Date(`${baseDate}T07:00`);
+    const soon = new Date(Math.ceil((Date.now() + 60 * 60_000) / (5 * 60_000)) * 5 * 60_000);
+    setScheduleAt(toLocalInput(morning.getTime() > Date.now() + 5 * 60_000 ? morning : soon));
+  }, [baseDate]);
 
   /**
    * カード用のチラシ画像: チラシから正方形を切り出したもの（予定ID → canvas）。
@@ -1043,7 +660,8 @@ export const WeeklyDigest: React.FC = () => {
    * 送るメッセージを組み立てる。Flex の画像は https が必要なので、
    * 一押しごとのチラシ画像を Storage（newsletter-images/weekly/）に置いてから使う。
    */
-  const buildMessages = async (): Promise<LineMessage[]> => {
+  /** 送るメッセージを作る（チラシ画像を Storage に置く）。prefix は画像のファイル名（予約は予約ごとに別名にして、後の作り直しで上書きされないように） */
+  const buildMessages = async (prefix = 'flyer'): Promise<LineMessage[]> => {
     const flyerImageUrls: Record<string, string | null> = {};
     for (let i = 0; i < digest.topics.length; i++) {
       const t = digest.topics[i];
@@ -1051,17 +669,18 @@ export const WeeklyDigest: React.FC = () => {
       flyerImageUrls[t.id] = null;
       if (!card) continue;
       const blob = await new Promise<Blob | null>((resolve) => card.toBlob(resolve, 'image/jpeg', 0.85));
-      if (blob) flyerImageUrls[t.id] = await uploadWeeklyImage(blob, baseDate, `flyer-${i + 1}`);
+      if (blob) flyerImageUrls[t.id] = await uploadWeeklyImage(blob, baseDate, `${prefix}-${i + 1}`);
     }
     return buildWeeklyMessages(digest, greeting, { flyerImageUrls, flyerAspects, linkKinds });
   };
 
   /** validate: 形式チェックのみ / test: 自分にだけ / broadcast: 全員 */
   const send = async (mode: LineSendMode) => {
+    if (mode === 'broadcast' && localLinkError()) return;
     if (mode === 'broadcast') {
       const ok = await appConfirm({
         title: '友だち全員に配信しますか？',
-        message: `${md(digest.from)}〜${md(digest.to)} の「今週のお知らせ」を公式LINEの友だち全員に送ります。取り消しはできません。先に「テスト送信」で見た目を確認してください。`,
+        message: `${md(digest.from)}〜${md(digest.to)} の「今週のお知らせ」を公式LINEの友だち全員に送ります。取り消しはできません。先に「テスト送信」で見た目を確認してください。${pendingThisWeek ? `\n\n⚠ この配信日は ${fmtDateTime(pendingThisWeek.send_at)} に予約があります。いま送るなら、予約は取り消してください（二重配信になります）。` : ''}`,
         confirmLabel: '全員に配信する',
       });
       if (!ok) return;
@@ -1071,12 +690,13 @@ export const WeeklyDigest: React.FC = () => {
     try {
       const messages = await buildMessages();
       const result = await sendLineMessages(mode, messages);
-      const label = mode === 'validate' ? '形式チェックOK。LINE に送れる内容です' : mode === 'test' ? 'テスト送信しました。自分のLINEで見た目を確認してください' : '友だち全員に配信しました';
+      const label = mode === 'validate' ? '形式チェックOK。LINE に送れる内容です' : mode === 'test' ? 'テスト送信しました。自分のLINEで見た目を確認してください' : mode === 'admins' ? '管理者に送りました。各自のLINEで見た目を確認してもらってください' : '友だち全員に配信しました';
       setSendNote(`✅ ${label}（${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}）`);
       showToast(label);
       if (mode !== 'validate') {
         await recordWeeklyDigestSend({ base_date: baseDate, mode, text: greeting, messages, line_status: result.status, draft_id: draftId });
         loadHistory();
+        loadQuota();
       }
     } catch (e: any) {
       console.error('LINE 送信エラー:', e);
@@ -1085,6 +705,69 @@ export const WeeklyDigest: React.FC = () => {
     } finally {
       setSending(null);
     }
+  };
+
+  /**
+   * カードのリンク（記事・レポート・「ほかの予定も見る」）は siteUrl() で作る。VITE_PUBLIC_SITE_URL が無いと開いている画面の
+   * アドレスになり、ローカルから送ると http://localhost:5175/... が全員に届いてしまう（2026-10-05 に実際に起きた）。
+   * 全員配信と予約の前に止める。止めたら true
+   */
+  const localLinkError = () => {
+    const base = siteUrl();
+    if (!/^https?:\/\/(localhost|127\.|192\.168\.|\[::1\])/.test(base)) return false;
+    showError(`カードのリンクが ${base} になっているため、全員には送れません。.env.local に VITE_PUBLIC_SITE_URL=https://sekigayajichikai.vercel.app を入れてサーバーを起動し直すか、本番の管理画面から送ってください。`);
+    return true;
+  };
+
+  /** 予約後に画面の内容が変わったかを見分ける値（チラシ画像そのものは比べず、切り出し位置で代用） */
+  const contentKey = useMemo(
+    () => JSON.stringify({ m: buildWeeklyMessages(digest, greeting, { flyerImageUrls: {}, flyerAspects, linkKinds }), crops: digest.topics.map((t) => crops[t.id] ?? null) }),
+    [digest, greeting, flyerAspects, linkKinds, crops]
+  );
+
+  /** いまの内容で予約する（形式チェックを通してから保存。画像も予約した時点のもので固定） */
+  const schedule = async () => {
+    if (localLinkError()) return;
+    const at = new Date(scheduleAt);
+    if (!scheduleAt || Number.isNaN(at.getTime())) return showError('送る日時を入れてください');
+    if (at.getTime() < Date.now() + 60_000) return showError('送る日時は、いまより後にしてください');
+    const ok = await appConfirm({
+      title: 'この内容で予約しますか？',
+      message: `${fmtDateTime(at.toISOString())} ごろ（最大5分遅れ）に、${md(digest.from)}〜${md(digest.to)} の「今週のお知らせ」を友だち全員に送ります。\n予約した時点の内容で送ります。あとで画面を直したときは、予約を取り消して予約し直してください。${pendingThisWeek ? '\n\n⚠ この配信日にはすでに予約があります。二重配信にならないよう、古い予約は取り消してください。' : ''}`,
+      confirmLabel: '予約する',
+    });
+    if (!ok) return;
+    setScheduling(true);
+    setSendNote(null);
+    try {
+      const id = crypto.randomUUID();
+      const messages = await buildMessages(`sched-${id.slice(0, 8)}`);
+      // 送る時になって形式エラーで落ちないよう、予約の前に LINE 側でチェックする
+      await sendLineMessages('validate', messages);
+      await createWeeklyDigestSchedule({ id, base_date: baseDate, send_at: at.toISOString(), messages, text: greeting, content_key: contentKey, draft_id: draftId });
+      const label = `${fmtDateTime(at.toISOString())} に予約しました`;
+      setSendNote(`⏰ ${label}`);
+      showToast(label);
+      loadSchedules();
+    } catch (e: any) {
+      console.error('予約エラー:', e);
+      setSendNote(`❌ ${e?.message ?? '予約できませんでした'}`);
+      showError(e?.message ?? '予約できませんでした');
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  const cancelSchedule = async (s: WeeklyDigestSchedule) => {
+    const ok = await appConfirm({ title: '予約を取り消しますか？', message: `${fmtDateTime(s.send_at)} の予約を取り消します。`, confirmLabel: '取り消す' });
+    if (!ok) return;
+    try {
+      const done = await cancelWeeklyDigestSchedule(s.id);
+      showToast(done ? '予約を取り消しました' : 'すでに送信が始まっていたため、取り消せませんでした');
+    } catch (e: any) {
+      showError(e?.message ?? '取り消せませんでした');
+    }
+    loadSchedules();
   };
 
   /** Flex JSON をコピー（LINE Developers の Flex Message Simulator に貼って確認する用） */
@@ -1100,6 +783,8 @@ export const WeeklyDigest: React.FC = () => {
     }
   };
   const alreadySentThisWeek = history.find((h) => h.mode === 'broadcast' && h.base_date === baseDate);
+  /** この配信日の、まだ送っていない予約 */
+  const pendingThisWeek = schedules.find((s) => s.status === 'scheduled' && s.base_date === baseDate);
 
   const counts = {
     topic: digest.topics.length,
@@ -1109,7 +794,6 @@ export const WeeklyDigest: React.FC = () => {
     apply: digest.apply.length,
   };
   const total = counts.topic + counts.reports + counts.urgent + counts.events + counts.apply;
-  const needsFlyer = imageMode === 'flyer' || imageMode === 'hybrid';
 
   return (
     <div className="space-y-4">
@@ -1135,7 +819,7 @@ export const WeeklyDigest: React.FC = () => {
               週次配信（今週のお知らせ）
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              公開中の予定カードとレポートから、公式LINEで流す文面と画像を自動で組み立てます。文面を直してコピーし、LINEに貼って配信してください。
+              公開中の予定カードとレポートから、公式LINEで流すカードを自動で組み立てます。下の「LINE に送る」からテスト送信で確かめてから配信してください。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1155,7 +839,7 @@ export const WeeklyDigest: React.FC = () => {
             </button>
           </div>
         </div>
-        {/* 下書き（配信日ごとに複数。一押しの選択・外した予定・リンク先・手で直した文・画像の種類を自動保存） */}
+        {/* 下書き（配信日ごとに複数。一押しの選択・外した予定・リンク先・手で直した吹き出しを自動保存） */}
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 mt-2 text-[11px] text-slate-500">
           <label className="flex items-center gap-1">
             <span className="text-slate-500">下書き</span>
@@ -1287,7 +971,7 @@ export const WeeklyDigest: React.FC = () => {
               </div>
             </div>
 
-            {/* 拾われた予定の一覧。チェックを外すとこの週の文面・画像・カードから消える。「今後も載せない」は予定カードに保存 */}
+            {/* 拾われた予定の一覧。チェックを外すとこの週のカードから消える。「今後も載せない」は予定カードに保存 */}
             {digestItems.length > 0 && (
               <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <p className="text-xs font-bold text-slate-600 mb-1">
@@ -1375,7 +1059,7 @@ export const WeeklyDigest: React.FC = () => {
                   <p className="text-[11px] text-slate-400 mt-1">
                     {t.description
                       ? '保存すると予定カードにも残り、次回以降もこの紹介文が使われます。'
-                      : 'まだ紹介文がありません。ここで入力（または「AIで紹介文を作る」）して保存すると、文面と画像に載ります（予定カードにも保存されます）。'}{' '}
+                      : 'まだ紹介文がありません。ここで入力（または「AIで紹介文を作る」）して保存すると、カードに載ります（予定カードにも保存されます）。'}{' '}
                     {hasGeminiEventAccess() && 'AIの文は必ず読んで直してから保存してください。'} {draft.length} 文字
                   </p>
 
@@ -1408,8 +1092,8 @@ export const WeeklyDigest: React.FC = () => {
                       </div>
                       <p className="text-[11px] text-slate-400 mt-1">
                         {kinds.length === 0
-                          ? 'この予定にはチラシも記事も無いので、「詳しく見る」ボタンは付きません（文面の▶行も出ません）。カードの文字だけで伝わるよう紹介文を書いてください。'
-                          : `文面の「▶」とカードのボタン・画像のタップ先に使います。グレーはこの予定に無いもの。${kinds.length === 2 ? '指定しなければ チラシPDF → 記事 の順です。' : ''}`}
+                          ? 'この予定にはチラシも記事も無いので、「詳しく見る」ボタンは付きません。カードの文字だけで伝わるよう紹介文を書いてください。'
+                          : `カードのボタン・画像のタップ先に使います。グレーはこの予定に無いもの。${kinds.length === 2 ? '指定しなければ チラシPDF → 記事 の順です。' : ''}`}
                       </p>
                     </div>
 
@@ -1457,114 +1141,6 @@ export const WeeklyDigest: React.FC = () => {
                 </div>
               );
             })}
-
-            <div className="grid gap-4 lg:grid-cols-2 mt-4">
-              {/* 文面 */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-500">配信文（編集できます）</label>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[11px] ${text.length > CHAR_GUIDE ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>
-                      {text.length} 文字{text.length > CHAR_GUIDE ? `（目安 ${CHAR_GUIDE} 文字を超えています。項目を削ると読みやすくなります）` : ''}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setTextEdited(false);
-                        setText(renderText(digest, { shortUrls, linkKinds }));
-                      }}
-                      className={`text-[11px] hover:text-slate-800 ${textEdited ? 'text-amber-700 font-bold' : 'text-slate-500'}`}
-                      title="自動生成の文面に戻す（手で直した内容は消えます）"
-                    >
-                      {textEdited ? '手で直した文面（作り直す）' : '作り直す'}
-                    </button>
-                    <button
-                      onClick={copy}
-                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition"
-                    >
-                      {copied ? <Check size={14} /> : <Copy size={14} />}
-                      {copied ? 'コピーしました' : '文面をコピー'}
-                    </button>
-                  </div>
-                </div>
-                <textarea
-                  value={text}
-                  onChange={(e) => {
-                    setText(e.target.value);
-                    setTextEdited(true);
-                  }}
-                  rows={22}
-                  className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                />
-                {topicLinks.map(({ topic: t, link }) =>
-                  link ? (
-                    <p key={t.id} className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 flex-wrap">
-                      一押し「{t.title}」のリンク先（{link.label}に直接）:
-                      <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline inline-flex items-center gap-0.5 break-all">
-                        {shortUrls[link.url] ?? link.url} <ExternalLink size={10} />
-                      </a>
-                      {shortUrls[link.url] ? '（短縮URL）' : '（短縮URLを取得中か、取得できませんでした）'}
-                    </p>
-                  ) : (
-                    <p key={t.id} className="text-[11px] text-slate-400 mt-1">
-                      一押し「{t.title}」はチラシも記事も無いので、リンク（▶行・ボタン）は付きません。
-                    </p>
-                  )
-                )}
-              </div>
-
-              {/* 画像 */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-500">配信画像（1040×1040・LINE のリッチメッセージ用）</label>
-                  <button
-                    onClick={download}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition"
-                  >
-                    <Download size={14} /> PNGを保存
-                  </button>
-                </div>
-                {/* 画像の種類 */}
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {IMAGE_MODES.map((m) => (
-                    <button
-                      key={m.key}
-                      type="button"
-                      onClick={() => setImageMode(m.key)}
-                      title={m.hint}
-                      className={`text-[11px] px-2 py-1 rounded-full border transition ${
-                        imageMode === m.key
-                          ? 'bg-slate-700 text-white border-slate-700'
-                          : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="relative">
-                  <canvas ref={canvasRef} className="w-full max-w-md rounded-lg border border-slate-200" />
-                  {needsFlyer && firstFlyerState === 'loading' && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-lg text-xs text-slate-500 gap-1.5 max-w-md">
-                      <Loader2 size={14} className="animate-spin" /> チラシを画像にしています...
-                    </div>
-                  )}
-                </div>
-                {needsFlyer && digest.topics[0] && (
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    {!firstSrc
-                      ? '⭐一押しにチラシPDFも記事の写真も無いため「一押しのみ（文字）」で描いています。'
-                      : firstFlyerState === 'error'
-                        ? '画像を読み込めなかったため「一押しのみ（文字）」で描いています。'
-                        : firstSrc.kind === 'photo'
-                          ? '画像: 一押しの記事の写真。'
-                          : firstSrc.fallback
-                            ? 'チラシ: 一押しに由来PDFが無いため、出典号の先頭PDFを使っています（内容が合わなければ他の種類を選んでください）。'
-                            : `チラシ: 一押し${digest.topics.length > 1 ? '1' : ''}の由来PDF${digest.topics[0].source_pdf_label ? `（${digest.topics[0].source_pdf_label}）` : ''}の1ページ目。`}
-                    {digest.topics.length > 1 ? ' 画像は先頭の一押しだけで描きます。' : ''}
-                  </p>
-                )}
-              </div>
-            </div>
           </>
         )}
       </div>
@@ -1587,6 +1163,12 @@ export const WeeklyDigest: React.FC = () => {
           {alreadySentThisWeek && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
               ⚠ この配信日（{md(baseDate)}）はすでに全員配信済みです（{new Date(alreadySentThisWeek.sent_at).toLocaleString('ja-JP')}）。二重配信に注意してください。
+            </p>
+          )}
+
+          {pendingThisWeek && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+              ⏰ この配信日（{md(baseDate)}）は {fmtDateTime(pendingThisWeek.send_at)} に全員配信を予約しています。
             </p>
           )}
 
@@ -1642,6 +1224,14 @@ export const WeeklyDigest: React.FC = () => {
                   {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（自分に）
                 </button>
                 <button
+                  onClick={() => send('admins')}
+                  disabled={sending !== null}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 transition disabled:opacity-50"
+                  title="管理者（Supabase の Secrets の LINE_ADMIN_USER_IDS。リッチメニューの「管理者だけに反映」と同じ人）にだけ送ります。人数ぶん通数を使います"
+                >
+                  {sending === 'admins' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 管理者に送る（確認用）
+                </button>
+                <button
                   onClick={() => send('broadcast')}
                   disabled={sending !== null}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 transition disabled:opacity-50"
@@ -1650,9 +1240,70 @@ export const WeeklyDigest: React.FC = () => {
                   {sending === 'broadcast' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 全員に配信
                 </button>
               </div>
+              {/* 予約配信（予約した時点の内容で、指定の日時に全員へ。pg_cron が5分ごとに送る） */}
+              <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <Clock size={14} className="text-amber-700" /> 日時を指定して全員に配信
+                  </span>
+                  <input
+                    type="datetime-local"
+                    value={scheduleAt}
+                    onChange={(e) => setScheduleAt(e.target.value)}
+                    step={300}
+                    className="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white"
+                  />
+                  <button
+                    onClick={schedule}
+                    disabled={scheduling || sending !== null}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition disabled:opacity-50"
+                    title="いまの内容（画像も）で予約します。指定の時刻から5分以内に送られます"
+                  >
+                    {scheduling ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />} この内容で予約
+                  </button>
+                </div>
+                {schedules.filter((s) => s.status !== 'canceled').length > 0 && (
+                  <ul className="text-[11px] text-slate-600 space-y-1">
+                    {schedules
+                      .filter((s) => s.status !== 'canceled')
+                      .map((s) => {
+                        const st = SCHEDULE_STATUS_LABEL[s.status];
+                        const changed = s.status === 'scheduled' && s.base_date === baseDate && s.content_key !== contentKey;
+                        return (
+                          <li key={s.id} className="flex flex-wrap items-center gap-1.5">
+                            <span className={`px-1.5 py-0.5 rounded font-bold ${st.cls}`}>{st.label}</span>
+                            <span>
+                              {fmtDateTime(s.send_at)} に送信（配信日 {md(s.base_date)}）
+                            </span>
+                            {s.status === 'scheduled' && (
+                              <button onClick={() => cancelSchedule(s)} className="text-slate-400 hover:text-red-600 underline">
+                                取り消す
+                              </button>
+                            )}
+                            {changed && <span className="text-amber-700 font-bold">⚠ 予約後に画面の内容が変わっています（送られるのは予約した時点の内容）</span>}
+                            {s.status === 'failed' && s.error && <span className="text-red-600 break-all">理由: {s.error}</span>}
+                          </li>
+                        );
+                      })}
+                  </ul>
+                )}
+              </div>
               {sendNote && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 whitespace-pre-wrap">{sendNote}</p>}
+              {/* 今月の通数（LINE から取得。API で送った分も含む。LINE公式アカウントの管理画面の配信一覧には API 分は出ない） */}
+              {quota && (
+                <p
+                  className={`text-xs font-bold rounded-lg px-3 py-1.5 border ${
+                    quota.limit != null && quota.limit - quota.used < 50 ? 'text-red-700 bg-red-50 border-red-200' : 'text-slate-700 bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  📨 今月の通数:{' '}
+                  {quota.limit != null
+                    ? `残り ${Math.max(0, quota.limit - quota.used)} 通（上限 ${quota.limit} 通のうち ${quota.used} 通使用）`
+                    : `${quota.used} 通使用（上限なし）`}
+                </p>
+              )}
               <p className="text-[11px] text-slate-400">
-                テスト送信と全員配信は、送るたびに公式LINEの通数（無料枠は月200通）を使います。テスト送信は1通です。チラシ画像は送信時に自動でアップロードされます。
+                テスト送信と全員配信は、送るたびに公式LINEの通数（無料枠は月200通）を使います。全員配信は「友だちの人数」ぶん減ります。テスト送信は1通です。チラシ画像は送信時に自動でアップロードされます。
               </p>
 
               {history.length > 0 && (
@@ -1663,7 +1314,7 @@ export const WeeklyDigest: React.FC = () => {
                       <li key={h.id}>
                         {new Date(h.sent_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{' '}
                         <span className={`px-1.5 py-0.5 rounded font-bold ${h.mode === 'broadcast' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {h.mode === 'broadcast' ? '全員配信' : 'テスト'}
+                          {h.mode === 'broadcast' ? '全員配信' : h.mode === 'admins' ? '管理者' : 'テスト'}
                         </span>{' '}
                         配信日 {h.base_date}
                         {h.line_status && h.line_status >= 300 ? ` （LINE ${h.line_status}）` : ''}
@@ -1686,10 +1337,9 @@ export const WeeklyDigest: React.FC = () => {
         <p className="font-bold text-slate-600">組み立てのルール</p>
         <p>・⭐一押し: 配信候補（⭐）のうち開催が近いもの1件。紹介文（1〜2文）と、チラシPDF→記事→予定ページの順でいちばん直接的なURLを添えます ／ 📰レポート: 直近14日に公開したもの最大2件</p>
         <p>・📅今週の予定: 要予約以外で配信日から7日間、最大6件 ／ 📝申込受付中: 要予約で締切が14日以内、締切順に最大4件</p>
-        <p>・⏰締切間近: 締切3日以内。締切が未入力の要予約は「開催7日前」を仮締切にして「頃」を付けます（抽出ダイアログの「締切」欄で入力できます）</p>
+        <p>・⏰締切間近: 締切が配信日から7日以内（今週締切）。締切が未入力の要予約は「開催7日前」を仮締切にして「頃」を付けます（抽出ダイアログの「締切」欄で入力できます）</p>
         <p>・対象者・参加費は ⭐一押し と 📝申込受付中／⏰締切間近 の行にだけ「（65歳以上・無料）」の形で添えます（📅今週の予定には付けません）</p>
-        <p>・画像は「一押しチラシ」が既定。チラシが無いときは「一押しのみ（文字）」になります。LINEのリッチメッセージでは画像のタップ先に一押しのURLを設定してください</p>
-        <p>・件数の上限を超えた分は載りません。載せたいものがあれば文面を直接編集してください</p>
+        <p>・件数の上限を超えた分は載りません。載せたいものは ⭐一押しに選ぶと必ず載ります</p>
       </div>
     </div>
   );

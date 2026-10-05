@@ -2,18 +2,21 @@
  * 一押しカードの画像（チラシPDFの1ページ目、または記事の写真）から、カード用の枠を切り出す
  *
  * crop = { x, y, scale, aspect }
- *   aspect … 枠の形。'1:1'（正方形）/ '4:3' / '16:9'（横長）。未指定なら元画像の向きから決める（横長の写真は 4:3、それ以外は 1:1）
+ *   aspect … 枠の形。'1:1'（正方形）/ '4:3' / '16:9'（横長）/ '210:297'・'297:210'（縦長・横長 A4。チラシ1ページを全面で）。未指定なら元画像の向きから決める（横長の写真は 4:3、それ以外は 1:1）
  *   scale  … 拡大率（1 = 枠が元画像に収まる最大、3 = その1/3 を拡大）
  *   x, y   … 枠の位置（0 = 左端/上端、1 = 右端/下端。動かせる範囲に対する割合）
  */
 
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 
-export type CropAspect = '1:1' | '4:3' | '16:9';
+export type CropAspect = '1:1' | '4:3' | '16:9' | '210:297' | '297:210';
 export const ASPECTS: Array<{ key: CropAspect; label: string; ratio: number }> = [
   { key: '1:1', label: '正方形', ratio: 1 },
   { key: '4:3', label: '横長 4:3', ratio: 4 / 3 },
   { key: '16:9', label: '横長 16:9', ratio: 16 / 9 },
+  // チラシ（A4）を切らずにページ全体で載せる。LINE の aspectRatio は整数の「幅:高さ」なので 210:297 / 297:210
+  { key: '210:297', label: '縦長 A4（全面）', ratio: 210 / 297 },
+  { key: '297:210', label: '横長 A4（全面）', ratio: 297 / 210 },
 ];
 
 export interface HeroCrop {
@@ -28,7 +31,7 @@ export const MIN_SCALE = 1;
 export const MAX_SCALE = 3;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
-const isAspect = (a: unknown): a is CropAspect => a === '1:1' || a === '4:3' || a === '16:9';
+const isAspect = (a: unknown): a is CropAspect => ASPECTS.some((x) => x.key === a);
 
 export function normalizeCrop(c?: Partial<HeroCrop> | null, legacyY?: number | null): HeroCrop {
   if (c && typeof c === 'object') {

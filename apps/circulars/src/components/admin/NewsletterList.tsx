@@ -17,6 +17,7 @@ import { ArticleCropPage } from './ArticleCropPage';
 import CircularsView from '../public/CircularsView';
 import { MOCK_CATEGORIES } from '@cc-saas/shared/constants';
 import { showToast, showError, appConfirm, appPrompt, ProcessingIndicator } from '@/components/ui/feedback';
+import { publicSiteUrl } from '@/lib/siteUrl';
 
 /**
  * 回覧板一覧から除外する号のタイトル。
@@ -478,7 +479,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 onClick={async () => {
                   // 確認待ち中はリンクの再表示のみ（トークンは変えない）
                   if (selectedNewsletter.review_status === 'pending' && selectedNewsletter.review_token) {
-                    setReviewLinkUrl(`${window.location.origin}/review/${selectedNewsletter.review_token}`);
+                    setReviewLinkUrl(`${publicSiteUrl()}/review/${selectedNewsletter.review_token}`);
                     return;
                   }
                   if (!(await appConfirm({
@@ -490,7 +491,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     const updated = await requestReview(selectedNewsletter.id);
                     setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
                     setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
-                    setReviewLinkUrl(`${window.location.origin}/review/${updated.review_token}`);
+                    setReviewLinkUrl(`${publicSiteUrl()}/review/${updated.review_token}`);
                   } catch (error) {
                     console.error('確認依頼エラー:', error);
                     showError('確認依頼を作成できませんでした。時間をおいてもう一度お試しください。');

@@ -34,6 +34,7 @@ import { ProcessingIndicator, showToast } from '@/components/ui/feedback';
 import { isSameEvent } from './eventMatch';
 import { inspectPdf, isOfficeNoticePdf, type PdfInfo } from './pdfInspect';
 import { PdfPagePeek } from './PdfPagePeek';
+import { publicSiteUrl } from '@/lib/siteUrl';
 
 /**
  * 編集可能なイベント候補（選択状態付き）
@@ -686,7 +687,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
         org_name: c.organizer,
         start_time: start,
         end_time: end,
-        article_url: window.location.origin,
+        article_url: publicSiteUrl(),
       };
     });
     await window.navigator.clipboard.writeText(JSON.stringify(rows, null, 2));

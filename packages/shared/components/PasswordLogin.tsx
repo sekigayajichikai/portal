@@ -10,6 +10,9 @@
 import React, { useState, FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext.js';
 
+/** パスワード管理に保存されるときのユーザー名（表示用。実際のログインは AuthContext の固定アドレスで行う） */
+const LOGIN_USERNAME = '関ヶ谷自治会 管理画面';
+
 /**
  * パスワードログインコンポーネント
  *
@@ -71,13 +74,18 @@ export const PasswordLogin: React.FC = () => {
         </div>
 
         {/* ログインフォーム */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Chrome などのパスワード管理に保存・自動入力してもらうため、ユーザー名欄（見えない・固定値）と
+            autocomplete を付ける。パスワードだけのフォームは「どのアカウントの」が分からず保存されにくい */}
+        <form onSubmit={handleSubmit} method="post" action="#" name="login" className="space-y-6">
+          <input type="text" name="username" autoComplete="username" value={LOGIN_USERNAME} readOnly hidden />
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
               パスワード
             </label>
             <input
               id="password"
+              name="password"
+              autoComplete="current-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import { showToast, showError, appConfirm } from '@/components/ui/feedback';
 import EventReportView from '@/components/public/EventReportView';
+import { publicSiteUrl } from '@/lib/siteUrl';
 
 /** レポート枠（newsletter）のタイトル。ReportsView / MonthlyGuide と揃える */
 const REPORT_NEWSLETTER_TITLE = '関ヶ谷レポート';
@@ -431,8 +432,8 @@ export const ReportBoard: React.FC = () => {
  * /?report-review=<記事ID> はログイン不要・非公開の記事も表示（公開はしない）。
  */
 async function copyReviewLink(articleId: string) {
-  // ローカル開発中でも共有できるリンクになるよう、本番URLが設定されていればそちらを使う
-  const base = (import.meta.env.VITE_PUBLIC_SITE_URL || window.location.origin).replace(/\/+$/, '');
+  // ローカル開発中でも共有できるリンクになるよう、本番サイトに向ける
+  const base = publicSiteUrl();
   const link = `${base}/?report-review=${articleId}`;
   try {
     await navigator.clipboard.writeText(link);
@@ -444,7 +445,7 @@ async function copyReviewLink(articleId: string) {
 
 /** 公開中レポートの個別URL（/?report=<記事ID>）をコピーする。LINE配信や共有に使う */
 async function copyPublicLink(articleId: string) {
-  const base = (import.meta.env.VITE_PUBLIC_SITE_URL || window.location.origin).replace(/\/+$/, '');
+  const base = publicSiteUrl();
   const link = `${base}/?report=${articleId}`;
   try {
     await navigator.clipboard.writeText(link);

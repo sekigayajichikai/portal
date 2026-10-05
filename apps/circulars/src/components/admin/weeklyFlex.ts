@@ -14,7 +14,8 @@
  */
 
 import type { LineMessage, PublicEventCard } from '@cc-saas/shared';
-import { type Digest, type LinkKind, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading, hasDetailLink, topicDeadline, topicDeadlineText } from './weeklyDigestCore';
+import type { CropAspect } from './heroCrop';
+import { type Digest, type LinkKind, type TopicDeadline, applyWhenText, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading, hasDetailLink, topicDeadline, topicDeadlineText } from './weeklyDigestCore';
 
 /**
  * 配色は「役割別＝リンク先の色」（2026-09-21 決定）:
@@ -33,8 +34,8 @@ const GRAY = '#888888';
 export interface FlexBuildOptions {
   /** 一押しごとのチラシ画像（予定ID → https・枠に切り出したもの）。無い予定は画像なし */
   flyerImageUrls: Record<string, string | null>;
-  /** 一押しごとの画像枠の形（予定ID → '1:1' | '4:3' | '16:9'）。無ければ 1:1 */
-  flyerAspects?: Record<string, '1:1' | '4:3' | '16:9'>;
+  /** 一押しごとの画像枠の形（予定ID → '1:1' | '4:3' | '16:9' | '210:297' | '297:210'）。無ければ 1:1 */
+  flyerAspects?: Record<string, CropAspect>;
   /** 一押しごとのリンク先の指定（予定ID → pdf / article / event）。無ければ チラシPDF → 記事 → 予定ページ の順 */
   linkKinds: Record<string, LinkKind>;
 }
@@ -135,6 +136,29 @@ function eventRow(
  *
  * 画像は hero ではなく body の image 部品（複数置けるように）。カルーセルにしないので高さ揃えの空白は出ない。
  */
+/**
+ * 「今週が申込締切」の赤い帯（一押しの画像の上）
+ *
+ *   ┌────────────────────┐
+ *   │ ⏰ 今週が申込締切です      │
+ *   │ 10/11(日)まで・お早めに！ │
+ *   └────────────────────┘
+ */
+function deadlineBand(dl: TopicDeadline, margin: string) {
+  return {
+    type: 'box',
+    layout: 'vertical',
+    backgroundColor: RED,
+    cornerRadius: 'md',
+    paddingAll: 'md',
+    margin,
+    contents: [
+      text('⏰ 今週が申込締切です', { color: '#ffffff', weight: 'bold', size: 'lg' }),
+      text(`${md(dl.deadline)}${dl.guessed ? '頃' : ''}まで・お早めに！`, { color: '#ffffff', weight: 'bold', size: 'md' }),
+    ],
+  };
+}
+
 function topicBubble(d: Digest, opts: FlexBuildOptions) {
   const blocks: unknown[] = [];
   d.topics.forEach((t, i) => {
@@ -145,6 +169,9 @@ function topicBubble(d: Digest, opts: FlexBuildOptions) {
     const img = opts.flyerImageUrls[t.id] ?? null;
     const items: unknown[] = [];
     if (i > 0) items.push({ type: 'separator', margin: 'lg' });
+    const dl = topicDeadline(t, d);
+    // 今週が申込締切の一押しは、画像の上に赤い帯を置く。開催は先なので「今週やるの？」と読まれないように（2026-10-05 案）
+    if (dl?.thisWeek) items.push(deadlineBand(dl, i > 0 ? 'lg' : 'none'));
     if (img) {
       items.push({
         type: 'image',
@@ -154,15 +181,16 @@ function topicBubble(d: Digest, opts: FlexBuildOptions) {
         aspectRatio: opts.flyerAspects?.[t.id] ?? '1:1',
         aspectMode: 'cover',
         backgroundColor: '#f5f5f5',
-        margin: i > 0 ? 'lg' : 'none',
+        margin: dl?.thisWeek ? 'sm' : i > 0 ? 'lg' : 'none',
         ...(link ? { action: uri(mainLabel, link.url) } : {}),
       });
     }
     items.push(text(t.title, { weight: 'bold', size: 'lg', margin: 'md' }));
-    items.push(text(`${md(t.event_date!)}${t.event_time ? ` ${t.event_time}` : ''}`, { size: 'md', color: BLUE, weight: 'bold' }));
-    // 申込が要るものは締切。今週締切なら赤字で目立たせる（申込のリマインド）
-    const dl = topicDeadline(t, d);
-    if (dl) items.push(text(topicDeadlineText(dl), dl.thisWeek ? { size: 'md', color: RED, weight: 'bold' } : { size: 'sm', color: '#666666' }));
+    // 今週締切のときは日付に「開催」を付けて控えめに（締切の帯と取り違えないように）
+    const when = `${md(t.event_date!)}${t.event_time ? ` ${t.event_time}` : ''}`;
+    items.push(dl?.thisWeek ? text(`開催 ${when}`, { size: 'md', color: '#555555' }) : text(when, { size: 'md', color: BLUE, weight: 'bold' }));
+    // 締切が来週以降なら灰色の1行で添える（今週締切は上の帯で伝える）
+    if (dl && !dl.thisWeek) items.push(text(topicDeadlineText(dl), { size: 'sm', color: '#666666' }));
     const place = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
     if (place) items.push(text(`📍 ${place}`, { size: 'sm', color: '#666666' }));
     if (t.description) items.push(text(t.description, { size: 'md', color: '#333333', margin: 'md' }));
@@ -199,7 +227,7 @@ function eventsBubble(d: Digest) {
   };
 }
 
-/** 申込受付中バブル（⏰締切間近＝締切3日以内を先頭に、その後に締切順） */
+/** 申込受付中バブル（⏰締切間近＝今週締切を先頭に、その後に締切順） */
 function applyBubble(d: Digest) {
   const contents: unknown[] = [];
   const rows = [...d.urgent.map((c) => ({ c, urgent: true })), ...d.apply.map((c) => ({ c, urgent: false }))];
@@ -210,7 +238,7 @@ function applyBubble(d: Digest) {
     contents.push(
       eventRow(c, {
         prefix: urgent ? '⏰ ' : '',
-        whenText: `${urgent ? '締切間近 ' : '締切 '}${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`,
+        whenText: applyWhenText(c, d, urgent),
         whenColor: RED,
         sub: [{ text: `${md(c.event_date!)}開催${audienceFee(c)}`, color: '#444444' }],
       })

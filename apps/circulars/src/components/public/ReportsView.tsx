@@ -16,6 +16,7 @@ import { getNewsletters, getArticlesByNewsletterId, getArticleById } from '@cc-s
 import type { Article } from '@cc-saas/shared';
 import { ChevronLeft, Link as LinkIcon, Check } from 'lucide-react';
 import EventReportView from '@/components/public/EventReportView';
+import { publicSiteUrl } from '@/lib/siteUrl';
 
 const REPORT_NEWSLETTER_TITLE = '関ヶ谷レポート';
 const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
@@ -29,7 +30,7 @@ function fmtDate(d?: string | null): string | null {
 
 /** レポート個別ページの URL（共有用） */
 export function reportUrl(articleId: string): string {
-  return `${window.location.origin}/?report=${articleId}`;
+  return `${publicSiteUrl()}/?report=${articleId}`;
 }
 
 /** URL の ?report= から記事IDを読む */

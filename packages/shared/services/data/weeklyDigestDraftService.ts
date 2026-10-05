@@ -25,15 +25,15 @@ export interface WeeklyDigestDraft {
   link_kinds: Record<string, string>;
   /** 吹き出し①の文。手で直したときだけ入る（null=自動生成のまま） */
   greeting: string | null;
-  /** コピー用の文面。手で直したときだけ入る（null=自動生成のまま） */
+  /** 旧: コピー用の文面（2026-10-05 にコピペ用の配信文・配信画像を画面から削除。列は古い下書きのため残す） */
   text: string | null;
-  /** 配信画像の種類（flyer / topic / hybrid / list） */
+  /** 旧: 配信画像の種類（flyer / topic / hybrid / list）。同上 */
   image_mode: string | null;
   updated_at: string;
 }
 
-/** 保存時に渡す内容（id を省くと新規作成） */
-export type WeeklyDigestDraftInput = Omit<WeeklyDigestDraft, 'id' | 'updated_at'> & { id?: string };
+/** 保存時に渡す内容（id を省くと新規作成）。旧項目 text / image_mode は渡さない */
+export type WeeklyDigestDraftInput = Omit<WeeklyDigestDraft, 'id' | 'updated_at' | 'text' | 'image_mode'> & { id?: string };
 
 /** 下書きの一覧（配信日の新しい順 → 更新の新しい順）。テーブル未作成のときは空 */
 export async function listWeeklyDigestDrafts(limit = 60): Promise<WeeklyDigestDraft[]> {

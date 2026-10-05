@@ -11,12 +11,11 @@
  */
 
 import type { PublicEventCard, Article } from '@cc-saas/shared';
+import { publicSiteUrl } from '@/lib/siteUrl';
 
 export const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
 /** 件数上限（情報量の抑制） */
 export const LIMITS = { topic: 1, reports: 2, events: 6, apply: 4 };
-/** 目安の文字数（LINE で読みやすい上限） */
-export const CHAR_GUIDE = 600;
 
 export const toDate = (s: string) => new Date(s + 'T00:00:00');
 export const ymd = (d: Date) =>
@@ -42,8 +41,8 @@ export const audienceFee = (c: { target_audience?: string | null; fee?: string |
   const s = [c.target_audience, c.fee].filter(Boolean).join('・');
   return s ? `（${s}）` : '';
 };
-export const siteUrl = () =>
-  ((import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined) || window.location.origin).replace(/\/+$/, '');
+/** 配信するリンクの行き先（ローカルから送っても本番サイトに向く。src/lib/siteUrl.ts） */
+export const siteUrl = publicSiteUrl;
 
 export type LinkKind = 'pdf' | 'article';
 /** 選べるリンク先の並び（画面のラジオもこの順） */
@@ -74,11 +73,6 @@ export const availableLinkKinds = (c: PublicEventCard): LinkKind[] => [
   ...(c.linked_article_id ? (['article'] as LinkKind[]) : []),
 ];
 export const LINK_KIND_LABEL: Record<LinkKind, string> = { pdf: 'チラシ（PDF）', article: '記事' };
-/** 元URL→短縮URL の対応と、一押しごとのリンク先指定 */
-export interface TextOptions {
-  shortUrls?: Record<string, string>;
-  linkKinds?: Record<string, LinkKind>;
-}
 /**
  * 「押すと詳しい情報がある」予定か（チラシPDF か リンク記事がある）。
  * 行事予定表から拾っただけの予定（合同会議など）は false で、カードの行をタップなしにする。
@@ -118,30 +112,6 @@ export const topicImageSource = (c: PublicEventCard | null): TopicImageSource | 
   return null;
 };
 
-/**
- * 短縮URL（TinyURL）。チラシPDFの直リンクは Supabase Storage のURLで130文字前後になり
- * 文面が長くなるので、配信文では短縮したものに置き換える。キー不要・ブラウザから直接呼べる（CORS対応）。
- * 失敗したときは元のURLをそのまま使う。同じURLは再度問い合わせない。
- */
-const shortUrlCache = new Map<string, string>();
-export async function shortenUrl(url: string): Promise<string> {
-  const cached = shortUrlCache.get(url);
-  if (cached) return cached;
-  // localhost 等は短縮サービス側で弾かれるので、そのまま
-  if (/^https?:\/\/(localhost|127\.|192\.168\.)/.test(url)) return url;
-  try {
-    const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`);
-    const text = (await res.text()).trim();
-    if (res.ok && /^https:\/\/tinyurl\.com\/\S+$/.test(text)) {
-      shortUrlCache.set(url, text);
-      return text;
-    }
-  } catch (e) {
-    console.warn('短縮URLの取得に失敗:', e);
-  }
-  return url;
-}
-
 /** 申込が必要な予定（締切付き） */
 export type ApplyItem = PublicEventCard & { deadline: string; deadlineGuessed: boolean };
 
@@ -175,6 +145,15 @@ export const topicDeadlineText = (t: TopicDeadline) =>
     ? `⏰ 申込は今週 ${md(t.deadline)}${t.guessed ? '頃' : ''}まで！お早めに`
     : `📝 申込締切 ${md(t.deadline)}${t.guessed ? '頃' : ''}`;
 
+/**
+ * 申込受付中の行の1行目（締切）。今週締切は「締切間近」、翌週（配信の週の次の7日間）は「来週締切」、それより先は「締切」。
+ * 来週締切が今週の配信に載っていて「今週締切？」と読まれたため、言葉で区別する（2026-10-05）
+ */
+export const applyWhenText = (c: ApplyItem, d: Pick<Digest, 'to'>, urgent: boolean) => {
+  const label = urgent ? '締切間近' : c.deadline <= addDays(d.to, 7) ? '来週締切' : '締切';
+  return `${label} ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`;
+};
+
 export interface Digest {
   from: string;
   to: string;
@@ -193,7 +172,7 @@ export interface Digest {
  *   📰 新しいレポート … 最大2件（直近14日に公開されたレポート）
  *   📅 今週の予定 … 最大6件（open / recurring / 種別なし。配信日から7日間）
  *   📝 申込受付中 … 最大4件（reserve。締切が14日以内。締切不明は開催7日前を仮締切）
- *   ⏰ 締切間近 … 締切が3日以内のもの（申込受付中から抜き出して先頭に）
+ *   ⏰ 締切間近 … 締切が配信の週（配信日から7日間）のうちのもの（申込受付中から抜き出して先頭に）
  */
 /** 一押しの最大件数（1枚のカードに縦に並べる） */
 export const MAX_TOPICS = 2;
@@ -212,7 +191,9 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
   // 「配信日から7日間」= 配信日を含めて7日（月曜配信なら日曜まで）。+7 にすると翌週の月曜まで8日間になるので +6
   const to = addDays(baseDate, 6);
   const applyUntil = addDays(baseDate, 14);
-  const urgentUntil = addDays(baseDate, 3);
+  // 締切間近 = 今週が締切（一押しの「⏰今週締切」と同じ範囲）。以前は3日以内だったが、週1回の配信では
+  // 4〜6日後の締切が「申込受付中」に埋もれるため、配信の週いっぱいに広げた（2026-10-05）
+  const urgentUntil = to;
 
   // 「週次配信に載せない」（役員向け会議など）は最初から候補に入れない。カレンダーには載る
   const future = cards.filter((c) => c.event_date && c.event_date >= from && !c.digest_exclude);
@@ -301,68 +282,3 @@ export function topicChoices(
 
 /** 見出し「【関ヶ谷自治会 今週のお知らせ】9/21(月)〜9/27(日)」 */
 export const digestHeading = (d: Digest) => `【関ヶ谷自治会 今週のお知らせ】${md(d.from)}〜${md(d.to)}`;
-
-/** 「（西金沢地域ケアプラザ 多目的ホール）」の形の場所 */
-export const loc = (c: PublicEventCard) => (c.event_location ? `（${c.event_location}）` : '');
-
-/** 「▶ チラシを見る」などリンク先の種類に応じた行頭 */
-export const linkVerb = (kind: LinkKind) => (kind === 'pdf' ? 'チラシを見る' : '記事を読む');
-
-/** 配信文（プレーンテキスト）を組み立てる。opts.shortUrls は 元URL→短縮URL の対応（取得済みのものだけ）、opts.linkKinds は一押しごとのリンク先指定 */
-export function renderText(d: Digest, opts: TextOptions = {}): string {
-  const shortUrls = opts.shortUrls ?? {};
-  const lines: string[] = [];
-  lines.push(digestHeading(d));
-
-  if (d.topics.length > 0) {
-    lines.push('', '⭐ 今週の一押し');
-    d.topics.forEach((t, i) => {
-      if (i > 0) lines.push('');
-      lines.push(`${md(t.event_date!)}${shortTime(t.event_time)} ${t.title}`);
-      // 申込が要るものは締切を添える（今週締切なら強めに）
-      const dl = topicDeadline(t, d);
-      if (dl) lines.push(topicDeadlineText(dl));
-      // 紹介文（1〜2文）。タイトルの直下に置く
-      if (t.description) lines.push(t.description);
-      const sub = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
-      if (sub) lines.push(sub);
-      // リンク先は指定があればそれ、無ければ チラシPDF → 記事 の順。どちらも無ければ▶行は出さない
-      const link = topicLink(t, opts.linkKinds?.[t.id]);
-      if (link) lines.push(`▶ ${linkVerb(link.kind)}: ${shortUrls[link.url] ?? link.url}`);
-    });
-  }
-
-  if (d.reports.length > 0) {
-    lines.push('', '📰 新しいレポート');
-    for (const r of d.reports) {
-      lines.push(`・${r.title}`);
-      lines.push(`  ${siteUrl()}/?report=${r.id}`);
-    }
-  }
-
-  if (d.urgent.length > 0) {
-    lines.push('', '⏰ 締切間近');
-    for (const c of d.urgent) {
-      lines.push(`・${c.title}${loc(c)} 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`);
-    }
-  }
-
-  if (d.events.length > 0) {
-    lines.push('', '📅 今週の予定');
-    for (const c of d.events) {
-      lines.push(`・${md(c.event_date!)}${shortTime(c.event_time)} ${c.title}${loc(c)}`);
-    }
-  }
-
-  if (d.apply.length > 0) {
-    lines.push('', '📝 申込受付中');
-    for (const c of d.apply) {
-      lines.push(
-        `・${c.title}${loc(c)} ${md(c.event_date!)}開催 締切${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}${audienceFee(c)}`
-      );
-    }
-  }
-
-  lines.push('', '▶ 詳しくは回覧板サイトへ', `${siteUrl()}/`);
-  return lines.join('\n');
-}
