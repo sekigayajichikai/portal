@@ -8,7 +8,7 @@ import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useEffect, useState } from 'react';
 import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getAdminEventCards, addEventCard, updateEventCard, deleteEventCard, requestReview, cancelReview, type AdminEventCard } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
-import { FileText, Calendar, ChevronRight, ChevronUp, ChevronDown, GripVertical, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles, ClipboardCheck, CheckCircle2, MessageSquareWarning } from 'lucide-react';
+import { FileText, Calendar, ChevronRight, ChevronUp, ChevronDown, GripVertical, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles, ClipboardCheck, CheckCircle2, MessageSquareWarning, Pencil } from 'lucide-react';
 import { ArticleList } from './ArticleList';
 import { EventCandidateDialog } from './EventCandidateDialog';
 import { EventCardEditDialog } from './EventCardEditDialog';
@@ -59,6 +59,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
   // 公開版比較タブ
   const [viewingPublished, setViewingPublished] = useState(false);
+  // 公開中の回覧板を、その場で直しているときの回覧板ID（「その場で直す」で確かめたもの）
+  const [liveEditId, setLiveEditId] = useState<string | null>(null);
   const [publishedArticles, setPublishedArticles] = useState<Article[]>([]);
 
   // プレビュー
@@ -212,6 +214,11 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     window.dispatchEvent(new HashChangeEvent('hashchange'));
   };
 
+  // 記事・PDFを直せるか。下書きはいつでも。公開中は「その場で直す」を押したあとだけ
+  // （以前は下書きだけで、少し足すにも非公開→確認依頼→承認→公開をやり直す必要があった）
+  const canEdit = !!selectedNewsletter &&
+    (selectedNewsletter.status === 'draft' || (selectedNewsletter.status === 'published' && liveEditId === selectedNewsletter.id));
+
   /**
    * 記事が更新された時の処理
    */
@@ -321,7 +328,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
           <div className="flex items-center gap-3">
             {/* PDFクロップ（記事抽出 + 画像追加 統合） */}
-            {(selectedNewsletter?.source_pdf_urls?.length || selectedNewsletter?.source_pdf_url) && selectedNewsletter.status === 'draft' && (
+            {(selectedNewsletter?.source_pdf_urls?.length || selectedNewsletter?.source_pdf_url) && canEdit && (
               <button
                 onClick={() => setShowArticleCrop(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium transition-colors"
@@ -333,7 +340,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             )}
 
             {/* 記事を手動追加（下書きのみ） */}
-            {selectedNewsletter.status === 'draft' && (
+            {canEdit && (
               <button
                 onClick={async () => {
                   const title = await appPrompt({
@@ -378,13 +385,32 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             )}
 
             {/* PDFを追加（下書きのみ） */}
-            {onEditNewsletter && selectedNewsletter.status === 'draft' && (
+            {onEditNewsletter && canEdit && (
               <button
                 onClick={() => onEditNewsletter(selectedNewsletter as Newsletter & { article_count: number })}
                 className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
               >
                 <Edit size={18} />
                 PDFを追加
+              </button>
+            )}
+
+            {/* その場で直す（公開中のまま。すぐ住民に見える） */}
+            {selectedNewsletter.status === 'published' && liveEditId !== selectedNewsletter.id && (
+              <button
+                onClick={async () => {
+                  if (!(await appConfirm({
+                    title: '公開中の回覧板を、その場で直しますか？',
+                    message: '記事やPDFの追加・手直しが、すぐ住民向けページに出ます。担当者の確認は通りません。大きく作り直すときは「編集する」で編集用コピーを作ってください。',
+                    confirmLabel: 'その場で直す',
+                  }))) return;
+                  setLiveEditId(selectedNewsletter.id);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
+                title="公開中のまま、記事やPDFを追加・手直しする"
+              >
+                <Pencil size={18} />
+                その場で直す
               </button>
             )}
 
@@ -648,6 +674,22 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             </span>
           </div>
         </div>
+
+        {/* その場で直しているときの知らせ */}
+        {selectedNewsletter.status === 'published' && liveEditId === selectedNewsletter.id && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start justify-between gap-3">
+            <div className="text-sm text-amber-800">
+              <p className="font-bold flex items-center gap-2"><Pencil size={16} />公開中の回覧板を、その場で直しています</p>
+              <p className="mt-1">記事やPDFの追加・手直しは、保存したときにすぐ住民向けページに出ます。</p>
+            </div>
+            <button
+              onClick={() => setLiveEditId(null)}
+              className="shrink-0 px-3 py-1.5 text-sm bg-white border border-amber-300 text-amber-800 rounded-lg hover:bg-amber-100 font-medium"
+            >
+              直し終わる
+            </button>
+          </div>
+        )}
 
         {/* 編集コピーバナー */}
         {selectedNewsletter.parent_id && selectedNewsletter.status === 'draft' && (
@@ -916,10 +958,10 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           <ArticleList
             articles={articles}
             categories={MOCK_CATEGORIES}
-            onArticleUpdate={selectedNewsletter.status === 'draft' ? handleArticleUpdate : undefined}
-            onArticleDelete={selectedNewsletter.status === 'draft' ? handleArticleDelete : undefined}
-            enableDragAndDrop={selectedNewsletter.status === 'draft'}
-            onArticlesReorder={selectedNewsletter.status === 'draft' ? (reordered) => setArticles(reordered) : undefined}
+            onArticleUpdate={canEdit ? handleArticleUpdate : undefined}
+            onArticleDelete={canEdit ? handleArticleDelete : undefined}
+            enableDragAndDrop={canEdit}
+            onArticlesReorder={canEdit ? (reordered) => setArticles(reordered) : undefined}
             availablePdfs={selectedNewsletter.source_pdf_urls?.map((p: any) => ({ url: p.url, label: p.label || 'PDF' }))}
           />
         ) : !selectedNewsletter.source_pdf_urls?.length && !selectedNewsletter.source_pdf_url ? (
@@ -1020,7 +1062,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     サムネイル生成
                   </button>
                 )}
-                {selectedNewsletter.status === 'draft' && pdfEntries.length > 1 && (
+                {canEdit && pdfEntries.length > 1 && (
                   <button
                     onClick={async () => {
                       if (!(await appConfirm({
@@ -1066,7 +1108,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     <p className="text-xs font-medium text-green-600 pt-3 mt-2 border-t border-slate-100">📋 回覧板PDF ({attachPdfs.length}件)</p>
                   )}
                   <div
-                    draggable={selectedNewsletter.status === 'draft'}
+                    draggable={canEdit}
                     onDragStart={() => setDragPdfIndex(i)}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={() => {
@@ -1079,7 +1121,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     }`}
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      {selectedNewsletter.status === 'draft' && (
+                      {canEdit && (
                         <GripVertical
                           size={16}
                           className="text-slate-300 cursor-grab shrink-0"
@@ -1096,10 +1138,10 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                       <div className="min-w-0 flex-1">
                         <p
                           className={`text-sm font-medium truncate ${
-                            selectedNewsletter.status === 'draft' ? 'text-slate-700 cursor-pointer hover:text-blue-600' : 'text-slate-700'
+                            canEdit ? 'text-slate-700 cursor-pointer hover:text-blue-600' : 'text-slate-700'
                           }`}
                           onClick={async () => {
-                            if (selectedNewsletter.status !== 'draft') return;
+                            if (!canEdit) return;
                             const newLabel = await appPrompt({
                               title: 'PDFの表示名を編集',
                               defaultValue: pdf.label || pdf.filename,
@@ -1111,16 +1153,16 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                               setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
                             }).catch((error) => { console.error('ラベル更新エラー:', error); showError('ラベルを更新できませんでした。時間をおいてもう一度お試しください。'); });
                           }}
-                          title={selectedNewsletter.status === 'draft' ? 'クリックして編集' : ''}
+                          title={canEdit ? 'クリックして編集' : ''}
                         >
                           {pdf.label || pdf.filename}
                         </p>
                         <p
                           className={`text-xs truncate ${
-                            selectedNewsletter.status === 'draft' ? 'text-slate-400 cursor-pointer hover:text-blue-500' : 'text-slate-400'
+                            canEdit ? 'text-slate-400 cursor-pointer hover:text-blue-500' : 'text-slate-400'
                           }`}
                           onClick={async () => {
-                            if (selectedNewsletter.status !== 'draft') return;
+                            if (!canEdit) return;
                             const newPublisher = await appPrompt({
                               title: '発行元を選択',
                               message: 'タップして選ぶか、下の欄に入力してください',
@@ -1134,9 +1176,9 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                               setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
                             }).catch((error) => { console.error('発行元更新エラー:', error); showError('発行元を更新できませんでした。時間をおいてもう一度お試しください。'); });
                           }}
-                          title={selectedNewsletter.status === 'draft' ? 'クリックして発行元を編集' : ''}
+                          title={canEdit ? 'クリックして発行元を編集' : ''}
                         >
-                          {pdf.publisher ? `📍 ${pdf.publisher}` : (selectedNewsletter.status === 'draft' ? '＋ 発行元を設定' : '')}
+                          {pdf.publisher ? `📍 ${pdf.publisher}` : (canEdit ? '＋ 発行元を設定' : '')}
                         </p>
                         {(
                           <label className="inline-flex items-center gap-1 mt-1 text-xs text-amber-600 cursor-pointer hover:text-amber-800">
@@ -1169,7 +1211,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                             {pdf.thumbnail === 'pending' ? '⚠️ サムネイル未作成' : pdf.thumbnail && pdf.thumbnail !== 'failed' ? '📷 サムネイル差替え' : '📷 サムネイル追加'}
                           </label>
                         )}
-                        {selectedNewsletter.status === 'draft' && (
+                        {canEdit && (
                           <button
                             onClick={async () => {
                               try {
@@ -1202,7 +1244,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         )}
                       </div>
                     </div>
-                    {selectedNewsletter.status === 'draft' && (
+                    {canEdit && (
                       <div className="flex items-center gap-1 ml-2 shrink-0">
                         {/* 上下入替（ドラッグでも移動可能） */}
                         <div className="flex flex-col gap-1">
