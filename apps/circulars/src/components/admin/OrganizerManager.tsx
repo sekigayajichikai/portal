@@ -2,6 +2,8 @@
  * 団体マスタ管理（「マスタ」タブの中の1枚）
  *
  * 予定の主催と、回覧板PDFの発行元を1つの一覧でまとめて管理する（2026-10-01 一本化）。
+ * 2026-10-05 から中身はカレンダー（book-system）と同じ団体マスタ（booking_organizations）。
+ * ここに出るのは主催・発行元の候補にしている団体だけ。ゴミ箱ボタンは「候補から外す」で、団体は消さない。
  * 会場マスタと同じく、別名（揺れた表記・誤字）に当たるものは正式名に自動で置き換える。
  * 「主催」「発行元」のチェックで、どちらの候補に出すかを決める。
  */
@@ -96,18 +98,17 @@ export const OrganizerManager: React.FC = () => {
 
   const handleDelete = async (o: Organizer) => {
     const ok = await appConfirm({
-      title: `「${o.name}」を削除しますか？`,
-      message: '予定カードに入っている主催の文字はそのまま残ります（マスタから消えるだけ）。',
-      confirmLabel: '削除する',
-      danger: true,
+      title: `「${o.name}」を候補から外しますか？`,
+      message: '主催・発行元の候補に出なくなります。団体そのものはカレンダーの団体マスタに残り、予定カードの主催の文字もそのまま残ります。もう一度同じ名前で追加すると候補に戻ります。',
+      confirmLabel: '候補から外す',
     });
     if (!ok) return;
     try {
       await deleteOrganizer(o.id);
       await load();
     } catch (e) {
-      console.error('団体削除エラー:', e);
-      showError('削除できませんでした。');
+      console.error('団体を候補から外すエラー:', e);
+      showError('候補から外せませんでした。');
     }
   };
 
@@ -141,12 +142,12 @@ export const OrganizerManager: React.FC = () => {
       <div className="flex items-center gap-2 p-5 border-b border-slate-200">
         <Users size={18} className="text-sky-600" />
         <h3 className="font-bold text-lg text-slate-800">団体</h3>
-        <span className="text-xs text-slate-400">予定の主催と、回覧板の発行元</span>
+        <span className="text-xs text-slate-400">予定の主催と、回覧板の発行元（カレンダーの団体マスタと共通）</span>
       </div>
 
       {unavailable && (
         <p className="m-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-          団体マスタを読めませんでした。DBの列が足りないかもしれません（sql/migrations/2026-10-01-organizers-unify.sql）。
+          団体マスタを読めませんでした。DBの列が足りないかもしれません（sql/migrations/2026-10-05-org-master-unify.sql）。
         </p>
       )}
 
@@ -189,12 +190,13 @@ export const OrganizerManager: React.FC = () => {
         </div>
         <p className="text-[11px] text-slate-400 mt-1.5">
           別名に登録した表記は、抽出時と予定カードの編集で自動的に正式名へ置き換わります。誤字を見つけたら別名に足しておくと、次から勝手に直ります。
+          カレンダーの団体マスタにすでにある団体名を入れると、その団体が候補に加わります。無い団体は「地域の団体・施設」として登録されます（会館は予約しない団体）。
         </p>
       </div>
 
       {/* 一覧 */}
       <div className="p-4">
-        <p className="text-xs text-slate-500 mb-3">上下ボタンで表示順を変更。名前をクリックで編集。</p>
+        <p className="text-xs text-slate-500 mb-3">上下ボタンで表示順を変更。名前をクリックで編集。名前を変えるとカレンダー側の団体名も変わります。</p>
         {isLoading ? (
           <p className="text-center text-slate-500 py-8">読み込み中...</p>
         ) : organizers.length === 0 ? (
@@ -260,13 +262,16 @@ export const OrganizerManager: React.FC = () => {
                         {o.use_as_publisher && (
                           <span className="ml-2 align-middle text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">発行元</span>
                         )}
+                        {o.group_name && (
+                          <span className="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700">{o.group_name}</span>
+                        )}
                         {!o.use_as_organizer && (
                           <span className="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-500">主催に出さない</span>
                         )}
                       </p>
                       {o.aliases.length > 0 && <p className="text-xs text-slate-400 truncate">別名: {o.aliases.join('、')}</p>}
                     </div>
-                    <button onClick={() => handleDelete(o)} className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition shrink-0">
+                    <button onClick={() => handleDelete(o)} title="候補から外す" className="p-1.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition shrink-0">
                       <Trash2 size={14} />
                     </button>
                   </>

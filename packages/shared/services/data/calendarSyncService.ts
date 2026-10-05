@@ -10,11 +10,14 @@
  * - `calendar_events.source_event_card_id` で予定カードと紐づけ、何度流しても二重にならない
  * - カレンダー側で人が直した内容を勝手に戻さないよう、**差分を見せて選んでから**書く（画面側で確認）
  * - 会館予約（event_type='facility'）など、カレンダー側だけにある予定には触れない
+ * - 主催は団体マスタ（booking_organizations）の正式名にそろえ、団体の番号（org_id）も書く。
+ *   カレンダーの団体絞り込みが名前の表記ゆれで「未分類」にならないようにするため（2026-10-05）
  *
  * @module services/data/calendarSyncService
  */
 
 import { getSupabaseClient } from '../supabaseClient.js';
+import { findOrganizer, type Organizer } from './organizerService.js';
 
 /** カレンダーに書く1件（calendar_events の列に合わせる） */
 export interface CalendarSyncValues {
@@ -25,6 +28,8 @@ export interface CalendarSyncValues {
   end_time: string | null;
   description: string | null;
   org_name: string | null;
+  /** 主催の団体（booking_organizations.id）。団体マスタに無い主催なら null */
+  org_id: string | null;
   article_url: string | null;
   event_type: 'general';
   visibility: 'public';
@@ -64,6 +69,7 @@ export interface CalendarRowForSync {
   end_time: string | null;
   description: string | null;
   org_name: string | null;
+  org_id: string | null;
   article_url: string | null;
   event_type: string | null;
   visibility: string | null;
@@ -71,7 +77,7 @@ export interface CalendarRowForSync {
 }
 
 const SYNC_COLS =
-  'id,date,title,location,start_time,end_time,description,org_name,article_url,event_type,visibility,source_event_card_id';
+  'id,date,title,location,start_time,end_time,description,org_name,org_id,article_url,event_type,visibility,source_event_card_id';
 
 /** 反映の突き合わせに使うカレンダー予定を取る（指定日以降。会館予約も含む） */
 export async function getCalendarRowsForSync(fromDate: string): Promise<CalendarRowForSync[]> {
@@ -96,7 +102,10 @@ export function splitTimeForCalendar(time: string | null | undefined): { start: 
   return { start: null, end: null };
 }
 
-/** 予定カード1件をカレンダーの値にする */
+/**
+ * 予定カード1件をカレンダーの値にする。
+ * organizers（団体マスタ）を渡すと、主催を正式名にそろえて団体の番号も入れる。
+ */
 export function toCalendarValues(
   card: {
     id: string;
@@ -108,10 +117,12 @@ export function toCalendarValues(
     organizer?: string | null;
     linked_article_id?: string | null;
   },
-  siteUrl: string
+  siteUrl: string,
+  organizers: Organizer[] = []
 ): CalendarSyncValues | null {
   if (!card.event_date) return null;
   const { start, end } = splitTimeForCalendar(card.event_time);
+  const org = findOrganizer(card.organizer, organizers);
   return {
     date: card.event_date,
     title: card.title,
@@ -119,7 +130,8 @@ export function toCalendarValues(
     start_time: start,
     end_time: end,
     description: card.description ?? null,
-    org_name: card.organizer ?? null,
+    org_name: org?.name ?? card.organizer ?? null,
+    org_id: org?.id ?? null,
     // 記事があれば回覧板ポータルの記事ページへ誘導する（カレンダーのメディア化）
     article_url: card.linked_article_id ? `${siteUrl}/?article=${card.linked_article_id}` : null,
     event_type: 'general',
@@ -138,6 +150,7 @@ function diffFields(next: CalendarSyncValues, prev: CalendarRowForSync): string[
     ['終了時刻', next.end_time, prev.end_time],
     ['説明', next.description, prev.description],
     ['主催', next.org_name, prev.org_name],
+    ['主催の団体', next.org_id, prev.org_id],
     ['記事リンク', next.article_url, prev.article_url],
   ];
   return pairs.filter(([, a, b]) => (a ?? null) !== (b ?? null)).map(([label]) => label);
@@ -150,17 +163,19 @@ function diffFields(next: CalendarSyncValues, prev: CalendarRowForSync): string[
  * @param rows  カレンダー側の既存予定（getCalendarRowsForSync）
  * @param siteUrl 記事リンクに使う回覧板ポータルのURL
  * @param isSameTitle 同じ予定とみなす題名の判定（eventMatch の isSameEventTitle を渡す）
+ * @param organizers 団体マスタ（getOrganizersSafe）。主催を正式名と団体の番号にそろえる
  */
 export function buildCalendarDiff(
   cards: Array<Parameters<typeof toCalendarValues>[0]>,
   rows: CalendarRowForSync[],
   siteUrl: string,
-  isSameTitle: (a: string, b: string) => boolean
+  isSameTitle: (a: string, b: string) => boolean,
+  organizers: Organizer[] = []
 ): CalendarDiffRow[] {
   const byCard = new Map(rows.filter((r) => r.source_event_card_id).map((r) => [r.source_event_card_id as string, r]));
   const out: CalendarDiffRow[] = [];
   for (const card of cards) {
-    const values = toCalendarValues(card, siteUrl);
+    const values = toCalendarValues(card, siteUrl, organizers);
     if (!values) continue;
     const linked = byCard.get(card.id);
     if (linked) {

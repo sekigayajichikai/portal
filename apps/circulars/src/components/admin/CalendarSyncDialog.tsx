@@ -11,6 +11,7 @@ import {
   getCalendarRowsForSync,
   buildCalendarDiff,
   applyCalendarDiff,
+  getOrganizersSafe,
   type CalendarDiffRow,
   type AdminEventCard,
 } from '@cc-saas/shared';
@@ -69,9 +70,9 @@ export const CalendarSyncDialog: React.FC<CalendarSyncDialogProps> = ({ cards, o
     let cancelled = false;
     (async () => {
       try {
-        const rows = await getCalendarRowsForSync(todayYmd());
+        const [rows, organizers] = await Promise.all([getCalendarRowsForSync(todayYmd()), getOrganizersSafe()]);
         if (cancelled) return;
-        const d = buildCalendarDiff(target, rows, siteUrl(), isSameEventTitle);
+        const d = buildCalendarDiff(target, rows, siteUrl(), isSameEventTitle, organizers);
         setDiff(d);
         setPicked(new Set(d.filter((r) => r.kind === 'new' || r.kind === 'update').map((r) => r.cardId)));
       } catch (e: any) {
