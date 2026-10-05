@@ -66,7 +66,8 @@ if (keyword) {
 }
 
 // ---------- 抽出（本番と同じ） ----------
-const orgNames = ((await sb.from('organizers').select('name')).data ?? []).map((o) => o.name);
+// 本番（getOrganizerNames）と同じく、団体マスタ booking_organizations の主催の候補
+const orgNames = ((await sb.from('booking_organizations').select('name').eq('use_as_organizer', true).not('is_active', 'is', false)).data ?? []).map((o) => o.name);
 const venueNames = ((await sb.from('venues').select('name')).data ?? []).map((v) => v.name);
 const mod = await loadPromptModule();
 const prompt = mod.buildArticleEventPrompt({ articles, referenceDate: nl.issue_date, cutoffDate: TODAY, organizerNames: orgNames, venueNames });

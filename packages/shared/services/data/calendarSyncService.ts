@@ -163,7 +163,7 @@ function diffFields(next: CalendarSyncValues, prev: CalendarRowForSync): string[
  * @param rows  カレンダー側の既存予定（getCalendarRowsForSync）
  * @param siteUrl 記事リンクに使う回覧板ポータルのURL
  * @param isSameTitle 同じ予定とみなす題名の判定（eventMatch の isSameEventTitle を渡す）
- * @param organizers 団体マスタ（getOrganizersSafe）。主催を正式名と団体の番号にそろえる
+ * @param organizers 団体マスタ（getAllOrganizersSafe）。主催を正式名と団体の番号にそろえる
  */
 export function buildCalendarDiff(
   cards: Array<Parameters<typeof toCalendarValues>[0]>,

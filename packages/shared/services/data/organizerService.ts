@@ -101,6 +101,26 @@ export async function getOrganizersSafe(): Promise<Organizer[]> {
   }
 }
 
+/**
+ * 活動中の団体すべて（主催・発行元の候補にしていない団体も含む）。
+ * カレンダーへ反映するとき、主催を団体の番号に結びつけるのに使う
+ * （一般団体・会員団体のように候補にしていない団体が主催の予定も、団体の番号を持たせるため）。
+ * 名前が重なったときに候補の団体が先に当たるよう、候補を前に並べる。読めないときは空配列。
+ */
+export async function getAllOrganizersSafe(): Promise<Organizer[]> {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase) return [];
+    const { data, error } = await supabase.from(TABLE).select(SELECT_COLS).not('is_active', 'is', false);
+    if (error) throw error;
+    const all = (data || []).map(toOrganizer);
+    const isCandidate = (o: Organizer) => o.use_as_organizer || o.use_as_publisher;
+    return [...all.filter(isCandidate), ...all.filter((o) => !isCandidate(o))];
+  } catch {
+    return [];
+  }
+}
+
 /** 正式名か別名が（正規化して）一致する団体を、候補にしていないものも含めて探す */
 async function findByName(name: string): Promise<any | null> {
   const supabase = getSupabaseClient();
