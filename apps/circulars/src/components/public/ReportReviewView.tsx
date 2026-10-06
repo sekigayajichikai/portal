@@ -36,7 +36,7 @@ const ReportReviewView: React.FC<ReportReviewViewProps> = ({ id }) => {
   if (article === undefined) {
     return (
       <div className="flex items-center justify-center gap-2 text-slate-400 text-sm py-16">
-        <Loader2 size={16} className="animate-spin" /> 読み込み中...
+        <Loader2 size={16} className="animate-spin" /> 読み込み中…
       </div>
     );
   }

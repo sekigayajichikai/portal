@@ -96,7 +96,7 @@ const SCHEDULE_STATUS_LABEL: Record<WeeklyDigestSchedule['status'], { label: str
   sending: { label: '送信中', cls: 'bg-blue-100 text-blue-700' },
   sent: { label: '送信済み', cls: 'bg-emerald-50 text-emerald-700' },
   failed: { label: '失敗', cls: 'bg-red-100 text-red-700' },
-  canceled: { label: '取消', cls: 'bg-slate-100 text-slate-500' },
+  canceled: { label: '取り消し済み', cls: 'bg-slate-100 text-slate-500' },
 };
 
 export const WeeklyDigest: React.FC = () => {
@@ -360,7 +360,7 @@ export const WeeklyDigest: React.FC = () => {
   const discardDraft = async () => {
     const ok = await appConfirm({
       title: `「${draftName?.trim() || `${md(baseDate)} の下書き`}」を捨てますか？`,
-      message: '一押しの選択・この週だけ外した予定・リンク先・手で直した文が消え、自動で組み立てた状態に戻ります。紹介文と画像の切り出し（予定カードに保存したもの）は残ります。',
+      message: '一押しの選択・この週だけ外した予定・リンク先・手で直した文が消え、自動で組み立てた状態に戻ります。紹介文と画像の切り抜き（予定に保存したもの）は残ります。',
       confirmLabel: '下書きを捨てる',
     });
     if (!ok) return;
@@ -428,14 +428,15 @@ export const WeeklyDigest: React.FC = () => {
   const excludeForever = async (card: PublicEventCard) => {
     const ok = await appConfirm({
       title: `「${card.title}」を今後も週次配信に載せませんか？`,
-      message: '予定カードに「週次配信に載せない」が付き、以後の今週のお知らせに出なくなります。カレンダーには載ります。戻すときは「予定」タブでこの予定を開き、チェックを外してください。',
+      message: '予定に「週次配信に載せない」が付き、以後の今週のお知らせに出なくなります。カレンダーには載ります。戻すときは「予定」タブでこの予定を開き、チェックを外してください。',
       confirmLabel: '今後も載せない',
     });
     if (!ok) return;
     try {
       const saved = await updateEventCard(card.id, { digest_exclude: true });
       if (!('digest_exclude' in saved)) {
-        showError('設定できませんでした。DBに digest_exclude 列がありません（sql/migrations/2026-09-21-event-cards-digest-exclude.sql）。');
+        console.error('DBに digest_exclude 列がありません（sql/migrations/2026-09-21-event-cards-digest-exclude.sql）');
+        showError('設定できませんでした。設定が足りません。管理者に連絡してください。');
         return;
       }
       setCards((prev) => prev.map((c) => (c.id === card.id ? { ...c, digest_exclude: true } : c)));
@@ -471,7 +472,8 @@ export const WeeklyDigest: React.FC = () => {
       const saved = await updateEventCard(topic.id, { description });
       // DBに description 列が無い（マイグレーション未適用）と黙って落ちるので、返ってきた行で確認する
       if (description && !('description' in saved)) {
-        showError('紹介文は保存されませんでした。DBに紹介文の列がありません（sql/migrations/2026-09-21-event-cards-description.sql）。');
+        console.error('DBに紹介文の列がありません（sql/migrations/2026-09-21-event-cards-description.sql）');
+        showError('紹介文は保存されませんでした。設定が足りません。管理者に連絡してください。');
         return;
       }
       setCards((prev) => prev.map((c) => (c.id === topic.id ? { ...c, description } : c)));
@@ -539,14 +541,15 @@ export const WeeklyDigest: React.FC = () => {
     try {
       const saved = await updateEventCard(topic.id, { hero_crop: crop, hero_crop_y: crop.y });
       if (!('hero_crop' in saved)) {
-        showError('切り出しは保存されませんでした。DBに hero_crop 列がありません（sql/migrations/2026-09-22-event-cards-hero-crop-json.sql）。');
+        console.error('DBに hero_crop 列がありません（sql/migrations/2026-09-22-event-cards-hero-crop-json.sql）');
+        showError('切り抜きは保存されませんでした。設定が足りません。管理者に連絡してください。');
         return;
       }
       setCards((prev) => prev.map((c) => (c.id === topic.id ? { ...c, hero_crop: crop, hero_crop_y: crop.y } : c)));
-      showToast('切り出しを保存しました');
+      showToast('切り抜きを保存しました');
     } catch (e) {
       console.error(e);
-      showError('切り出し位置を保存できませんでした。');
+      showError('切り抜きの位置を保存できませんでした。');
     } finally {
       setSavingCrop(null);
     }
@@ -715,7 +718,8 @@ export const WeeklyDigest: React.FC = () => {
   const localLinkError = () => {
     const base = siteUrl();
     if (!/^https?:\/\/(localhost|127\.|192\.168\.|\[::1\])/.test(base)) return false;
-    showError(`カードのリンクが ${base} になっているため、全員には送れません。.env.local に VITE_PUBLIC_SITE_URL=https://sekigayajichikai.vercel.app を入れてサーバーを起動し直すか、本番の管理画面から送ってください。`);
+    console.error(`リンク先が ${base} のため全員には送らない。.env.local に VITE_PUBLIC_SITE_URL=https://sekigayajichikai.vercel.app を入れて起動し直すこと`);
+    showError('この画面からは全員に送れません（リンク先が本番のサイトになっていません）。本番の管理画面から送ってください。');
     return true;
   };
 
@@ -819,7 +823,7 @@ export const WeeklyDigest: React.FC = () => {
               週次配信（今週のお知らせ）
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              公開中の予定カードとレポートから、公式LINEで流すカードを自動で組み立てます。下の「LINE に送る」からテスト送信で確かめてから配信してください。
+              公開中の予定とレポートから、公式LINEで流すカードを自動で組み立てます。下の「LINE に送る」からテスト送信で確かめてから配信してください。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -875,7 +879,7 @@ export const WeeklyDigest: React.FC = () => {
             {draftState === 'saving' && (<><Loader2 size={11} className="animate-spin" /> 保存中…</>)}
             {draftState === 'saved' && (<><Check size={11} className="text-emerald-600" /> 保存済み{draftSavedAt ? `（${new Date(draftSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）` : ''}</>)}
             {draftState === 'idle' && '新しい下書き。変更すると自動で保存されます'}
-            {draftState === 'error' && <span className="text-red-600">保存できませんでした（sql/migrations/2026-09-24-weekly-digest-drafts*.sql が未適用かもしれません）</span>}
+            {draftState === 'error' && <span className="text-red-600">保存できませんでした（設定が足りないかもしれません。管理者に連絡してください）</span>}
           </span>
           {draftId && (
             <>
@@ -894,7 +898,7 @@ export const WeeklyDigest: React.FC = () => {
 
         {loading ? (
           <div className="flex items-center gap-2 text-slate-400 text-sm py-10 justify-center">
-            <Loader2 size={16} className="animate-spin" /> 予定を読み込み中...
+            <Loader2 size={16} className="animate-spin" /> 予定を読み込み中…
           </div>
         ) : (
           <>
@@ -919,7 +923,7 @@ export const WeeklyDigest: React.FC = () => {
             </div>
             {total === 0 && (
               <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
-                この配信日の範囲に予定がありません。予定カードが登録・公開されているか、配信日を確認してください。
+                この配信日の範囲に予定がありません。予定が登録・公開されているか、配信日を確認してください。
               </p>
             )}
 
@@ -993,7 +997,7 @@ export const WeeklyDigest: React.FC = () => {
                         <button
                           onClick={() => excludeForever(card)}
                           className="shrink-0 text-[11px] text-slate-400 hover:text-red-600"
-                          title="予定カードに「週次配信に載せない」を付けて、今後の配信にも出さない（役員向け会議など）"
+                          title="予定に「週次配信に載せない」を付けて、今後の配信にも出さない（役員向け会議など）"
                         >
                           🚫 今後も載せない
                         </button>
@@ -1024,7 +1028,7 @@ export const WeeklyDigest: React.FC = () => {
                       <button
                         onClick={() => setEditingCardId(t.id)}
                         className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition"
-                        title="日時・場所・記事リンク・由来PDFなど、予定カードの全項目を編集します（予定タブと同じ画面）"
+                        title="日時・場所・記事リンク・由来PDFなど、予定の全項目を編集します（予定タブと同じ画面）"
                       >
                         <Pencil size={12} /> この予定を編集
                       </button>
@@ -1033,7 +1037,7 @@ export const WeeklyDigest: React.FC = () => {
                           onClick={() => generateDescription(t)}
                           disabled={generatingDesc !== null || savingDesc === t.id}
                           className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 transition disabled:opacity-40"
-                          title={`AI（Gemini 無料枠）が${t.source_pdf_url ? 'チラシPDF' : t.linked_article_id ? 'リンク記事' : 'タイトルと情報'}から1〜2文の紹介文を作ります。読んで直してから保存してください`}
+                          title={`AIが${t.source_pdf_url ? 'チラシPDF' : t.linked_article_id ? 'リンク記事' : 'タイトルと情報'}から1〜2文の紹介文を作ります。読んで直してから保存してください`}
                         >
                           {generatingDesc === t.id ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                           {generatingDesc === t.id ? '作っています…' : 'AIで紹介文を作る'}
@@ -1058,8 +1062,8 @@ export const WeeklyDigest: React.FC = () => {
                   />
                   <p className="text-[11px] text-slate-400 mt-1">
                     {t.description
-                      ? '保存すると予定カードにも残り、次回以降もこの紹介文が使われます。'
-                      : 'まだ紹介文がありません。ここで入力（または「AIで紹介文を作る」）して保存すると、カードに載ります（予定カードにも保存されます）。'}{' '}
+                      ? '保存すると予定にも残り、次回以降もこの紹介文が使われます。'
+                      : 'まだ紹介文がありません。ここで入力（または「AIで紹介文を作る」）して保存すると、カードに載ります（予定にも保存されます）。'}{' '}
                     {hasGeminiEventAccess() && 'AIの文は必ず読んで直してから保存してください。'} {draft.length} 文字
                   </p>
 
@@ -1100,15 +1104,15 @@ export const WeeklyDigest: React.FC = () => {
                     {/* カード画像の切り出し（チラシPDF or 記事の写真。拡大縮小＋ドラッグで位置決め） */}
                     <div className="text-xs">
                       <p className="font-bold text-slate-600 mb-1">
-                        カードに載せる画像の切り出し
+                        カードに載せる画像の切り抜き
                         {imgSrc && (
                           <span className="ml-2 font-normal text-slate-400">
-                            {imgSrc.kind === 'photo' ? '（記事の写真）' : imgSrc.fallback ? '（出典号の先頭PDF・代用）' : '（チラシPDFの1ページ目）'}
+                            {imgSrc.kind === 'photo' ? '（記事の写真）' : imgSrc.fallback ? '（出典の回覧板の先頭PDF・代用）' : '（チラシPDFの1ページ目）'}
                           </span>
                         )}
                       </p>
                       {flyerStates[t.id] === 'loading' ? (
-                        <p className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 画像を読み込み中...</p>
+                        <p className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 画像を読み込み中…</p>
                       ) : !flyer ? (
                         imgSrc ? (
                           <div className="text-slate-500 space-y-1">
@@ -1132,7 +1136,7 @@ export const WeeklyDigest: React.FC = () => {
                             disabled={savingCrop === t.id || !cropDirty}
                             className="mt-1.5 px-2 py-1 text-[11px] font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 disabled:opacity-40"
                           >
-                            {savingCrop === t.id ? '保存しています…' : '切り出しを保存（次回も同じ）'}
+                            {savingCrop === t.id ? '保存しています…' : '切り抜きを保存（次回も同じ）'}
                           </button>
                         </div>
                       )}
@@ -1208,18 +1212,10 @@ export const WeeklyDigest: React.FC = () => {
                   {sending === 'validate' ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />} 形式チェック
                 </button>
                 <button
-                  onClick={copyFlexJson}
-                  disabled={sending !== null}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
-                  title="LINE Developers の Flex Message Simulator に貼って本物の見た目を確認できます"
-                >
-                  <Copy size={14} /> Flex JSON をコピー
-                </button>
-                <button
                   onClick={() => send('test')}
                   disabled={sending !== null}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
-                  title="自分のLINE（LINE_TEST_USER_ID）にだけ送ります"
+                  title="自分のLINEにだけ送ります"
                 >
                   {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（自分に）
                 </button>
@@ -1227,7 +1223,7 @@ export const WeeklyDigest: React.FC = () => {
                   onClick={() => send('admins')}
                   disabled={sending !== null}
                   className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 transition disabled:opacity-50"
-                  title="管理者（Supabase の Secrets の LINE_ADMIN_USER_IDS。リッチメニューの「管理者だけに反映」と同じ人）にだけ送ります。人数ぶん通数を使います"
+                  title="管理者（リッチメニューの「管理者だけに反映」と同じ人）にだけ送ります。人数ぶん通数を使います"
                 >
                   {sending === 'admins' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 管理者に送る（確認用）
                 </button>
@@ -1240,6 +1236,19 @@ export const WeeklyDigest: React.FC = () => {
                   {sending === 'broadcast' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 全員に配信
                 </button>
               </div>
+              <details className="text-xs text-slate-500">
+                <summary className="cursor-pointer select-none">開発者向け</summary>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    onClick={copyFlexJson}
+                    disabled={sending !== null}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
+                  >
+                    <Copy size={14} /> Flex JSON をコピー
+                  </button>
+                  <span>LINE Developers の Flex Message Simulator に貼ると、本物の見た目を確認できます。</span>
+                </div>
+              </details>
               {/* 予約配信（予約した時点の内容で、指定の日時に全員へ。pg_cron が5分ごとに送る） */}
               <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">

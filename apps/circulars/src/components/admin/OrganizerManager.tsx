@@ -99,7 +99,7 @@ export const OrganizerManager: React.FC = () => {
   const handleDelete = async (o: Organizer) => {
     const ok = await appConfirm({
       title: `「${o.name}」を候補から外しますか？`,
-      message: '主催・発行元の候補に出なくなります。団体そのものはカレンダーの団体マスタに残り、予定カードの主催の文字もそのまま残ります。もう一度同じ名前で追加すると候補に戻ります。',
+      message: '主催・発行元の候補に出なくなります。団体そのものはカレンダーの団体マスタに残り、予定の主催の文字もそのまま残ります。もう一度同じ名前で追加すると候補に戻ります。',
       confirmLabel: '候補から外す',
     });
     if (!ok) return;
@@ -133,7 +133,7 @@ export const OrganizerManager: React.FC = () => {
       await load();
     } catch (e) {
       console.error('団体並び替えエラー:', e);
-      showError('並び替えできませんでした。');
+      showError('並べ替えできませんでした。');
     }
   };
 
@@ -147,7 +147,7 @@ export const OrganizerManager: React.FC = () => {
 
       {unavailable && (
         <p className="m-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-          団体マスタを読めませんでした。DBの列が足りないかもしれません（sql/migrations/2026-10-05-org-master-unify.sql）。
+          団体マスタを読めませんでした。設定が足りないかもしれません。管理者に連絡してください。
         </p>
       )}
 
@@ -189,7 +189,7 @@ export const OrganizerManager: React.FC = () => {
           </label>
         </div>
         <p className="text-[11px] text-slate-400 mt-1.5">
-          別名に登録した表記は、抽出時と予定カードの編集で自動的に正式名へ置き換わります。誤字を見つけたら別名に足しておくと、次から勝手に直ります。
+          別名に登録した表記は、抽出時と予定の編集で自動的に正式名へ置き換わります。誤字を見つけたら別名に足しておくと、次から勝手に直ります。
           カレンダーの団体マスタにすでにある団体名を入れると、その団体が候補に加わります。無い団体は「地域の団体・施設」として登録されます（会館は予約しない団体）。
         </p>
       </div>
@@ -198,7 +198,7 @@ export const OrganizerManager: React.FC = () => {
       <div className="p-4">
         <p className="text-xs text-slate-500 mb-3">上下ボタンで表示順を変更。名前をクリックで編集。名前を変えるとカレンダー側の団体名も変わります。</p>
         {isLoading ? (
-          <p className="text-center text-slate-500 py-8">読み込み中...</p>
+          <p className="text-center text-slate-500 py-8">読み込み中…</p>
         ) : organizers.length === 0 ? (
           <p className="text-center text-slate-500 py-8">団体が登録されていません</p>
         ) : (
@@ -240,7 +240,7 @@ export const OrganizerManager: React.FC = () => {
                           保存
                         </button>
                         <button onClick={() => setEditingId(null)} className="text-xs px-2 py-1 bg-slate-200 rounded">
-                          取消
+                          キャンセル
                         </button>
                       </div>
                     </div>

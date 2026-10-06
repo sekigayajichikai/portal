@@ -52,7 +52,7 @@ export const ArticleLinkPicker: React.FC<ArticleLinkPickerProps> = ({ newsletter
           value={query}
           autoFocus
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="記事の題名・号名で絞り込み（例: ズーラシア、9月号）"
+          placeholder="記事のタイトル・回覧板の名前で絞り込み（例: ズーラシア、9月号）"
           className="flex-1 min-w-0 text-sm border-0 focus:ring-0 p-0"
         />
         <button type="button" onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600" title="閉じる">
@@ -64,7 +64,7 @@ export const ArticleLinkPicker: React.FC<ArticleLinkPickerProps> = ({ newsletter
           <p className="px-3 py-2 text-xs text-red-600">{error}</p>
         ) : !articles ? (
           <p className="px-3 py-2 text-xs text-slate-400 flex items-center gap-1">
-            <Loader2 size={12} className="animate-spin" /> 記事を読み込み中...
+            <Loader2 size={12} className="animate-spin" /> 記事を読み込み中…
           </p>
         ) : filtered.length === 0 ? (
           <p className="px-3 py-2 text-xs text-slate-400">当てはまる記事がありません。</p>
@@ -79,7 +79,7 @@ export const ArticleLinkPicker: React.FC<ArticleLinkPickerProps> = ({ newsletter
                 className={`w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 flex items-center gap-2 ${a.id === value ? 'bg-primary-50' : ''}`}
               >
                 <span className={`shrink-0 text-[11px] px-1.5 py-0.5 rounded ${same ? 'bg-primary-100 text-primary-700' : 'bg-slate-100 text-slate-500'}`}>
-                  {same ? 'この号' : a.newsletter_title ?? '号不明'}
+                  {same ? 'この回覧板' : a.newsletter_title ?? '回覧板なし'}
                 </span>
                 <span className="truncate flex-1 text-slate-700">{a.title}</span>
                 {a.thumbnail_url && (

@@ -125,7 +125,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     setIsLoading(true);
     setError(null);
     try {
-      console.log('📋 電子回覧板一覧を読み込み中...');
+      console.log('📋 電子回覧板一覧を読み込み中…');
       const data = await loadCircularNewsletters();
       setNewsletters(data);
       console.log('✅ 電子回覧板読み込み完了:', data.length, '件');
@@ -134,8 +134,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
       const msg = error?.message ?? '';
       const isFailedFetch = typeof msg === 'string' && msg.includes('Failed to fetch');
       const userMessage = isFailedFetch
-        ? '電子回覧板を読み込めませんでした（接続エラー）。インターネット接続を確認して、もう一度お試しください。'
-        : '電子回覧板を読み込めませんでした。時間をおいてもう一度お試しください。';
+        ? '回覧板を読み込めませんでした（接続エラー）。インターネット接続を確認して、もう一度お試しください。'
+        : '回覧板を読み込めませんでした。時間をおいてもう一度お試しください。';
       setError(userMessage);
     } finally {
       setIsLoading(false);
@@ -155,7 +155,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     setViewingPublished(false);
     setPublishedArticles([]);
     try {
-      console.log('📄 記事を読み込み中... 電子回覧板:', newsletter.title);
+      console.log('📄 記事を読み込み中… 電子回覧板:', newsletter.title);
       const articleData = await getArticlesByNewsletterId(newsletter.id);
       setArticles(articleData);
       console.log('✅ 記事読み込み完了:', articleData.length, '件');
@@ -241,12 +241,12 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
     try {
       // Supabaseから削除
-      console.log('🗑️ Supabaseから記事を削除中...', articleId);
+      console.log('🗑️ Supabaseから記事を削除中…', articleId);
       await deleteArticle(articleId);
       console.log('✅ Supabaseから記事を削除しました');
 
       // ローカル状態から削除
-      console.log('🗑️ ローカル状態から削除中...');
+      console.log('🗑️ ローカル状態から削除中…');
       setArticles(prev => {
         const filtered = prev.filter(article => article.id !== articleId);
         console.log('✅ ローカル状態から削除完了:', {
@@ -286,7 +286,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     // 確認ダイアログ
     const confirmed = await appConfirm({
       title: `「${newsletter.title}」を削除しますか？`,
-      message: `記事数: ${newsletter.article_count}件\n記事と予定カードも一緒に削除します。間違えたときは「ゴミ箱」から元に戻せます。`,
+      message: `記事数: ${newsletter.article_count}件\n記事と予定も一緒に削除します。間違えたときは「ゴミ箱」から元に戻せます。`,
       confirmLabel: '削除する',
       danger: true,
     });
@@ -294,7 +294,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
     if (!confirmed) return;
 
     try {
-      console.log('🗑️ 電子回覧板を削除中...', newsletter.id);
+      console.log('🗑️ 電子回覧板を削除中…', newsletter.id);
       await deleteNewsletter(newsletter.id);
       console.log('✅ 削除完了');
 
@@ -336,7 +336,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 title="PDFから記事抽出・画像追加"
               >
                 <Scissors size={18} />
-                PDFクロップ
+                PDFの切り抜き
               </button>
             )}
 
@@ -473,7 +473,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                   }
                   if (!(await appConfirm({
                     title: '担当者に確認を依頼しますか？',
-                    message: '確認用リンクが発行されるので、LINEやメールで担当者に送ってください。',
+                    message: '確認リンクが発行されるので、LINEやメールで担当者に送ってください。',
                     confirmLabel: '依頼する',
                   }))) return;
                   try {
@@ -504,7 +504,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                   // 開発環境は本番と同じDBに繋がっているため、公開前に本番反映の警告を出す
                   const isDev = import.meta.env.DEV;
                   if (!(await appConfirm({
-                    title: isDev ? '⚠️ 開発環境から本番に公開されます' : 'この回覧板を公開しますか？',
+                    title: isDev ? '⚠️ 開発環境から本番に公開されます' : `「${selectedNewsletter.title}」を公開しますか？`,
                     message: isDev
                       ? '今は開発環境ですが、本番と同じデータベースに接続しています。公開すると本番サイトにも即反映されます。本当に公開しますか？'
                       : '公開すると住民に表示されます。',
@@ -538,7 +538,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               <button
                 onClick={async () => {
                   if (!(await appConfirm({
-                    title: 'この回覧板を非公開にしますか？',
+                    title: `「${selectedNewsletter.title}」を非公開にしますか？`,
                     message: '住民に表示されなくなります。',
                     confirmLabel: '非公開にする',
                   }))) return;
@@ -588,7 +588,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                   </>
                 ) : (
                   <>
-                    「確認を依頼」を押すと確認用リンクが出ます。それを担当の方に送り、
+                    「確認を依頼」を押すと確認リンクが出ます。それを担当の方に送り、
                     承認されると「公開する」が押せるようになります。
                   </>
                 )}
@@ -690,7 +690,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 ? 'bg-yellow-100 text-yellow-700'
                 : 'bg-gray-100 text-gray-700'
             }`}>
-              {selectedNewsletter.status === 'published' ? '公開済み' :
+              {selectedNewsletter.status === 'published' ? '公開中' :
                selectedNewsletter.status === 'draft' ? '下書き' : 'アーカイブ'}
             </span>
           </div>
@@ -778,7 +778,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
         <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-slate-800 flex items-center gap-2">
-              🗓️ 今後のイベント ({eventCards.length}件)
+              🗓️ 今後の予定 ({eventCards.length}件)
             </h3>
             {/* イベントカードは予定情報のメンテナンスなので公開後も編集可能 */}
             <div className="flex items-center gap-3">
@@ -789,7 +789,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                   !((selectedNewsletter.source_pdf_urls?.length || 0) > 0 || selectedNewsletter.source_pdf_url)
                 }
                 className="text-sm text-primary-600 hover:text-primary-800 font-medium flex items-center gap-1 disabled:opacity-40"
-                title="記事と添付PDFからイベント候補をAIで抽出します"
+                title="記事と添付PDFから予定の候補をAIで抽出します"
               >
                 <Sparkles size={16} /> AIで抽出
               </button>
@@ -797,7 +797,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 onClick={async () => {
                   // 名前だけ聞いて作り、日付・時間・場所などは予定タブと同じ編集ダイアログで入れる（B4）
                   const title = await appPrompt({
-                    title: 'イベント名を入力',
+                    title: '予定の名前を入力',
                     message: '次の画面で、日付（カレンダーから選べます）・時間・場所・主催などを入れます。',
                     placeholder: '例: 秋祭り',
                     confirmLabel: '次へ',
@@ -815,7 +815,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                     });
                     await reloadEventCards(selectedNewsletter.id);
                     setEditingCardId(card.id);
-                  } catch (error) { console.error('イベント追加エラー:', error); showError('イベントを追加できませんでした。時間をおいてもう一度お試しください。'); }
+                  } catch (error) { console.error('イベント追加エラー:', error); showError('予定を追加できませんでした。時間をおいてもう一度お試しください。'); }
                 }}
                 className="text-sm text-primary-600 hover:text-primary-800 font-medium flex items-center gap-1"
               >
@@ -844,7 +844,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             />
           )}
           {eventCards.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-4">イベントカードがありません</p>
+            <p className="text-sm text-slate-400 text-center py-4">予定がありません</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {eventCards.map((card) => {
@@ -898,7 +898,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         <button
                           onClick={() => setEditingCardId(card.id)}
                           className="text-xs text-amber-600 hover:text-amber-800 mt-0.5"
-                          title="編集ダイアログで、公開中の全号の記事から選べます"
+                          title="編集ダイアログで、公開中のすべての回覧板の記事から選べます"
                         >
                           ＋ 記事をリンク
                         </button>
@@ -947,7 +947,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
         {isLoadingArticles ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={32} className="animate-spin text-primary-600" />
-            <span className="ml-3 text-slate-600">記事を読み込み中...</span>
+            <span className="ml-3 text-slate-600">記事を読み込み中…</span>
           </div>
         ) : viewingPublished ? (
           publishedArticles.length > 0 ? (
@@ -1371,7 +1371,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 <p className="font-bold text-slate-700">このあとの流れ</p>
                 <p>1. 下の「リンクをコピー」を押します。</p>
                 <p>2. LINE、メールなど、ふだん使っている方法で担当の方に送ります。</p>
-                <p>3. 担当の方が回答すると、この号に「承認済み」または「修正依頼」が付きます。</p>
+                <p>3. 担当の方が回答すると、この回覧板に「承認済み」または「修正依頼」が付きます。</p>
                 <p className="text-slate-500">
                   回答があってもお知らせは届きません。しばらくしてから、この画面を開いて確かめてください。
                 </p>
@@ -1455,7 +1455,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   // Newsletter一覧モード
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-slate-800">保存済み電子回覧板</h2>
+      <h2 className="text-2xl font-bold text-slate-800">保存済みの回覧板</h2>
 
       {/* エラー表示 */}
       {error && (
@@ -1478,17 +1478,17 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 size={32} className="animate-spin text-primary-600" />
-          <span className="ml-3 text-slate-600">読み込み中...</span>
+          <span className="ml-3 text-slate-600">読み込み中…</span>
         </div>
       ) : newsletters.length === 0 ? (
         /* 空状態 */
         <div className="bg-slate-50 rounded-lg p-12 text-center">
           <FileText size={64} className="mx-auto text-slate-300 mb-4" />
           <p className="text-lg font-medium text-slate-700 mb-2">
-            保存された電子回覧板はありません
+            保存された回覧板はありません
           </p>
           <p className="text-sm text-slate-500">
-            電子回覧板タブで記事を抽出し、「保存する」ボタンをクリックしてください
+            回覧板タブで記事を抽出し、「保存する」ボタンをクリックしてください
           </p>
         </div>
       ) : (
@@ -1511,7 +1511,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         ? 'bg-yellow-100 text-yellow-700'
                         : 'bg-gray-100 text-gray-700'
                     }`}>
-                      {newsletter.status === 'published' ? '公開済み' :
+                      {newsletter.status === 'published' ? '公開中' :
                        newsletter.status === 'draft' ? '下書き' : 'アーカイブ'}
                     </span>
                     {newsletter.parent_id && newsletter.status === 'draft' && (

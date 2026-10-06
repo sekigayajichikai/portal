@@ -224,7 +224,8 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
       // 未追加の列は updateEventCard が黙って外すので、返ってきた行に列が無ければ知らせる
       const dropped = (Object.keys(updates) as string[]).filter((k) => !(k in saved));
       if (dropped.length > 0) {
-        showError(`次の項目は保存されませんでした（DBに列がありません。sql/migrations を確認してください）: ${dropped.join(', ')}`);
+        console.error('DBに列が無いため保存されなかった項目（sql/migrations を確認）:', dropped);
+        showError('一部の項目が保存されませんでした。設定が足りません。管理者に連絡してください。');
       } else {
         showToast('予定を保存しました');
       }
@@ -342,7 +343,7 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
             予定の編集
             {card && (
               <span className="text-xs font-normal text-slate-500">
-                {card.newsletter_title ?? '号不明'}
+                {card.newsletter_title ?? '回覧板なし'}
                 {card.newsletter_status && card.newsletter_status !== 'published' && (
                   <span className="ml-1 px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{STATUS_LABEL[card.newsletter_status] ?? card.newsletter_status}</span>
                 )}
@@ -358,12 +359,12 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
           <p className="p-6 text-sm text-red-600">{loadError}</p>
         ) : !card || !form ? (
           <p className="p-6 text-sm text-slate-400 flex items-center gap-2">
-            <Loader2 size={16} className="animate-spin" /> 読み込み中...
+            <Loader2 size={16} className="animate-spin" /> 読み込み中…
           </p>
         ) : (
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             <div>
-              <label className={labelCls}>題名</label>
+              <label className={labelCls}>タイトル</label>
               <input type="text" value={form.title} onChange={(e) => set({ title: e.target.value })} className={`${inputCls} font-medium`} />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -512,7 +513,7 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
               ) : (
                 !pickingArticle && (
                   <button type="button" onClick={() => setPickingArticle(true)} className="text-xs text-amber-600 hover:text-amber-800">
-                    ＋ 記事を選ぶ（公開中の全号から）
+                    ＋ 記事を選ぶ（公開中のすべての回覧板から）
                   </button>
                 )
               )}
@@ -548,14 +549,14 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
                   </option>
                 ))}
                 {form.source_pdf_url && !card.newsletter_pdfs.some((p) => p.url === form.source_pdf_url) && (
-                  <option value={form.source_pdf_url}>（号の一覧に無いPDF）</option>
+                  <option value={form.source_pdf_url}>（回覧板の一覧に無いPDF）</option>
                 )}
               </select>
               {/* スキャン画像のPDFは日付を読み違えていることがあるので、元のページを開いて見比べられるようにする */}
               {form.source_pdf_url && pdfInfo?.isScan && (
                 <div className="mt-1.5">
                   <p className="text-[11px] text-amber-800 mb-1">
-                    ⚠ このPDFは文字データのない<strong>スキャン画像</strong>です。AIが目で見て読むため、日付や行事名を取り違えていることがあります。
+                    ⚠ このPDFは文字データのない<strong>スキャン画像</strong>です。AIが目で見て読むため、日付や予定の名前を取り違えていることがあります。
                   </p>
                   <PdfPagePeek
                     url={form.source_pdf_url}
@@ -569,10 +570,10 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
             {/* 画像の切り出し（週次配信の一押しカード用） */}
             <div>
               <label className={labelCls}>
-                週次配信カードの画像の切り出し
+                週次配信カードの画像の切り抜き
                 {imgSrc && (
                   <span className="ml-1 font-normal text-slate-400">
-                    {imgSrc.kind === 'photo' ? '（記事の写真）' : imgSrc.fallback ? '（号の先頭PDF・代用）' : '（チラシPDFの1ページ目）'}
+                    {imgSrc.kind === 'photo' ? '（記事の写真）' : imgSrc.fallback ? '（回覧板の先頭PDF・代用）' : '（チラシPDFの1ページ目）'}
                   </span>
                 )}
               </label>
@@ -589,7 +590,7 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
                     className="px-2 py-1 border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-40 flex items-center gap-1"
                   >
                     {cropState === 'loading' && <Loader2 size={12} className="animate-spin" />}
-                    {cropState === 'loading' ? '画像を読み込み中…' : '画像を読み込んで切り出しを調整'}
+                    {cropState === 'loading' ? '画像を読み込み中…' : '画像を読み込んで切り抜きを調整'}
                   </button>
                   {cropState === 'error' && <p className="mt-1 text-red-600">画像を読み込めませんでした。もう一度押してください。</p>}
                   {(form.source_pdf_url ?? null) !== (card.source_pdf_url ?? null) && (

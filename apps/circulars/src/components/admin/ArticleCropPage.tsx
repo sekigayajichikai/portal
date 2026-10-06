@@ -3,7 +3,7 @@
  *
  * PDFを表示し、範囲選択した部分を：
  * - 記事モード: 複数範囲をまとめてAIに渡し記事を生成
- * - 画像モード: 切り抜き画像を既存記事に紐付け
+ * - 画像モード: 切り抜き画像を既存記事に紐づけ
  */
 
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
@@ -265,7 +265,7 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
         <div className="flex items-center gap-4">
           <h2 className="font-bold text-lg text-slate-800 flex items-center gap-2">
             <Scissors size={20} className="text-primary-600" />
-            PDFクロップ
+            PDFの切り抜き
           </h2>
 
           {/* モード切替 */}
@@ -464,7 +464,7 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                       </button>
                       <button onClick={handleSaveArticle} disabled={isSaving || !editTitle.trim()}
                         className="flex-1 px-4 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                        {isSaving ? <><Loader2 size={16} className="animate-spin" /> 保存中...</>
+                        {isSaving ? <><Loader2 size={16} className="animate-spin" /> 保存中…</>
                           : <><Save size={16} /> 記事を保存</>}
                       </button>
                     </div>
@@ -485,13 +485,13 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <h3 className="text-sm font-bold text-slate-700">紐付け先の記事を選択</h3>
+                    <h3 className="text-sm font-bold text-slate-700">紐づけ先の記事を選択</h3>
 
                     {/* 新規記事作成 */}
                     {!showNewArticleForm ? (
                       <button onClick={() => setShowNewArticleForm(true)}
                         className="w-full p-3 rounded-lg border-2 border-dashed border-slate-300 text-slate-500 hover:border-primary-400 hover:text-primary-600 transition flex items-center justify-center gap-2 text-sm">
-                        <Plus size={16} /> 新しい記事を作成して紐付け
+                        <Plus size={16} /> 新しい記事を作成して紐づけ
                       </button>
                     ) : (
                       <div className="p-3 rounded-lg border-2 border-primary-300 bg-primary-50">
@@ -599,7 +599,7 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                     ))}
                     <button onClick={handleSaveImage} disabled={!selectedArticleId || isSaving}
                       className="w-full px-4 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                      {isSaving ? <><Loader2 size={16} className="animate-spin" /> 保存中...</>
+                      {isSaving ? <><Loader2 size={16} className="animate-spin" /> 保存中…</>
                         : <><Save size={16} /> {cropItems.length}枚の画像を保存</>}
                     </button>
                   </div>
@@ -610,7 +610,7 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                   <div className="text-center py-12">
                     <span className="text-5xl mb-4 block">📷</span>
                     <p className="text-slate-500">PDFの表紙を範囲選択して「追加」</p>
-                    <p className="text-xs text-slate-400 mt-1">選択後、紐付け先のPDFを選んで保存</p>
+                    <p className="text-xs text-slate-400 mt-1">選択後、紐づけ先のPDFを選んで保存</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -669,7 +669,7 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                       }}
                       disabled={!selectedArticleId || cropItems.length === 0 || isSaving}
                       className="w-full px-4 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                      {isSaving ? <><Loader2 size={16} className="animate-spin" /> 保存中...</>
+                      {isSaving ? <><Loader2 size={16} className="animate-spin" /> 保存中…</>
                         : <><Save size={16} /> サムネイルを保存</>}
                     </button>
                   </div>

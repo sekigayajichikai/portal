@@ -11,7 +11,6 @@ import {
   extractEventCandidates,
   extractEventCandidatesFromPDF,
   getEventExtractionProvider,
-  getEventExtractionProviderLabel,
   convertPdfUrlToBase64,
   addEventCard,
   updateEventCard,
@@ -60,7 +59,7 @@ interface EditableCandidate extends EventCandidate {
 
 /** 性質(kind)の表示メタ */
 export const KIND_META: Record<EventKind, { label: string; icon: string; title: string }> = {
-  community: { label: '交流', icon: '🎉', title: '地域交流の催し（祭り・芸術祭・講演会・だれでも参加の集まり）' },
+  community: { label: '交流', icon: '🎉', title: '地域交流の予定（祭り・芸術祭・講演会・だれでも参加の集まり）' },
   support: { label: '支援', icon: '🤝', title: '福祉・健康・生活支援の案内（健康測定・相談会・介護者向け）' },
   class: { label: '教室', icon: '📚', title: '定例の教室・講座・サロン' },
 };
@@ -216,7 +215,7 @@ export const OrganizerSelect: React.FC<{
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          title="クリックで主催団体を変更"
+          title="クリックで主催を変更"
           className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 rounded px-2 py-0.5 text-xs font-medium hover:bg-slate-200 transition max-w-full"
         >
           <span className="truncate">{value}</span>
@@ -277,7 +276,7 @@ export const OrganizerSelect: React.FC<{
               </button>
             )}
             {filtered.length === 0 && !q && (
-              <p className="px-3 py-2 text-xs text-slate-400">主催団体が未登録です。上の欄で追加できます。</p>
+              <p className="px-3 py-2 text-xs text-slate-400">団体が未登録です。上の欄で追加できます。</p>
             )}
           </div>
         </div>
@@ -521,14 +520,14 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
         seen.push(c);
 
         const hints: string[] = [];
-        if (sourcesOf(c).size >= 2) hints.push('複数掲載');
+        if (sourcesOf(c).size >= 2) hints.push('複数の記事に記載');
         if (isSingleFlyer) hints.push('単独チラシ');
         // 機械判定に当たれば true。当たらない場合、支援系(support)はAIの甘い true を抑えて false に倒す
         const weeklyTopic = hints.length > 0 ? true : c.kind === 'support' ? false : c.weekly_topic;
 
         // 既に登録済みのカードがあれば「補完対象」にする（同じ日付＋似た題名。別の号のカードも対象）
         const existing = cards.find((card) => isSameEvent(card, c));
-        const existingOther = existing && existing.newsletter_id !== newsletter.id ? (existing.newsletter_title ?? '別の号') : null;
+        const existingOther = existing && existing.newsletter_id !== newsletter.id ? (existing.newsletter_title ?? '別の回覧板') : null;
 
         merged.push({
           ...c,
@@ -550,7 +549,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
     setCandidates(merged);
     if (merged.length === 0) {
       const firstError = settled.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
-      if (firstError) setError(firstError.reason?.message ?? 'イベント候補の抽出に失敗しました');
+      if (firstError) setError(firstError.reason?.message ?? '予定の候補の抽出に失敗しました');
     }
     setIsExtracting(false);
   };
@@ -655,7 +654,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
       onRegistered();
       onClose();
     } catch (err: any) {
-      setError(err?.message ?? 'イベントカードの登録に失敗しました');
+      setError(err?.message ?? '予定の登録に失敗しました');
       setIsRegistering(false);
     }
   };
@@ -673,10 +672,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <h2 className="font-bold text-slate-800 flex items-center gap-2">
             <Sparkles size={18} className="text-primary-600" />
-            イベント候補の確認（AI抽出）
-            <span className="text-[11px] font-normal text-slate-400" title="抽出に使うAI">
-              {getEventExtractionProviderLabel()}
-            </span>
+            予定の候補の確認（AI抽出）
           </h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
             <X size={20} />
@@ -742,7 +738,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                           {s.isOffice && (
                             <span
                               className="text-[11px] px-1.5 py-0.5 rounded shrink-0 font-medium bg-slate-200 text-slate-600"
-                              title="班長・地区長向けの事務連絡です。住民向けの催しではないので、既定では抽出しません"
+                              title="班長・地区長向けの事務連絡です。住民向けの予定ではないので、既定では抽出しません"
                             >
                               事務連絡
                             </span>
@@ -750,7 +746,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                           {info?.isScan && (
                             <span
                               className="text-[11px] px-1.5 py-0.5 rounded shrink-0 font-medium bg-amber-200 text-amber-900"
-                              title="文字データがないスキャン画像のPDFです。AIが目で見て読むため、日付や行事名を読み違えることがあります。抽出後に元のページと見比べてください"
+                              title="文字データがないスキャン画像のPDFです。AIが目で見て読むため、日付や予定の名前を読み違えることがあります。抽出後に元のページと見比べてください"
                             >
                               ⚠ 画像PDF
                             </span>
@@ -767,24 +763,24 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                   </div>
                   {pdfSources.some((s) => pdfInfos[s.url]?.isScan) && (
                     <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-                      ⚠ <strong>画像PDF</strong> は文字データを持たないスキャンです。AIが目で見て読むため、表の日付と行事名の対応を取り違えることがあります。
+                      ⚠ <strong>画像PDF</strong> は文字データを持たないスキャンです。AIが目で見て読むため、表の日付と予定の名前の対応を取り違えることがあります。
                       抽出した後に、候補の「元のページと見比べる」で必ず確かめてください。
                     </p>
                   )}
                   {pdfSources.some((s) => s.isOffice) && (
                     <p className="text-[11px] text-slate-500">
-                      班長・地区長向けの<strong>事務連絡</strong>は、住民向けの催しではないので既定で外しています（必要ならチェックを付けてください）。
+                      班長・地区長向けの<strong>事務連絡</strong>は、住民向けの予定ではないので既定で外しています（必要ならチェックを付けてください）。
                     </p>
                   )}
                 </>
               ) : (
-                <p className="text-sm text-slate-400">この号には添付PDFがありません。</p>
+                <p className="text-sm text-slate-400">この回覧板には添付PDFがありません。</p>
               )}
             </div>
           ) : isExtracting ? (
             <div className="py-8">
               <ProcessingIndicator
-                label="AIが選択したソースからイベントの予定を読み取っています…"
+                label="AIが選んだ記事・PDFから予定を読み取っています…"
                 sublabel={
                   progress.total > 0
                     ? `${progress.done} / ${progress.total} 件を処理しました。PDFの枚数によって数分かかることがあります。`
@@ -800,7 +796,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
           ) : candidates.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-sm text-slate-500">
-                カレンダーに登録できそうなイベントは見つかりませんでした
+                カレンダーに登録できそうな予定は見つかりませんでした
               </p>
               {sourceInfo && (
                 <p className="text-[11px] text-slate-400 mt-2">
@@ -897,7 +893,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                           className={`text-sm border rounded px-2 py-1 w-full ${
                             c.event_location && venues.length > 0 && !venues.some((v) => v.name === c.event_location) ? 'border-amber-300 bg-amber-50' : 'border-slate-300'
                           }`}
-                          title={c.event_location && venues.length > 0 && !venues.some((v) => v.name === c.event_location) ? '会場マスターに無い表記です（そのまま登録もできます）' : ''}
+                          title={c.event_location && venues.length > 0 && !venues.some((v) => v.name === c.event_location) ? '会場マスタに無い表記です（そのまま登録もできます）' : ''}
                         />
                         {/* 対象者・参加費（週次配信の一押し・申込受付中に添える） */}
                         <div className="flex gap-2">
@@ -1032,7 +1028,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                             </span>
                           )}
                           {linkedArticle && (
-                            <label className="text-xs flex items-center gap-1.5 cursor-pointer select-none" title="オンにすると読者側のカードに「詳しく読む」が表示され、記事が開けます。予定表など、カード以上の情報がない記事ならオフにしてください">
+                            <label className="text-xs flex items-center gap-1.5 cursor-pointer select-none" title="オンにすると読者側の予定に「詳しく読む」が表示され、記事が開けます。予定表など、予定以上の情報がない記事ならオフにしてください">
                               <input
                                 type="checkbox"
                                 checked={c.linkArticle}
@@ -1048,8 +1044,8 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                               className="text-[11px] px-1.5 py-0.5 rounded font-medium bg-amber-100 text-amber-800"
                               title={
                                 c.existingNewsletterTitle
-                                  ? `同じ日付で似た名前のカードが「${c.existingNewsletterTitle}」に既にあります。登録時は新しく追加せず、そのカードの空欄（締切・種別・⭐など）だけを補完します（カードはその号のまま）`
-                                  : '同じ日付で似た名前のカードが既にあります。登録時は新しく追加せず、既存カードの空欄（締切・種別・⭐など）だけを補完します'
+                                  ? `同じ日付で似た名前の予定が「${c.existingNewsletterTitle}」に既にあります。登録時は新しく追加せず、その予定の空欄（締切・種別・⭐など）だけを補完します（予定はその回覧板のまま）`
+                                  : '同じ日付で似た名前の予定が既にあります。登録時は新しく追加せず、既存の予定の空欄（締切・種別・⭐など）だけを補完します'
                               }
                             >
                               ✔ 登録済み{c.existingNewsletterTitle ? `（${c.existingNewsletterTitle}）` : ''} → 空欄だけ補完

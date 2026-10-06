@@ -212,14 +212,14 @@ export const ReportBoard: React.FC = () => {
       message:
         next === 'board-only'
           ? 'サイトの「レポート」から外れ、誰にも見えなくなります（確認リンクでは引き続き見られます）。'
-          : 'サイトの「レポート」に掲載され、誰でも読めるようになります。',
+          : 'サイトの「関ヶ谷レポート」に公開され、誰でも読めるようになります。',
       confirmLabel: next === 'board-only' ? '非公開にする' : '公開する',
     });
     if (!ok) return;
     try {
       const updated = await updateArticle(a.id, { visibility: next });
       setArticles((prev) => sortReports(prev.map((x) => (x.id === a.id ? { ...x, ...updated } : x))));
-      showToast(next === 'board-only' ? '非公開にしました。サイトからは見えません。' : '公開しました。サイトの「レポート」に掲載されています。');
+      showToast(next === 'board-only' ? '非公開にしました。サイトからは見えません。' : '公開しました。サイトの「関ヶ谷レポート」に出ています。');
     } catch (e) {
       console.error('公開状態の更新エラー:', e);
       showError('公開状態を変更できませんでした。');
@@ -232,7 +232,7 @@ export const ReportBoard: React.FC = () => {
     try {
       const updated = await publishNewsletter(frame.id);
       setFrame({ ...frame, ...updated });
-      showToast('レポート枠を公開状態にしました。「公開」にした記事がサイトに掲載されます。');
+      showToast('レポート枠を公開状態にしました。「公開」にしたレポートがサイトに出ます。');
     } catch (e) {
       console.error('枠の公開エラー:', e);
       showError('枠を公開状態にできませんでした。');
@@ -270,7 +270,7 @@ export const ReportBoard: React.FC = () => {
               関ヶ谷レポート
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              まちのできごとを写真と読み物で届けるレポート。公開すると、サイト（回覧板と同じページ）の「レポート」タブに掲載されます。
+              まちのできごとを写真と読み物で届けるレポート。公開すると、サイト（回覧板と同じページ）の「関ヶ谷レポート」タブに出ます。
             </p>
           </div>
           {frame && (
@@ -297,7 +297,7 @@ export const ReportBoard: React.FC = () => {
         {frame && frame.status !== 'published' && (
           <div className="mt-3 flex flex-wrap items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-3">
             <span>
-              レポート枠が下書きのため、記事を「公開」にしてもサイトには掲載されません。
+              レポート枠が下書きのため、レポートを「公開」にしてもサイトには出ません。
             </span>
             <button
               onClick={handlePublishFrame}
@@ -310,7 +310,7 @@ export const ReportBoard: React.FC = () => {
 
         {loading ? (
           <div className="flex items-center gap-2 text-slate-400 text-sm py-10 justify-center">
-            <Loader2 size={16} className="animate-spin" /> 読み込み中...
+            <Loader2 size={16} className="animate-spin" /> 読み込み中…
           </div>
         ) : !frame ? (
           <div className="text-center py-10">
@@ -404,7 +404,7 @@ export const ReportBoard: React.FC = () => {
                         <button
                           onClick={() => copyReviewLink(a.id)}
                           className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition"
-                          title="この記事をメンバーに見てもらう確認用リンクをコピー（ログイン不要・公開はしません）"
+                          title="このレポートをメンバーに見てもらう確認リンクをコピー（ログイン不要・公開はしません）"
                         >
                           <Copy size={14} /> 確認リンク
                         </button>
@@ -437,7 +437,7 @@ async function copyReviewLink(articleId: string) {
   const link = `${base}/?report-review=${articleId}`;
   try {
     await navigator.clipboard.writeText(link);
-    showToast('この記事のメンバー確認リンクをコピーしました。LINE等で共有できます。');
+    showToast('このレポートの確認リンクをコピーしました。LINE等で共有できます。');
   } catch {
     window.prompt('このリンクをコピーして共有してください', link);
   }
@@ -657,7 +657,7 @@ const ReportEditor: React.FC<ReportEditorProps> = ({ frameId, article, onBack, o
       showToast(
         form.visibility === 'board-only'
           ? '下書きとして保存しました。まだサイトには出ていません（公開するには「公開状態」を「公開」にして保存）。'
-          : '保存しました。サイトの「レポート」に掲載されています。'
+          : '保存しました。サイトの「関ヶ谷レポート」に出ています。'
       );
     } catch (e) {
       console.error('レポート保存エラー:', e);
@@ -705,7 +705,7 @@ const ReportEditor: React.FC<ReportEditorProps> = ({ frameId, article, onBack, o
             <button
               onClick={() => copyReviewLink(article.id)}
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
-              title="この記事をメンバーに見てもらう確認用リンクをコピー（保存済みの内容が表示されます）"
+              title="このレポートをメンバーに見てもらう確認リンクをコピー（保存済みの内容が表示されます）"
             >
               <Copy size={16} />
               確認リンク
@@ -733,7 +733,7 @@ const ReportEditor: React.FC<ReportEditorProps> = ({ frameId, article, onBack, o
         {/* 左: 入力フォーム */}
         <div className="bg-white p-5 rounded-2xl shadow border border-slate-200 space-y-4">
           <div>
-            <label className={labelClass}>タイトル（記事の見出し）</label>
+            <label className={labelClass}>タイトル（レポートの見出し）</label>
             <input
               className={inputClass}
               value={form.title}
@@ -744,7 +744,7 @@ const ReportEditor: React.FC<ReportEditorProps> = ({ frameId, article, onBack, o
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>イベント名（短く）</label>
+              <label className={labelClass}>予定の名前（短く）</label>
               <input
                 className={inputClass}
                 value={form.headline}
@@ -803,7 +803,7 @@ const ReportEditor: React.FC<ReportEditorProps> = ({ frameId, article, onBack, o
 
           {/* 扉写真 */}
           <div>
-            <label className={labelClass}>扉写真（記事の先頭と一覧のサムネイル）</label>
+            <label className={labelClass}>扉写真（レポートの先頭と一覧のサムネイル）</label>
             <div className="flex items-center gap-3">
               <div className="w-28 h-20 rounded-lg bg-slate-100 overflow-hidden flex items-center justify-center text-slate-300 shrink-0">
                 {form.thumbnail_url ? (

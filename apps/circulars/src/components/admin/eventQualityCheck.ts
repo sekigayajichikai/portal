@@ -49,13 +49,13 @@ export function checkEventByRule(ev: CheckableEvent, today: string): EventIssue[
   const title = (ev.title ?? '').trim();
 
   if (title.length < 3) {
-    issues.push({ from: 'rule', reason: '題名が短すぎます', severity: 'high' });
+    issues.push({ from: 'rule', reason: 'タイトルが短すぎます', severity: 'high' });
   }
   if (title.length >= 3 && EXPLANATORY_TAIL.test(title)) {
-    issues.push({ from: 'rule', reason: '題名が催しの名前ではなく、説明文のように見えます', severity: 'low' });
+    issues.push({ from: 'rule', reason: 'タイトルが予定の名前ではなく、説明文のように見えます', severity: 'low' });
   }
   if (BROKEN_MARKS.test(title)) {
-    issues.push({ from: 'rule', reason: '題名に読み取りの崩れ（括弧や記号）がありそうです', severity: 'low' });
+    issues.push({ from: 'rule', reason: 'タイトルに読み取りの崩れ（括弧や記号）がありそうです', severity: 'low' });
   }
   if (!ev.event_location?.trim() && !ev.organizer?.trim()) {
     issues.push({ from: 'rule', reason: '場所も主催も分かりません', severity: 'low' });

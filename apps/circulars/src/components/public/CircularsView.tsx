@@ -150,7 +150,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
           setSelectedNewsletterId(filtered[0].id);
         }
       } catch (err: any) {
-        setError('電子回覧板の読み込みに失敗しました');
+        setError('回覧板の読み込みに失敗しました');
       } finally {
         setIsLoading(false);
       }
@@ -511,7 +511,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
       {selectedNewsletter && (
         <div className="text-sm text-slate-600 space-y-0.5 px-1">
           <p>自治会の回覧板をスマホやパソコンでご覧いただけます。</p>
-          <p>「関ヶ谷だより」と「会報ふれあい」の内容は記事形式で掲載しています。</p>
+          <p>「関ヶ谷だより」と「会報ふれあい」の内容は記事にして載せています。</p>
           <p>その他の配布物はPDFでそのままご覧いただけます。</p>
         </div>
       )}
@@ -528,7 +528,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
           <Loader2 size={24} className="animate-spin text-blue-600" />
-          <span className="ml-2 text-slate-600">読み込み中...</span>
+          <span className="ml-2 text-slate-600">読み込み中…</span>
         </div>
       ) : newsletters.length > 0 ? (
         <div>
@@ -556,7 +556,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
       {isLoadingArticles ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 size={24} className="animate-spin text-blue-600" />
-          <span className="ml-2 text-slate-600">記事を読み込み中...</span>
+          <span className="ml-2 text-slate-600">記事を読み込み中…</span>
         </div>
       ) : (
         <>
@@ -564,7 +564,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
           {eventCards.length > 0 && (
             <div>
               <h2 className="font-bold text-slate-700 mb-2 flex items-center gap-2">
-                🗓️ 今後のイベント
+                🗓️ 今後の予定
               </h2>
               <div ref={carouselRef} className="flex gap-3 overflow-x-auto pt-1 pb-3 -mx-1 px-1 snap-x scroll-smooth">
                 {eventCards.map((card, idx) => {

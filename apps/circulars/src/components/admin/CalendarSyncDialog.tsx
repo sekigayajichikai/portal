@@ -133,7 +133,7 @@ export const CalendarSyncDialog: React.FC<CalendarSyncDialogProps> = ({ cards, o
 
         <div className="p-4 overflow-y-auto flex-1 space-y-4">
           <p className="text-xs text-slate-500">
-            公開済みの号の予定（今日以降）を自治会カレンダーに載せます。対象 {target.length} 件。
+            公開中の回覧板の予定（今日以降）を自治会カレンダーに載せます。対象 {target.length} 件。
             <br />
             カレンダー側だけにある予定（会館予約など）には触れません。載せた予定は、あとで内容を直すとここから更新できます。
           </p>
@@ -144,7 +144,7 @@ export const CalendarSyncDialog: React.FC<CalendarSyncDialogProps> = ({ cards, o
 
           {!diff && !error && (
             <div className="flex items-center gap-2 text-slate-400 text-sm py-10 justify-center">
-              <Loader2 size={16} className="animate-spin" /> カレンダーと見比べています...
+              <Loader2 size={16} className="animate-spin" /> カレンダーと見比べています…
             </div>
           )}
 

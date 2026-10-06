@@ -262,7 +262,7 @@ export const CircularBoard: React.FC = () => {
       console.log('📝 Newsletter作成開始:', title);
 
       // 既存のタイトルをチェック
-      console.log('🔍 既存のタイトルをチェック中...');
+      console.log('🔍 既存のタイトルをチェック中…');
       const existingNewsletters = await getNewsletters();
       const duplicateTitle = existingNewsletters.find(
         (n) => n.title.toLowerCase() === title.toLowerCase()
@@ -286,7 +286,7 @@ export const CircularBoard: React.FC = () => {
       };
 
       // 記事0件で保存
-      console.log('💾 Supabaseに保存中...（記事0件）');
+      console.log('💾 Supabaseに保存中…（記事0件）');
       const result = await saveNewsletter(newsletter, []);
       console.log('✅ Newsletter保存完了:', result.newsletter.id);
 
@@ -335,7 +335,7 @@ export const CircularBoard: React.FC = () => {
    */
   const handlePDFSelectAndExtractMetadata = async () => {
     if (!currentNewsletter) {
-      showError('先に電子回覧板を作成してください');
+      showError('先に回覧板を作成してください');
       return;
     }
 
@@ -417,7 +417,7 @@ export const CircularBoard: React.FC = () => {
       const pdfId = `pdf-${Date.now()}`;
 
       // すべてのモードで元PDFをアップロード
-      console.log('📄 PDFをアップロード中...');
+      console.log('📄 PDFをアップロード中…');
       const pdfPrefix = `${title}${issueNumber ? `-${issueNumber}` : ''}`;
       uploadResult = await uploadPDF(selectedPDF, pdfPrefix);
       console.log('✅ PDFアップロード完了:', uploadResult.url);
@@ -433,7 +433,7 @@ export const CircularBoard: React.FC = () => {
         console.log('✅ Newsletter PDF URL 追加完了');
       } catch (pdfUrlError) {
         console.warn('⚠️ PDF URL追加をスキップ:', pdfUrlError);
-        showToast('PDFを号に添付できませんでした（記事の読み取りは続けます）。あとで「PDFを追加」からやり直してください。', 'error');
+        showToast('PDFを回覧板に添付できませんでした（記事の読み取りは続けます）。あとで「PDFを追加」からやり直してください。', 'error');
       }
       if (isCancelled()) {
         if (attachedPdfUrl) await removePdfUrlFromNewsletter(currentNewsletter.id, attachedPdfUrl).catch(() => {});
@@ -442,7 +442,7 @@ export const CircularBoard: React.FC = () => {
 
       if (extractionMode === 'brief') {
         // 簡易モード：タイトル + 1行要約のみ
-        console.log('📝 地域のお知らせ：簡単登録モード...');
+        console.log('📝 地域のお知らせ：簡単登録モード…');
         setProcessingStage('AIがお知らせの内容を読み取っています…');
         result = await extractBriefArticleFromPDF(
           pendingPDFBase64,
@@ -466,7 +466,7 @@ export const CircularBoard: React.FC = () => {
         }));
       } else {
         // 詳細モード：4段階要約で記事を抽出
-        console.log('📝 自治会のお知らせ：記事を詳しく作成中...');
+        console.log('📝 自治会のお知らせ：記事を詳しく作成中…');
         setProcessingStage('AIが記事を読み取ってまとめています…');
         result = await extractArticlesFromPDF(pendingPDFBase64, MOCK_CATEGORIES);
 
@@ -673,7 +673,7 @@ export const CircularBoard: React.FC = () => {
       // 作業中のAI読み取りがあれば止める（記事は保存済みなので破棄の確認は不要）
       if (isProcessingPDF) {
         const ok = await appConfirm({
-          title: 'PDFの読み取り中です。中止して別の号を開きますか？',
+          title: 'PDFの読み取り中です。中止して別の回覧板を開きますか？',
           message: '読み取り中のPDFの記事は追加されません。すでに追加済みの記事はそのまま残ります。',
           confirmLabel: '中止して開く',
         });
@@ -694,7 +694,7 @@ export const CircularBoard: React.FC = () => {
       setNewsletterTitle(newsletter.title);
 
       // 既存記事を読み込み
-      console.log('📄 既存記事を読み込み中...');
+      console.log('📄 既存記事を読み込み中…');
       const articles = await getArticlesByNewsletterId(newsletter.id);
       setAccumulatedArticles(articles);
       console.log(`✅ ${articles.length}件の記事を読み込みました`);
@@ -718,7 +718,7 @@ export const CircularBoard: React.FC = () => {
 
     const ok = await appConfirm({
       title: `「${pdf.title}」を削除しますか？`,
-      message: `このPDFと、そこから作った記事${pdf.articleIds.length}件を号から削除します。`,
+      message: `このPDFと、そこから作った記事${pdf.articleIds.length}件を回覧板から削除します。`,
       confirmLabel: '削除する',
       danger: true,
     });
@@ -843,7 +843,7 @@ export const CircularBoard: React.FC = () => {
 
       if (!isNewArticle) {
         // Supabaseに保存済みの記事の場合、データベースからも削除
-        console.log('🗑️ Supabaseから記事を削除中...', articleId);
+        console.log('🗑️ Supabaseから記事を削除中…', articleId);
         await deleteArticle(articleId);
         console.log('✅ Supabaseから記事を削除しました');
       } else {
@@ -851,7 +851,7 @@ export const CircularBoard: React.FC = () => {
       }
 
       // ローカル状態から削除
-      console.log('🗑️ ローカル状態から削除中...');
+      console.log('🗑️ ローカル状態から削除中…');
       setAccumulatedArticles(prev => {
         const filtered = prev.filter(article => article.id !== articleId);
         console.log('✅ ローカル状態から削除完了:', {
@@ -874,7 +874,7 @@ export const CircularBoard: React.FC = () => {
     <div className="space-y-6">
       {/* ヘッダー */}
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold text-slate-700">電子回覧板</h2>
+        <h2 className="text-xl font-bold text-slate-700">回覧板</h2>
       </div>
 
       {/* ブレッドクラムナビゲーション */}
@@ -902,7 +902,7 @@ export const CircularBoard: React.FC = () => {
           <ChevronRight size={16} className="text-slate-400" />
           <div className="flex items-center gap-2 text-primary-600 font-medium">
             <Edit3 size={16} />
-            <span>{currentNewsletter?.title || '電子回覧板'}を編集中</span>
+            <span>{currentNewsletter?.title || '回覧板'}を編集中</span>
           </div>
         </div>
       )}
@@ -961,7 +961,7 @@ export const CircularBoard: React.FC = () => {
             <div className="bg-white p-6 rounded-2xl shadow border border-primary-100">
               <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <FileText size={20} className="text-primary-600" />
-                新しい電子回覧板を作成
+                新しい回覧板を作成
               </h3>
 
               <div className="space-y-6">
@@ -1031,7 +1031,7 @@ export const CircularBoard: React.FC = () => {
                 <div className="space-y-3">
                   <h4 className="font-medium text-slate-700 flex items-center gap-2">
                     <FileText size={16} className="text-primary-600" />
-                    カスタムタイトル
+                    表示するタイトル
                   </h4>
 
                   <div>
@@ -1230,7 +1230,7 @@ export const CircularBoard: React.FC = () => {
                           <>
                             <Loader2 size={32} className="text-green-600 animate-spin" />
                             <span className="text-sm font-medium text-green-700">
-                              {bulkProgress.current}/{bulkProgress.total}件 インポート中...
+                              {bulkProgress.current}/{bulkProgress.total}件 取り込み中…
                             </span>
                           </>
                         ) : (
@@ -1380,7 +1380,7 @@ export const CircularBoard: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-40">
           <div className="bg-white rounded-xl px-6 py-4 shadow-xl flex items-center gap-3">
             <Loader2 size={20} className="animate-spin text-primary-600" />
-            <span className="text-slate-700 font-medium">PDFを解析中...</span>
+            <span className="text-slate-700 font-medium">PDFを解析中…</span>
           </div>
         </div>
       )}

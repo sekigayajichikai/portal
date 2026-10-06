@@ -4,9 +4,9 @@ import { Loader2, RotateCcw, Trash2, X } from 'lucide-react';
 import { showToast, showError, appConfirm } from '@/components/ui/feedback';
 
 const KIND_LABELS: Record<TrashKind, string> = {
-  newsletter: '電子回覧板の号',
+  newsletter: '回覧板',
   article: '記事',
-  event_card: '予定カード',
+  event_card: '予定（回覧板）',
   calendar_event: 'カレンダーの予定',
   booking: '会館の予約',
 };
@@ -14,7 +14,7 @@ const KIND_LABELS: Record<TrashKind, string> = {
 const SOURCE_LABELS: Record<string, string> = {
   portal: '回覧板ポータル',
   calendar: 'カレンダー',
-  import: '会館予定の取込',
+  import: '会館予定の取り込み',
 };
 
 /** 中に含まれる件数の説明（号なら記事と予定カードの数） */
@@ -22,7 +22,7 @@ function describeContents(item: TrashItem): string {
   const counts = item.payload
     .filter((p) => p.rows.length > 0 && p.table !== item.payload[0]?.table)
     .map((p) => {
-      const name = p.table === 'articles' ? '記事' : p.table === 'event_cards' ? '予定カード' : p.table === 'calendar_events' ? '予定' : p.table;
+      const name = p.table === 'articles' ? '記事' : p.table === 'event_cards' ? '予定（回覧板）' : p.table === 'calendar_events' ? '予定（カレンダー）' : p.table;
       return `${name}${p.rows.length}件`;
     });
   return counts.length > 0 ? `（${counts.join('・')}を含む）` : '';
@@ -69,9 +69,9 @@ export const TrashDialog: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   const handlePurge = async (item: TrashItem) => {
     const ok = await appConfirm({
-      title: `「${item.label}」を完全に消しますか？`,
+      title: `「${item.label}」を完全に削除しますか？`,
       message: 'ゴミ箱からも消えるので、もう元に戻せません。',
-      confirmLabel: '完全に消す',
+      confirmLabel: '完全に削除する',
       danger: true,
     });
     if (!ok) return;
@@ -81,7 +81,7 @@ export const TrashDialog: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       setItems((prev) => prev?.filter((i) => i.id !== item.id) ?? null);
     } catch (e) {
       console.error('完全削除エラー:', e);
-      showError('消せませんでした。時間をおいてもう一度お試しください。');
+      showError('削除できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setBusyId(null);
     }
@@ -97,7 +97,7 @@ export const TrashDialog: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <div>
             <h2 className="text-lg font-bold text-slate-800">ゴミ箱</h2>
             <p className="text-sm text-slate-500 mt-0.5">
-              削除した号・記事・予定・予約は、ここから元に戻せます。
+              削除した回覧板・記事・予定・予約は、ここから元に戻せます。
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg" title="閉じる">
@@ -138,7 +138,7 @@ export const TrashDialog: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                       onClick={() => handlePurge(item)}
                       disabled={busyId !== null}
                       className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
-                      title="完全に消す"
+                      title="完全に削除する"
                     >
                       <Trash2 size={16} />
                     </button>

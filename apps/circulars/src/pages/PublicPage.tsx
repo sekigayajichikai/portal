@@ -36,7 +36,7 @@ export default function PublicPage() {
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="bg-amber-100 text-amber-800 text-sm text-center py-2 px-4 font-medium">
-          🔍 確認用ページ（メンバー向け）— まだ一般公開はされていません
+          🔍 確認用ページ（メンバー向け）— まだ公開されていません
         </div>
         <ReportReviewView id={reportReviewId} />
       </div>
@@ -79,7 +79,7 @@ export default function PublicPage() {
             onClick={() => setTab('reports')}
             className={tabClass(tab === 'reports', 'border-[#c0392b] text-[#a93226]')}
           >
-            レポート
+            関ヶ谷レポート
           </button>
           {/* 後で再追加する場合はここにカレンダー/会館予約タブを戻す */}
         </div>

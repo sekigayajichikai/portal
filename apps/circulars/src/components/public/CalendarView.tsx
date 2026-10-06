@@ -200,7 +200,7 @@ const ArticleModal: React.FC<{ article: Article | null; loading: boolean; onClos
         </div>
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
-            <p className="text-slate-400 text-sm">読み込み中...</p>
+            <p className="text-slate-400 text-sm">読み込み中…</p>
           ) : !article ? (
             <p className="text-slate-400 text-sm">記事が見つかりませんでした。</p>
           ) : (
@@ -363,12 +363,12 @@ const CalendarView: React.FC<{ previewNewsletterId?: string }> = ({ previewNewsl
                   onChange={(e) => setHideReserve(e.target.checked)}
                   className="rounded"
                 />
-                📝 要予約の催しを隠す
+                📝 要予約の予定を隠す
               </label>
             </div>
           )}
 
-          {loading && <div className="text-center text-sm text-gray-400 py-4">読み込み中...</div>}
+          {loading && <div className="text-center text-sm text-gray-400 py-4">読み込み中…</div>}
 
           {/* 日カード */}
           {days.map((date) => {

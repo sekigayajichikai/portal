@@ -655,7 +655,7 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
             {/* 登録済みPDF選択リスト */}
             {showPdfPicker && availablePdfs && (
               <div className="mt-3 border border-blue-200 rounded-lg bg-blue-50/50 p-3">
-                <p className="text-xs text-slate-500 mb-2">この号に登録されているPDFから選択:</p>
+                <p className="text-xs text-slate-500 mb-2">この回覧板に登録されているPDFから選択:</p>
                 <div className="space-y-1">
                   {availablePdfs.map((pdf, idx) => {
                     const alreadyAttached = formData.attachments?.some(
@@ -714,7 +714,7 @@ export const ArticleEditDialog: React.FC<ArticleEditDialogProps> = ({
             {isSaving ? (
               <>
                 <Loader2 size={18} className="animate-spin" />
-                保存中...
+                保存中…
               </>
             ) : (
               <>

@@ -39,7 +39,7 @@ function AdminContent() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="text-xl text-gray-600">読み込み中...</div>
+        <div className="text-xl text-gray-600">読み込み中…</div>
       </div>
     );
   }
@@ -99,14 +99,14 @@ function AdminContent() {
             }`}
           >
             <FileText size={16} />
-            電子回覧板
+            回覧板
             {/* 担当者から回答が届いた号の数。知らせが届く仕組みは無いので、ここで気づけるようにする */}
             {reviewUpdates.approved > 0 && (
               <span
                 className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[11px] font-bold"
                 title={`${reviewUpdates.approved}件が承認済みです。公開できます`}
               >
-                承認 {reviewUpdates.approved}
+                承認済み {reviewUpdates.approved}
               </span>
             )}
             {reviewUpdates.changesRequested > 0 && (
@@ -114,7 +114,7 @@ function AdminContent() {
                 className="ml-1 px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[11px] font-bold"
                 title={`${reviewUpdates.changesRequested}件に修正依頼が届いています`}
               >
-                修正 {reviewUpdates.changesRequested}
+                修正依頼 {reviewUpdates.changesRequested}
               </span>
             )}
           </button>
@@ -158,7 +158,7 @@ function AdminContent() {
                 ? 'border-blue-600 text-blue-700'
                 : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
-            title="号をまたいで予定カードを一覧・編集"
+            title="すべての回覧板の予定を一覧・編集"
           >
             <Calendar size={16} />
             予定
@@ -170,7 +170,7 @@ function AdminContent() {
                 ? 'border-slate-600 text-slate-800'
                 : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
-            title="会場・主催団体・発行元の名前の一覧"
+            title="会場・団体の名前の一覧"
           >
             <Database size={16} />
             マスタ

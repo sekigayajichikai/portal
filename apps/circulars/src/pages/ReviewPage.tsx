@@ -85,7 +85,7 @@ export default function ReviewPage() {
           <AlertCircle size={40} className="text-red-500 mx-auto mb-4" />
           <h1 className="text-lg font-bold text-slate-800 mb-2">このリンクは無効です</h1>
           <p className="text-sm text-slate-600">
-            確認用リンクが古くなっているか、取り下げられた可能性があります。
+            確認リンクが古くなっているか、取り下げられた可能性があります。
             お手数ですが、リンクを送った担当の方にご連絡ください。
           </p>
         </div>
@@ -99,7 +99,7 @@ export default function ReviewPage() {
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
         <div className="bg-white rounded-xl shadow p-8 max-w-md text-center">
           <CheckCircle2 size={40} className="text-green-500 mx-auto mb-4" />
-          <h1 className="text-lg font-bold text-slate-800 mb-2">この回覧板は公開済みです</h1>
+          <h1 className="text-lg font-bold text-slate-800 mb-2">この回覧板は公開中です</h1>
           <p className="text-sm text-slate-600 mb-4">「{newsletter.title}」はすでに住民向けに公開されています。</p>
           <a href="/" className="inline-block px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition">
             公開ページを見る
@@ -209,7 +209,7 @@ export default function ReviewPage() {
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-orange-300 text-orange-600 rounded-lg font-medium hover:bg-orange-50 disabled:opacity-50 transition"
                   >
                     <MessageSquareWarning size={18} />
-                    修正をお願いする
+                    修正依頼を書く
                   </button>
                   <button
                     onClick={() => handleSubmit('approved')}

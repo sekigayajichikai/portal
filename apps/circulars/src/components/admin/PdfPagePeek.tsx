@@ -65,7 +65,7 @@ export const PdfPagePeek: React.FC<PdfPagePeekProps> = ({ url, label, pages, max
         <div className="mt-1.5 p-2 rounded-lg border border-amber-200 bg-amber-50/50">
           <p className="text-[11px] text-amber-800 mb-1.5">
             {label}（{pages}ページ{pages > shown ? `・先頭${shown}ページのみ表示` : ''}）。画像をクリックすると大きく見られます。
-            <strong>日付と行事名の対応がずれていないか確かめてください。</strong>
+            <strong>日付と予定の名前の対応がずれていないか確かめてください。</strong>
           </p>
           {failed && <p className="text-[11px] text-red-600 mb-1">ページを描けませんでした。PDFを直接開いて確認してください。</p>}
           <div className="flex gap-2 overflow-x-auto pb-1">

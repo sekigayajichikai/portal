@@ -1,8 +1,8 @@
 /**
- * 画像紐付けダイアログ
+ * 画像紐づけダイアログ
  *
- * Newsletter から抽出された保留画像を表示し、記事に紐付けるためのダイアログコンポーネントです。
- * 1枚のページ画像から複数の領域を切り抜き、それぞれ別の記事に紐付けることができます。
+ * Newsletter から抽出された保留画像を表示し、記事に紐づけるためのダイアログコンポーネントです。
+ * 1枚のページ画像から複数の領域を切り抜き、それぞれ別の記事に紐づけることができます。
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -159,7 +159,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
     }
   };
 
-  /** 切り抜きに記事を紐付け */
+  /** 切り抜きに記事を紐づけ */
   const handleSetArticleForCrop = (articleId: string) => {
     if (selectedCroppedIndex === null) return;
     setCroppedItems((prev) =>
@@ -171,7 +171,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
   const handleSaveAllCrops = async () => {
     const itemsToSave = croppedItems.filter((item) => item.articleId);
     if (itemsToSave.length === 0) {
-      showToast('切り抜きに記事を紐付けてください', 'info');
+      showToast('切り抜きに記事を紐づけてください', 'info');
       return;
     }
 
@@ -260,7 +260,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
           <div className="flex items-center gap-3">
             <ImageIcon size={24} className="text-primary-600" />
             <h3 className="font-bold text-xl text-slate-800">
-              保留画像の紐付け ({pendingImages.length}件)
+              保留画像の紐づけ ({pendingImages.length}件)
             </h3>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition">
@@ -272,7 +272,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
           <div className="flex-1 flex items-center justify-center p-12">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-              <p className="text-slate-600">保留画像を読み込み中...</p>
+              <p className="text-slate-600">保留画像を読み込み中…</p>
             </div>
           </div>
         ) : pendingImages.length === 0 ? (
@@ -436,7 +436,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
               <h4 className="font-bold text-sm text-slate-800 mb-3 flex items-center gap-2">
                 <FileText size={16} />
                 {selectedCroppedIndex !== null
-                  ? `切り抜き #${selectedCroppedIndex + 1} の紐付け先`
+                  ? `切り抜き #${selectedCroppedIndex + 1} の紐づけ先`
                   : '記事一覧'}
               </h4>
 
@@ -444,7 +444,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
                 <div className="text-center py-8">
                   <FileText size={32} className="text-slate-300 mx-auto mb-3" />
                   <p className="text-sm text-slate-500">
-                    左の切り抜きを選択すると<br />紐付け先の記事を選べます
+                    左の切り抜きを選択すると<br />紐づけ先の記事を選べます
                   </p>
                 </div>
               ) : (
@@ -498,7 +498,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
             <div className="flex-1" />
             {croppedItems.length > 0 && (
               <p className="text-sm text-slate-500">
-                {assignedCount}/{croppedItems.length} 件の切り抜きに記事を紐付け済み
+                {assignedCount}/{croppedItems.length} 件の切り抜きに記事を紐づけ済み
               </p>
             )}
             <button
@@ -509,7 +509,7 @@ export const ImageAssignmentDialog: React.FC<ImageAssignmentDialogProps> = ({
               {isProcessing ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  保存中...
+                  保存中…
                 </>
               ) : (
                 <>

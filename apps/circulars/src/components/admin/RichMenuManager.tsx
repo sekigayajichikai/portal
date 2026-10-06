@@ -398,14 +398,14 @@ export const RichMenuManager: React.FC = () => {
                           aliases[i] = e.target.value.replace(/[^a-z0-9_-]/g, '');
                           update({ tabs: { ...tabPreview, aliases } });
                         }}
-                        placeholder="エイリアスID（半角英数）"
+                        placeholder="メニューの識別名（半角英数）"
                         className="mt-1 w-full border border-slate-300 rounded px-1.5 py-1 font-mono"
                         title="切替先のメニューの別名。もう一方のメニューでも同じIDを使う"
                       />
                     </div>
                   ))}
                   <p className="col-span-2 text-slate-500">
-                    タブ切替は「通常」「防災訓練」の2つのメニューをそれぞれ登録し、同じエイリアスIDを使うと動きます。押した人にだけ切り替わります。
+                    タブ切替は「通常」「防災訓練」の2つのメニューをそれぞれ登録し、同じメニューの識別名を使うと動きます。押した人にだけ切り替わります。
                   </p>
                 </div>
               )}
@@ -511,7 +511,7 @@ export const RichMenuManager: React.FC = () => {
                 onClick={() => withLine('test', async () => { await richMenuApi('link_test', { richMenuId: lineId }); showToast('自分のLINEに反映しました。トーク画面を開き直して確認してください'); })}
                 disabled={!!busy || !lineId}
                 className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
-                title="LINE_TEST_USER_ID の自分にだけ紐づけます"
+                title="自分にだけ紐づけます"
               >
                 {busy === 'test' ? <Loader2 size={14} className="animate-spin" /> : <UserCheck size={14} />} 自分だけに反映
               </button>
@@ -526,7 +526,7 @@ export const RichMenuManager: React.FC = () => {
                 onClick={() => withLine('admins', async () => { const r = await richMenuApi('link_admins', { richMenuId: lineId }); showToast(`管理者 ${r.line?.linked ?? ''} 人に反映しました`); })}
                 disabled={!!busy || !lineId}
                 className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-white bg-teal-700 rounded-lg hover:bg-teal-800 disabled:opacity-50"
-                title="LINE_ADMIN_USER_IDS に登録した管理者（DX委員など）にだけ紐づけます"
+                title="管理者（DX委員など）にだけ紐づけます"
               >
                 {busy === 'admins' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 管理者だけに反映
               </button>
@@ -617,7 +617,7 @@ export const RichMenuManager: React.FC = () => {
           </div>
         </div>
         {lineLoading ? (
-          <p className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 取得中...</p>
+          <p className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 取得中…</p>
         ) : lineMenus.length === 0 ? (
           <p className="text-slate-400">まだありません。LINE公式アカウントの管理画面で作ったメニューはここには出ません（API とは別管理）。</p>
         ) : (

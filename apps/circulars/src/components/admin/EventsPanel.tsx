@@ -167,7 +167,7 @@ export const EventsPanel: React.FC = () => {
   /** 号の選択肢（一覧に出ているカードの号） */
   const newsletterOptions = useMemo(() => {
     const m = new Map<string, { title: string; status: string | null }>();
-    for (const c of cards) if (!m.has(c.newsletter_id)) m.set(c.newsletter_id, { title: c.newsletter_title ?? '号不明', status: c.newsletter_status });
+    for (const c of cards) if (!m.has(c.newsletter_id)) m.set(c.newsletter_id, { title: c.newsletter_title ?? '回覧板なし', status: c.newsletter_status });
     return Array.from(m.entries());
   }, [cards]);
 
@@ -201,8 +201,8 @@ export const EventsPanel: React.FC = () => {
   /** keep を残し drop を消す（keep の空欄は drop の値で埋める） */
   const merge = async (keep: AdminEventCard, drop: AdminEventCard) => {
     const ok = await appConfirm({
-      title: `「${keep.title}」（${keep.newsletter_title ?? '号不明'}）を残し、もう片方を削除しますか？`,
-      message: `削除: 「${drop.title}」（${drop.newsletter_title ?? '号不明'}）\n残す側の空欄（時間・場所・主催・記事リンク・紹介文など）は、削除する側の値で埋めます。`,
+      title: `「${keep.title}」（${keep.newsletter_title ?? '回覧板なし'}）を残し、もう片方を削除しますか？`,
+      message: `削除: 「${drop.title}」（${drop.newsletter_title ?? '回覧板なし'}）\n残す側の空欄（時間・場所・主催・記事リンク・紹介文など）は、削除する側の値で埋めます。`,
       confirmLabel: '1件にまとめる',
       danger: true,
     });
@@ -242,7 +242,7 @@ export const EventsPanel: React.FC = () => {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="題名・場所・主催で検索"
+                placeholder="タイトル・場所・主催で検索"
                 className="text-sm border border-slate-300 rounded-lg pl-7 pr-2 py-1.5 w-56"
               />
             </div>
@@ -250,7 +250,7 @@ export const EventsPanel: React.FC = () => {
               onClick={runAiCheck}
               disabled={checking}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 transition disabled:opacity-40"
-              title="一覧の予定をAIがまとめて点検し、題名が催しの名前になっていないものなど「確認したほうがよい予定」を挙げます（Geminiが混んでいるときはClaudeに切り替わります）"
+              title="一覧の予定をAIがまとめて点検し、タイトルが予定の名前になっていないものなど「確認したほうがよい予定」を挙げます"
             >
               {checking ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
               {checking ? '点検しています…' : 'AIで点検'}
@@ -258,7 +258,7 @@ export const EventsPanel: React.FC = () => {
             <button
               onClick={() => setSyncing(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition"
-              title="公開済みの号の予定（今日以降）を自治会カレンダーに載せます。何が変わるかを先に確認できます"
+              title="公開中の回覧板の予定（今日以降）を自治会カレンダーに載せます。何が変わるかを先に確認できます"
             >
               <CalendarCheck size={15} /> カレンダーに反映
             </button>
@@ -273,7 +273,7 @@ export const EventsPanel: React.FC = () => {
             <option value="all">過去も表示</option>
           </select>
           <select value={newsletterFilter} onChange={(e) => setNewsletterFilter(e.target.value)} className="border border-slate-300 rounded-lg px-2 py-1 max-w-[16rem]">
-            <option value="all">号: すべて</option>
+            <option value="all">回覧板: すべて</option>
             {newsletterOptions.map(([id, n]) => (
               <option key={id} value={id}>
                 {n.title}
@@ -309,7 +309,7 @@ export const EventsPanel: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200">
         {loading && cards.length === 0 ? (
           <p className="p-8 text-center text-slate-400 flex items-center justify-center gap-2">
-            <Loader2 size={18} className="animate-spin" /> 読み込み中...
+            <Loader2 size={18} className="animate-spin" /> 読み込み中…
           </p>
         ) : visible.length === 0 ? (
           <p className="p-8 text-center text-sm text-slate-400">当てはまる予定がありません。</p>
@@ -343,8 +343,8 @@ export const EventsPanel: React.FC = () => {
                           const b = issueBadge(issuesOf(c));
                           return b ? <span className={`px-1.5 py-0.5 rounded font-medium ${b.cls}`} title={b.title}>{b.label}</span> : null;
                         })()}
-                        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 max-w-[10rem] truncate">{c.newsletter_title ?? '号不明'}</span>
-                        {badge && <span className={`px-1.5 py-0.5 rounded ${badge.cls}`} title="この号は公開されていないので、カレンダー・週次配信には出ません">{badge.label}</span>}
+                        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 max-w-[10rem] truncate">{c.newsletter_title ?? '回覧板なし'}</span>
+                        {badge && <span className={`px-1.5 py-0.5 rounded ${badge.cls}`} title="この回覧板は公開されていないので、カレンダー・週次配信には出ません">{badge.label}</span>}
                       </span>
                     </div>
                     {(c.event_location || c.organizer || c.linked_article) && (
@@ -390,8 +390,8 @@ export const EventsPanel: React.FC = () => {
                     <div key={d.id} className="flex items-center gap-2 text-xs bg-amber-50 text-amber-800 px-4 py-1 pl-[6.75rem]">
                       <AlertTriangle size={12} className="shrink-0" />
                       <span className="truncate">
-                        {reason === 'title' ? '同じ日に似た予定' : '同じ時刻・同じ主催の予定（同じ催しかもしれません）'}: {d.title}（
-                        {d.newsletter_title ?? '号不明'}）
+                        {reason === 'title' ? '同じ日に似た予定' : '同じ時刻・同じ主催の予定（同じ予定かもしれません）'}: {d.title}（
+                        {d.newsletter_title ?? '回覧板なし'}）
                       </span>
                       <button type="button" onClick={() => setComparing([c, d])} className="shrink-0 font-bold text-amber-900 hover:underline">
                         見比べる
@@ -444,10 +444,10 @@ export const EventsPanel: React.FC = () => {
                 </span>
               </p>
               <p>
-                食い違いは、同じ催しでも号によって読み取りがぶれたために起きることがあります。
+                食い違いは、同じ予定でも回覧板によって読み取りがぶれたために起きることがあります。
                 迷ったら、行の📎から元のPDFを見比べてください。
               </p>
-              <p>残す側の空欄は、消す側の値で埋めます（題名・日付など残す側に値があるものは変えません）。別の予定なら閉じてください。</p>
+              <p>残す側の空欄は、削除する側の値で埋めます（タイトル・日付など残す側に値があるものは変えません）。別の予定なら閉じてください。</p>
             </div>
           </div>
         </div>
@@ -477,8 +477,8 @@ function newerSide(pair: [AdminEventCard, AdminEventCard]): number {
  */
 function compareRowsOf(c: AdminEventCard): Array<[string, string | null]> {
   return [
-    ['号', `${c.newsletter_title ?? '号不明'}${c.newsletter_status && STATUS_BADGE[c.newsletter_status] ? `（${STATUS_BADGE[c.newsletter_status].label}）` : ''}`],
-    ['題名', c.title],
+    ['回覧板', `${c.newsletter_title ?? '回覧板なし'}${c.newsletter_status && STATUS_BADGE[c.newsletter_status] ? `（${STATUS_BADGE[c.newsletter_status].label}）` : ''}`],
+    ['タイトル', c.title],
     ['日付', `${mdw(c.event_date)} ${c.event_time ?? ''}`.trim()],
     ['場所', c.event_location],
     ['主催', c.organizer],
@@ -540,8 +540,8 @@ const CompareTable: React.FC<{
         <div />
         {[0, 1].map((i) => (
           <div key={i} className={`px-2 py-1 rounded font-bold ${newer === i ? 'bg-sky-50 text-sky-700' : 'text-slate-500'}`}>
-            {pair[i].newsletter_title ?? '号不明'}
-            {newer === i && <span className="ml-1 font-normal">（あとの号）</span>}
+            {pair[i].newsletter_title ?? '回覧板なし'}
+            {newer === i && <span className="ml-1 font-normal">（あとの回覧板）</span>}
           </div>
         ))}
       </div>
@@ -549,7 +549,7 @@ const CompareTable: React.FC<{
       {/* 項目ごとに左右を1行で */}
       <div className="grid grid-cols-[5.5rem_1fr_1fr] gap-x-2 gap-y-0.5 text-xs items-start">
         {left.map(([k, v]) => {
-          if (k === '号') return null; // 見出し行に出したので省く
+          if (k === '回覧板') return null; // 見出し行に出したので省く
           const o = rightMap.get(k) ?? null;
           // 由来PDFは必ず違うので、違いの印は付けない
           const comparable = k !== '由来PDF';

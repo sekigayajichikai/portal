@@ -177,7 +177,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ previewNewsletterId, initialA
         <p className="text-sm text-slate-500 mb-6">まちのできごとを、写真とともにお届けします。</p>
 
         {loading ? (
-          <p className="text-slate-400 text-sm">読み込み中...</p>
+          <p className="text-slate-400 text-sm">読み込み中…</p>
         ) : articles.length === 0 ? (
           <div className="text-slate-400 text-sm bg-white rounded-xl p-8 text-center border border-slate-100">
             まだレポートがありません。

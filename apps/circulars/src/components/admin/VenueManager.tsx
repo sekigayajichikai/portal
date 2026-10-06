@@ -76,7 +76,7 @@ export const VenueManager: React.FC = () => {
   const handleDelete = async (v: Venue) => {
     const ok = await appConfirm({
       title: `「${v.name}」を削除しますか？`,
-      message: '予定カードに入っている場所の文字はそのまま残ります（マスターから消えるだけ）。',
+      message: '予定に入っている場所の文字はそのまま残ります（マスタから消えるだけ）。',
       confirmLabel: '削除する',
       danger: true,
     });
@@ -111,7 +111,7 @@ export const VenueManager: React.FC = () => {
       await load();
     } catch (e) {
       console.error('会場並び替えエラー:', e);
-      showError('並び替えできませんでした。');
+      showError('並べ替えできませんでした。');
     }
   };
 
@@ -120,12 +120,12 @@ export const VenueManager: React.FC = () => {
       <div className="flex items-center gap-2 p-5 border-b border-slate-200">
         <MapPin size={18} className="text-emerald-600" />
         <h3 className="font-bold text-lg text-slate-800">会場</h3>
-        <span className="text-xs text-slate-400">予定カードの実施場所。正式名は「施設名＋部屋名」で</span>
+        <span className="text-xs text-slate-400">予定の場所。正式名は「施設名＋部屋名」で</span>
       </div>
 
       {unavailable && (
         <p className="m-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-          会場マスターを読めませんでした。DBに venues テーブルが無いかもしれません（sql/migrations/2026-09-26-venues-master.sql）。
+          会場マスタを読めませんでした。設定が足りないかもしれません。管理者に連絡してください。
         </p>
       )}
 
@@ -157,7 +157,7 @@ export const VenueManager: React.FC = () => {
           </button>
         </div>
         <p className="text-[11px] text-slate-400 mt-1.5">
-          別名に登録した表記は、抽出時と予定カードの編集で自動的に正式名へ置き換わります。AIにも正式名の一覧を渡して、この表記に揃えるよう指示します。
+          別名に登録した表記は、抽出時と予定の編集で自動的に正式名へ置き換わります。AIにも正式名の一覧を渡して、この表記に揃えるよう指示します。
         </p>
       </div>
 
@@ -165,7 +165,7 @@ export const VenueManager: React.FC = () => {
       <div className="p-4">
         <p className="text-xs text-slate-500 mb-3">上下ボタンで表示順を変更。名前をクリックで編集。</p>
         {isLoading ? (
-          <p className="text-center text-slate-500 py-8">読み込み中...</p>
+          <p className="text-center text-slate-500 py-8">読み込み中…</p>
         ) : venues.length === 0 ? (
           <p className="text-center text-slate-500 py-8">会場が登録されていません</p>
         ) : (
@@ -196,7 +196,7 @@ export const VenueManager: React.FC = () => {
                         保存
                       </button>
                       <button onClick={() => setEditingId(null)} className="text-xs px-2 py-1 bg-slate-200 rounded">
-                        取消
+                        キャンセル
                       </button>
                     </div>
                   </div>

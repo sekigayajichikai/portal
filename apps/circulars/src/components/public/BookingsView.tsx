@@ -165,7 +165,7 @@ const BookingsView: React.FC = () => {
             </span>
           </div>
 
-          {loading && <div className="text-center text-sm text-gray-400 py-4">読み込み中...</div>}
+          {loading && <div className="text-center text-sm text-gray-400 py-4">読み込み中…</div>}
 
           {/* 日ブロック */}
           {days.map((date) => {

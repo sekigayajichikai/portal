@@ -900,7 +900,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({
       {isSavingOrder && (
         <div className="fixed bottom-4 right-4 bg-primary-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
           <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-          並び順を保存中...
+          並び順を保存中…
         </div>
       )}
 

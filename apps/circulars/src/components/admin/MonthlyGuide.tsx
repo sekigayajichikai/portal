@@ -48,7 +48,7 @@ interface ChecklistItem {
   indent?: boolean;
 }
 
-const STEPS = ['号を作る・PDF追加', '内容づくり', '担当者に確認', '公開'];
+const STEPS = ['回覧板を作る・PDF追加', '内容づくり', '担当者に確認', '公開'];
 
 /**
  * レポート系（「関ヶ谷レポート」等）は回覧板とは別トラックなので、
@@ -95,8 +95,8 @@ function judge(newsletters: NewsletterWithCount[], focusId?: string | null): Gui
   if (!draft && published) {
     return {
       step: 5,
-      message: `「${published.title}」は公開済みです。次の号の時期になったら「回覧板を作る」から始めましょう。`,
-      actionLabel: '次の号を作る',
+      message: `「${published.title}」は公開中です。次の回覧板の時期になったら「回覧板を作る」から始めましょう。`,
+      actionLabel: '次の回覧板を作る',
       targetId: null,
     };
   }
@@ -115,7 +115,7 @@ function judge(newsletters: NewsletterWithCount[], focusId?: string | null): Gui
     case 'pending':
       return {
         step: 3,
-        message: `「${d.title}」は担当者の確認待ちです。まだリンクを送っていなければ、号を開いて「確認リンクを表示」からコピーして送ってください。`,
+        message: `「${d.title}」は担当者の確認待ちです。まだリンクを送っていなければ、回覧板を開いて「確認リンクを表示」からコピーして送ってください。`,
         actionLabel: '開いて確認リンクを見る',
         targetId: d.id,
       };
@@ -136,7 +136,7 @@ function judge(newsletters: NewsletterWithCount[], focusId?: string | null): Gui
     default:
       return {
         step: 2,
-        message: `「${d.title}」の内容づくり中です。記事・写真・イベントなどをそろえて、「確認を依頼」で担当者に見てもらいましょう。`,
+        message: `「${d.title}」の内容づくり中です。記事・写真・予定などをそろえて、「確認を依頼」で担当者に見てもらいましょう。`,
         actionLabel: '開いて続きをやる',
         targetId: d.id,
       };
@@ -176,7 +176,7 @@ function buildChecklist(
       indent: true,
       label: `記事に写真を追加（${officialWithPhoto.length}件）`,
       // 全記事に写真を付ける必要はないため分母表記(/◯件)は出さない
-      hint: '「画像切り抜き」でPDFから写真を切り出して記事に付けられます（全記事につける必要はありません）',
+      hint: '「画像切り抜き」でPDFから写真を切り抜いて記事に付けられます（全記事につける必要はありません）',
     },
     {
       state: localInfoCount > 0 ? 'done' : 'todo',
@@ -200,8 +200,8 @@ function buildChecklist(
     },
     {
       state: eventCardCount > 0 ? 'done' : 'todo',
-      label: `イベント予定の抽出（${eventCardCount}件）`,
-      hint: '「イベント」欄の「AIで抽出」を押すと、記事やPDFから日程を拾ってカードにできます',
+      label: `予定の抽出（${eventCardCount}件）`,
+      hint: '「今後の予定」欄の「AIで抽出」を押すと、記事やPDFから日程を拾って予定にできます',
     },
   ];
 }

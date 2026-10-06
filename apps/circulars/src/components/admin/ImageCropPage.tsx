@@ -2,7 +2,7 @@
  * 画像切り抜きページ（フルスクリーン）
  *
  * PDFをpdfjs-distで直接高解像度レンダリングし、
- * 1ページから複数の領域を切り抜いて記事に紐付けるコンポーネント。
+ * 1ページから複数の領域を切り抜いて記事に紐づけるコンポーネント。
  * ズーム対応、複数切り抜き、新規記事作成、連続作業対応。
  */
 
@@ -230,7 +230,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
     setHasUnsavedChanges(true);
   };
 
-  /** 新規記事を作成して切り抜きに紐付け */
+  /** 新規記事を作成して切り抜きに紐づけ */
   const handleCreateNewArticle = async () => {
     if (!newArticleTitle.trim() || selectedCroppedIndex === null) return;
 
@@ -392,7 +392,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
             className="px-5 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm transition"
           >
             {isSaving ? (
-              <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> 保存中...</>
+              <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> 保存中…</>
             ) : (
               <><Save size={16} /> {unsavedCount}件を保存</>
             )}
@@ -410,7 +410,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4" />
-            <p className="text-slate-600">PDFを読み込み中...</p>
+            <p className="text-slate-600">PDFを読み込み中…</p>
           </div>
         </div>
       ) : pdfError ? (
@@ -552,7 +552,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
                           {assignedArticle ? (
                             <p className="text-xs text-primary-700 font-medium line-clamp-1">{assignedArticle.title}</p>
                           ) : (
-                            <p className="text-xs text-amber-600">未紐付け</p>
+                            <p className="text-xs text-amber-600">未紐づけ</p>
                           )}
                           {!item.saved ? (
                             <div className="flex gap-2 mt-1" onClick={(e) => e.stopPropagation()}>
@@ -602,7 +602,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
               {selectedCroppedIndex === null ? (
                 <div className="text-center py-12">
                   <FileText size={36} className="text-slate-300 mx-auto mb-3" />
-                  <p className="text-sm text-slate-400">上の切り抜きを選択すると<br />紐付け先の記事を選べます</p>
+                  <p className="text-sm text-slate-400">上の切り抜きを選択すると<br />紐づけ先の記事を選べます</p>
                 </div>
               ) : selectedCropped?.saved ? (
                 <div className="text-center py-12">
@@ -616,14 +616,14 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
                 <>
                   <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
                     <FileText size={14} />
-                    切り抜き #{selectedCroppedIndex + 1} の紐付け先
+                    切り抜き #{selectedCroppedIndex + 1} の紐づけ先
                   </h3>
 
                   {/* 新規記事作成 */}
                   {!showNewArticleForm ? (
                     <button onClick={() => setShowNewArticleForm(true)}
                       className="w-full mb-3 p-3 rounded-lg border-2 border-dashed border-slate-300 text-slate-500 hover:border-primary-400 hover:text-primary-600 transition flex items-center justify-center gap-2 text-sm">
-                      <PlusCircle size={16} /> 新しい記事を作成して紐付け
+                      <PlusCircle size={16} /> 新しい記事を作成して紐づけ
                     </button>
                   ) : (
                     <div className="mb-3 p-3 rounded-lg border-2 border-primary-300 bg-primary-50">
