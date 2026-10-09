@@ -16,8 +16,8 @@ const DOW = ['日', '月', '火', '水', '木', '金', '土'];
 /** 部屋マスター（元アプリ ROOMS を踏襲。id はDBの room 値＝正式名） */
 const ROOMS = [
   { id: '会議室', shortName: '会議室' },
-  { id: '和室（畳側）', shortName: '和室(畳)' },
-  { id: '和室（椅子側）', shortName: '和室(椅子)' },
+  { id: '和室（右）', shortName: '和室(右)' },
+  { id: '和室（左）', shortName: '和室(左)' },
   { id: '図書室', shortName: '図書室' },
 ];
 
@@ -29,8 +29,8 @@ const TIME_SLOTS = [
 
 const ROOM_DOT: Record<string, string> = {
   会議室: 'bg-yellow-400',
-  '和室（畳側）': 'bg-sky-400',
-  '和室（椅子側）': 'bg-sky-400',
+  '和室（右）': 'bg-sky-400',
+  '和室（左）': 'bg-sky-400',
   図書室: 'bg-pink-400',
 };
 
