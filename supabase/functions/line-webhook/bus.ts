@@ -71,6 +71,17 @@ export function getDayType(date: Date, specialDays: SpecialDay[], holidays: Set<
   return '平日';
 }
 
+/**
+ * そのダイヤで次に走る日（明日から60日先まで探す。なければ null）
+ */
+export function nextDateOfDayType(from: Date, dayType: string, specialDays: SpecialDay[], holidays: Set<number>): Date | null {
+  for (let i = 1; i <= 60; i++) {
+    const d = new Date(from.getTime() + i * 24 * 60 * 60 * 1000);
+    if (getDayType(d, specialDays, holidays) === dayType) return d;
+  }
+  return null;
+}
+
 /** 停留所名の一覧（往路の行の順・重複なし） */
 export function getStopNames(rows: TimetableRow[]): string[] {
   const stops: string[] = [];
@@ -180,12 +191,21 @@ export function buildStopSelectFlex(direction: string, stops: string[]) {
   };
 }
 
+/** 待ち時間（分）を「52分」「1時間15分」「6時間」の形にする */
+export function formatWait(min: number): string {
+  if (min < 60) return min + '分';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h + '時間' + (m > 0 ? m + '分' : '');
+}
+
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 /**
  * 時刻表 Flex Message（カルーセル: 次のバス／午前／午後）
  * @param now 今の時刻（次のバスと日付の表示に使う）
  * @param tomorrowDayType 明日のダイヤ（今日と違えば注意を出す）
+ * @param nextDate 今日以外のダイヤを見ているとき、そのダイヤで次に走る日（「次は ◯月◯日（◯）」と出す）
  */
 export function buildTimetableFlex(
   direction: string,
@@ -197,6 +217,7 @@ export function buildTimetableFlex(
   otherRoutes: BusSetting[] | null,
   now: Date,
   tomorrowDayType: string,
+  nextDate: Date | null = null,
 ) {
   const t = jst(now);
   const nowMinutes = t.hours * 60 + t.minutes;
@@ -222,7 +243,8 @@ export function buildTimetableFlex(
     }
   }
 
-  const dateStr = t.m + '月' + t.d + '日' + '（' + DAY_NAMES[t.dow] + '）';
+  // 0時〜4時台は、夜中に「明日の朝」を調べている人が取り違えないよう「今朝」とつける
+  const dateStr = (t.hours < 5 ? '今朝 ' : '') + t.m + '月' + t.d + '日' + '（' + DAY_NAMES[t.dow] + '）';
 
   // 明日のダイヤが異なるか
   const tm = jst(new Date(now.getTime() + 24 * 60 * 60 * 1000));
@@ -240,12 +262,19 @@ export function buildTimetableFlex(
     nextBusContents.push({
       type: 'text', text: dayType + 'ダイヤの時刻表です', size: 'md', weight: 'bold', color: '#666666', margin: 'sm',
     });
+    if (nextDate) {
+      const nd = jst(nextDate);
+      nextBusContents.push({
+        type: 'text', text: '次は ' + nd.m + '月' + nd.d + '日（' + DAY_NAMES[nd.dow] + '）', size: 'sm', color: '#999999', margin: 'sm',
+      });
+    }
   } else if (upcoming.length > 0) {
     nextBusContents.push({
-      type: 'text', text: '次のバス', size: 'lg', weight: 'bold', color: '#FF6B00', margin: 'sm',
+      // 0時〜4時台で、まだ今日のバスが1本も出ていなければ「始発」
+      type: 'text', text: t.hours < 5 && upcoming[0].time === times[0] ? '始発' : '次のバス', size: 'lg', weight: 'bold', color: '#FF6B00', margin: 'sm',
     });
     for (const u of upcoming) {
-      const diffText = u.diff === 0 ? 'まもなく' : 'あと ' + u.diff + '分';
+      const diffText = u.diff === 0 ? 'まもなく' : 'あと ' + formatWait(u.diff);
       nextBusContents.push({
         type: 'box', layout: 'horizontal', margin: 'sm',
         contents: [

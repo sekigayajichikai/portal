@@ -46,6 +46,7 @@ import {
   getOtherRoutes,
   getStopNames,
   isoToNum,
+  nextDateOfDayType,
   nextPatternName,
 } from './bus.ts';
 
@@ -205,7 +206,8 @@ async function timetableReply(ctx: Ctx, replyToken: string, direction: string, s
   const times = getBusTimetable(data.rows, direction, dt, stopName);
   // 今日のダイヤに戻したときは、切り替えではなくふつうの表示（日付と次のバス）にする
   const isOtherDay = isSwitched && dt !== today;
-  await reply(ctx, replyToken, [flex('バス時刻表', buildTimetableFlex(direction, stopName, dt, times, isSaved, isOtherDay, others, now, tomorrow))]);
+  const nextDate = isOtherDay ? nextDateOfDayType(now, dt, data.specialDays, data.holidays) : null;
+  await reply(ctx, replyToken, [flex('バス時刻表', buildTimetableFlex(direction, stopName, dt, times, isSaved, isOtherDay, others, now, tomorrow, nextDate))]);
 }
 
 /**

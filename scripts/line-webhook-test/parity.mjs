@@ -101,6 +101,12 @@ for (const m of moments) {
   const today = bus.getDayType(now, specialDays, holidays);
   const tomorrow = bus.getDayType(new RealDate(fakeNow + 86400000), specialDays, holidays);
   same(`ダイヤ判定 ${m}`, gas('getDayType(new Date())'), today);
+  // 別のダイヤを見たときの「次は ◯月◯日（◯）」
+  const other = today === '平日' ? '土休日' : '平日';
+  const nextDate = bus.nextDateOfDayType(now, other, specialDays, holidays);
+  same(`次の${other} ${m}`,
+    gas(`buildTimetableFlex("往路", "関ヶ谷", "${other}", [], false, true, null, nextDateOfDayType_("${other}"))`),
+    bus.buildTimetableFlex('往路', '関ヶ谷', other, [], false, true, null, now, tomorrow, nextDate));
   for (const dir of ['往路', '復路']) {
     for (const stop of ['関ヶ谷', '谷津坂']) {
       const times = bus.getBusTimetable(rows, dir, today, stop);
