@@ -52,9 +52,13 @@ const ctx = {
   }) },
   SpreadsheetApp: { openById: () => ({ getSheetByName: (n) =>
     n === 'バス時刻表' ? sheetOf(sheet) : n === '特別ダイヤ' ? sheetOf([['開始日', '終了日', 'ダイヤ区分', 'メモ'], ...special]) : n === 'バス設定' ? sheetOf(settingsRows) : null }) },
+  // 内閣府の祝日一覧（CSV）の偽物
+  UrlFetchApp: { fetch: () => ({ getResponseCode: () => 200, getContentText: () => '国民の祝日・休日月日,国民の祝日・休日名称\r\n' +
+    [...holidays].map((n) => `${Math.floor(n / 10000)}/${Math.floor(n / 100) % 100}/${n % 100},祝日`).join('\r\n') }) },
+  // 代用の Google カレンダー（内閣府の一覧が読めたときは使われない。使われたら祝日でない行事で判定がずれる）
   CalendarApp: { getCalendarById: () => ({ getEventsForDay: (d) => {
     const n = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
-    return holidays.has(n) ? [{}] : [];
+    return holidays.has(n) ? [{ getTitle: () => '祝日' }] : [{ getTitle: () => '誕生日' }];
   } }) },
 };
 vm.createContext(ctx);
