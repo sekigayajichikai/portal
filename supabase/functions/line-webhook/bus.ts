@@ -143,7 +143,14 @@ export function buildDirectionSelectFlex() {
   };
 }
 
-export function buildStopSelectFlex(direction: string, stops: string[]) {
+/**
+ * 準備中のバス停（時刻表のデータはあるが、停留所選びにはまだ出さない）。出すときはここから消す（名簿GAS の BUS_HIDDEN_STOPS も）
+ * 夏山坂上: 隣の自治会向けに 2026-10-12 にデータだけ用意。公開はまだ
+ */
+export const BUS_HIDDEN_STOPS = ['夏山坂上'];
+
+export function buildStopSelectFlex(direction: string, allStops: string[]) {
+  const stops = allStops.filter((s) => !BUS_HIDDEN_STOPS.includes(s));
   // 往路: 金沢文庫駅西口を除外（終点のため時刻なし）
   // 復路: 関ヶ谷を除外（最終便1本のみ）、野村住宅センターを除外（終点）
   const filtered = stops.filter((s) => {

@@ -20,7 +20,7 @@ if (new Date(2026, 0, 1).getTimezoneOffset() !== -540) {
 
 // ---- 試験データ（本物の形をまねる）----
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 6〜23時
-const STOPS = ['野村住宅センター', '関ヶ谷', '谷津坂', '金沢文庫駅西口'];
+const STOPS = ['野村住宅センター', '関ヶ谷', '谷津坂', '夏山坂上', '金沢文庫駅西口']; // 夏山坂上は停留所選びに出さない（BUS_HIDDEN_STOPS）
 function cellsFor(seed) {
   return HOURS.map((h) => (h % 3 === seed % 3 ? '' : [5 + seed, 25 + seed, 45 + seed].filter((m) => m < 60).join(',')));
 }
