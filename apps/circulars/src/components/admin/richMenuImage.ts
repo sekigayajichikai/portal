@@ -41,10 +41,10 @@ export const ROLES: Array<{ key: MenuRole; label: string; hint: string }> = [
 /**
  * 役割ごとの決まったエイリアス（タブ付きでないメニュー用）。
  * 登録し直すと richMenuId が変わるので、外部（名簿スプレッドシートのGAS）はこの名前で今のメニューを引く。
- * GAS: GET /v2/bot/richmenu/alias/menu-register → richMenuId
+ * GAS: GET /v2/bot/richmenu/alias/menu-touroku → richMenuId
  */
 export const ROLE_ALIASES: Partial<Record<MenuRole, string>> = {
-  promo: 'menu-register',
+  promo: 'menu-touroku',
 };
 
 export interface RichMenuDef {

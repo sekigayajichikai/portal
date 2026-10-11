@@ -242,7 +242,7 @@ export const RichMenuManager: React.FC = () => {
       const richMenuId = created.line.richMenuId;
       const blob = await imageBlob();
       await richMenuApi('upload_image', { richMenuId, contentType: blob.type, base64: await blobToBase64(blob) });
-      // タブ付きなら自分のエイリアス、そうでなければ役割の決まったエイリアス（登録促進＝menu-register）をこの richMenuId に向ける
+      // タブ付きなら自分のエイリアス、そうでなければ役割の決まったエイリアス（登録促進＝menu-touroku）をこの richMenuId に向ける
       const alias = def.tabs ? def.tabs.aliases[def.tabs.position] : (ROLE_ALIASES[role] ?? null);
       if (alias) await richMenuApi('alias_set', { aliasId: alias, richMenuId });
       // 前に登録したものが既定だったら既定も付け替え、古いメニューは削除
