@@ -27,6 +27,7 @@ import {
   type MenuRole,
   ROLES,
   ROLE_ALIASES,
+  menuSignature,
   DEFAULT_COLORS,
   BOSAI_COLORS,
   PROMO_COLORS,
@@ -251,8 +252,12 @@ export const RichMenuManager: React.FC = () => {
         if (defaultId === old) await richMenuApi('set_default', { richMenuId });
         await richMenuApi('delete', { richMenuId: old }).catch(() => undefined);
       }
-      const updated = await saveRichMenu({ id: row.id, name: def.name, definition: def, image_url: row.image_url, line_rich_menu_id: richMenuId, alias_id: alias });
+      // 登録した内容の署名を残し、以後「LINE は古いまま」かどうかを画面で見分ける
+      const registeredDef: RichMenuDef = { ...def, role, registeredSig: menuSignature(def) };
+      const updated = await saveRichMenu({ id: row.id, name: def.name, definition: registeredDef, image_url: row.image_url, line_rich_menu_id: richMenuId, alias_id: alias });
       setCurrent(updated);
+      setDef(registeredDef);
+      setBaseline(JSON.stringify(registeredDef));
       await Promise.all([loadSaved(), loadLine()]);
       showToast('LINE に登録しました。「自分だけに反映」で実機を確認してください');
       return updated;
@@ -285,6 +290,8 @@ export const RichMenuManager: React.FC = () => {
   /** 役割の決まったエイリアス（登録促進のみ）と、それがいまのメニューを指しているか */
   const roleAlias = def.tabs ? null : (ROLE_ALIASES[role] ?? null);
   const roleAliasOk = !!roleAlias && !!lineId && aliases.some((a) => a.richMenuAliasId === roleAlias && a.richMenuId === lineId);
+  /** LINE に登録済みだが、画面の内容（未保存を含む）と違う＝LINE は古いまま。手持ち画像を選んだときも古い扱い */
+  const lineOutdated = !!lineId && (def.registeredSig !== menuSignature(def) || !!customImage);
   const tabPreview = def.tabs;
 
   return (
@@ -297,7 +304,7 @@ export const RichMenuManager: React.FC = () => {
               リッチメニュー
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              公式LINEの下に出るメニューを3つの役割（通常／登録促進／防災訓練タブ）ごとに1つ作り、LINE に登録して「自分だけに反映」で確かめてから「全員の既定にする」か、特定の人にだけ紐づけます。
+              公式LINEの下に出るメニューを3つの役割（通常／登録促進／防災訓練タブ）ごとに1つ作ります。右の①「保存して LINE に反映」→ ②「自分だけに反映」で確かめる → ③ 出す相手を決める、の順に進めます。
             </p>
           </div>
         </div>
@@ -504,20 +511,39 @@ export const RichMenuManager: React.FC = () => {
               <div className="mt-2 bg-[#c9a7e6] text-center text-xs py-1.5 rounded text-slate-700">{def.chatBarText || 'メニュー'} ▾</div>
             </div>
 
-            {roleAlias && (
-              <p className={`text-[11px] ${roleAliasOk ? 'text-emerald-700' : 'text-amber-700'}`}>
-                エイリアス <code className="font-mono">{roleAlias}</code>：
-                {roleAliasOk ? 'このメニューを指しています（GAS はこの名前で紐づけます）' : '未設定です。「LINE に登録」すると付きます'}
+            {/* ① 保存して LINE に反映。LINE のメニューは書き換えられないので、反映のたびに作り直す */}
+            <div className={`rounded-lg border px-3 py-3 space-y-2 ${!lineId || lineOutdated ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50/50'}`}>
+              <p className="text-xs font-bold text-slate-700">① 保存して LINE に反映する</p>
+              <p className={`text-xs font-bold ${!lineId || lineOutdated ? 'text-amber-800' : 'text-emerald-700'}`}>
+                {!lineId
+                  ? '⚠ まだ LINE に登録していません'
+                  : lineOutdated
+                    ? '⚠ LINE のメニューは古い内容のままです。下のボタンで反映してください'
+                    : '✓ LINE のメニューはこの内容と同じです'}
               </p>
-            )}
+              <div className="flex flex-wrap items-center gap-3">
+                <button onClick={() => registerToLine().catch(() => undefined)} disabled={!!busy} className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50">
+                  {busy === 'register' ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} 保存して LINE に反映
+                </button>
+                <button onClick={() => save().catch((e) => showError(e.message))} disabled={!!busy} className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 underline disabled:opacity-50" title="この画面にだけ保存します。LINE のメニューは変わりません">
+                  {busy === 'save' ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} 下書きとして保存（LINE は変わらない）
+                </button>
+              </div>
+              {lineId && <p className="text-[11px] text-slate-500">反映すると LINE 上のメニューは作り直され、個別に紐づけていた人の紐づけは外れます（③でもう一度紐づけてください）。</p>}
+              {roleAlias && (
+                <p className={`text-[11px] ${roleAliasOk ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  エイリアス <code className="font-mono">{roleAlias}</code>：
+                  {roleAliasOk ? 'このメニューを指しています（GAS はこの名前で紐づけます）' : '未設定です。「保存して LINE に反映」すると付きます'}
+                </p>
+              )}
+              {lineId && <p className="text-[11px] text-slate-400 font-mono">richMenuId: {lineId}{current?.alias_id ? ` ／ alias: ${current.alias_id}` : ''}</p>}
+            </div>
 
+            {/* ② 見え方を確かめる */}
+            <div className="rounded-lg border border-slate-200 px-3 py-3 space-y-2">
+              <p className="text-xs font-bold text-slate-700">② 見え方を確かめる</p>
+              {lineOutdated && <p className="text-[11px] text-amber-700">いま反映すると、LINE にある古い内容が出ます。先に①で反映してください。</p>}
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => save().catch((e) => showError(e.message))} disabled={!!busy} className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 disabled:opacity-50">
-                {busy === 'save' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} 保存
-              </button>
-              <button onClick={() => registerToLine().catch(() => undefined)} disabled={!!busy} className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-white bg-teal-600 rounded-lg hover:bg-teal-700 disabled:opacity-50">
-                {busy === 'register' ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} LINE に登録
-              </button>
               <button
                 onClick={() => withLine('test', async () => { await richMenuApi('link_test', { richMenuId: lineId }); showToast('自分のLINEに反映しました。トーク画面を開き直して確認してください'); })}
                 disabled={!!busy || !lineId}
@@ -548,22 +574,12 @@ export const RichMenuManager: React.FC = () => {
               >
                 管理者の反映を解除
               </button>
-              <button
-                onClick={async () => {
-                  if (!lineId) return;
-                  if (!(await appConfirm({ title: '友だち全員の既定メニューにしますか？', message: `「${def.name}」が、個別に紐づけていない全員に表示されます。`, confirmLabel: '全員の既定にする' }))) return;
-                  await withLine('default', async () => { await richMenuApi('set_default', { richMenuId: lineId }); showToast('全員の既定メニューにしました'); });
-                }}
-                disabled={!!busy || !lineId}
-                className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
-              >
-                {busy === 'default' ? <Loader2 size={14} className="animate-spin" /> : <Star size={14} />} 全員の既定にする
-              </button>
             </div>
-            {current && !lineId && <p className="text-[11px] text-amber-700">このメニューはまだ LINE に登録されていません。「LINE に登録」を押すと作成と画像アップロードを行います。</p>}
-            {lineId && <p className="text-[11px] text-slate-400 font-mono">richMenuId: {lineId}{current?.alias_id ? ` ／ alias: ${current.alias_id}` : ''}</p>}
+            </div>
 
-            {/* 特定の人に紐づけ */}
+            {/* ③ 出す相手を決める */}
+            <div className="rounded-lg border border-slate-200 px-3 py-3 space-y-2">
+              <p className="text-xs font-bold text-slate-700">③ 出す相手を決める</p>
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs space-y-2">
               <p className="font-bold text-slate-600 flex items-center gap-1">
                 <Users size={14} /> 特定の人にだけこのメニューを出す
@@ -596,6 +612,22 @@ export const RichMenuManager: React.FC = () => {
                 >
                   紐づけを解除（既定に戻す）
                 </button>
+              </div>
+            </div>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  onClick={async () => {
+                    if (!lineId) return;
+                    const promoWarn = role === 'promo' ? '\n\n登録促進メニューは、未入力の人にだけ GAS が紐づけます。全員の既定にすると、登録済みの人にも登録促進が出ます。' : '';
+                    if (!(await appConfirm({ title: '友だち全員の既定メニューにしますか？', message: `「${def.name}」が、個別に紐づけていない全員に表示されます。${promoWarn}`, confirmLabel: '全員の既定にする' }))) return;
+                    await withLine('default', async () => { await richMenuApi('set_default', { richMenuId: lineId }); showToast('全員の既定メニューにしました'); });
+                  }}
+                  disabled={!!busy || !lineId}
+                  className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {busy === 'default' ? <Loader2 size={14} className="animate-spin" /> : <Star size={14} />} 全員の既定にする
+                </button>
+                {role === 'promo' && <span className="text-[11px] text-red-700">登録促進メニューでは押さないでください（未入力の人にだけ GAS が紐づけます）</span>}
               </div>
             </div>
           </div>

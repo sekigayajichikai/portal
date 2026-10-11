@@ -56,6 +56,14 @@ export interface RichMenuDef {
   colors: { bg: string; tile: string; tileBorder: string; text: string; tabOn: string; tabOff: string; tabOnText: string; tabOffText: string; accent: string };
   tabs: TabsDef | null;
   tiles: Tile[];
+  /** 最後に LINE に登録したときの内容（menuSignature）。今の内容と違えば LINE は古いまま */
+  registeredSig?: string;
+}
+
+/** LINE に出る内容の署名（役割と registeredSig は含めない）。登録済みの内容と比べるのに使う */
+export function menuSignature(d: RichMenuDef): string {
+  const { role: _role, registeredSig: _sig, ...rest } = d;
+  return JSON.stringify(rest);
 }
 
 export interface Area {
