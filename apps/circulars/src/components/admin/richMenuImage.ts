@@ -130,7 +130,7 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
         label: 'まだ登録がお済みでない方へ',
         sub: '会員登録（1分）をすると\n回覧板・予定・防災情報が届きます',
         button: '会員登録フォームへ ›',
-        action: { type: 'uri', uri: 'https://example.com/liff-form' },
+        action: { type: 'uri', uri: 'https://liff.line.me/2009265243-QfQURcn1' },
       },
       { icon: '📖', label: '回覧板を\n見てみる', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
       { icon: '❓', label: '登録について\n質問する', action: { type: 'message', text: '登録について質問があります' } },
