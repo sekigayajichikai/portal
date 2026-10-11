@@ -18,6 +18,9 @@
  *     holidays: [{date, name}], settings?: [{userId, patternName, direction, stopName}] }
  *   settings があれば各人のバス設定を全部入れ替える（切り替えのときに一度だけ）。日付は 'yyyy-mm-dd'。
  *
+ * 公式時刻表の取得: POST ?op=navitime&dep=バス停ID&arr=バス停ID&date=yyyy-mm-dd（ヘッダー x-sync-secret）
+ *   京急バスの NAVITIME の発着時刻表の HTML をそのまま返す。名簿GAS から直接読むと 403 で断られるため代わりに読む。
+ *
  * 試験用: WEBHOOK_TEST_SECRET で署名したイベントは、LINE に返信せず、返すはずのメッセージを
  *   LINE の検証 API（validate/reply）にかけて JSON で返す（BUS_TEST_USER_IDS の人のイベントだけ受け付ける）。
  *   ヘッダー x-test-forward: 1 なら GAS への受け渡しも試す（GAS の応答を待って返す）。
@@ -473,6 +476,18 @@ Deno.serve(async (req: Request) => {
       console.error('sync', e);
       return json({ ok: false, error: String(e) }, 500);
     }
+  }
+
+  // 京急バス公式の時刻表（NAVITIME）を名簿GAS の代わりに読む（GAS からだと 403 で断られるため）
+  if (url.searchParams.get('op') === 'navitime') {
+    const secret = env('BUS_SYNC_SECRET');
+    if (!secret || !safeEqual(req.headers.get('x-sync-secret') ?? '', secret)) return json({ error: 'forbidden' }, 403);
+    const dep = url.searchParams.get('dep') ?? '';
+    const arr = url.searchParams.get('arr') ?? '';
+    const date = url.searchParams.get('date') ?? '';
+    if (!/^\d{8}$/.test(dep) || !/^\d{8}$/.test(arr) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: 'bad params' }, 400);
+    const res = await fetch(`https://transfer-cloud.navitime.biz/keikyubus/trips/section-timetables?departure-busstop=${dep}&arrival-busstop=${arr}&date=${date}`);
+    return new Response(await res.text(), { status: res.status, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
 
   // LINE からの通知
