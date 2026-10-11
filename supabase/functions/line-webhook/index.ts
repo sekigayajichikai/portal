@@ -203,7 +203,9 @@ async function timetableReply(ctx: Ctx, replyToken: string, direction: string, s
   const tomorrow = getDayType(new Date(now.getTime() + 24 * 60 * 60 * 1000), data.specialDays, data.holidays);
   const dt = dayType ?? today;
   const times = getBusTimetable(data.rows, direction, dt, stopName);
-  await reply(ctx, replyToken, [flex('バス時刻表', buildTimetableFlex(direction, stopName, dt, times, isSaved, isSwitched, others, now, tomorrow))]);
+  // 今日のダイヤに戻したときは、切り替えではなくふつうの表示（日付と次のバス）にする
+  const isOtherDay = isSwitched && dt !== today;
+  await reply(ctx, replyToken, [flex('バス時刻表', buildTimetableFlex(direction, stopName, dt, times, isSaved, isOtherDay, others, now, tomorrow))]);
 }
 
 /**

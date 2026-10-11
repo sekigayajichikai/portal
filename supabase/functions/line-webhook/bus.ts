@@ -314,7 +314,7 @@ export function buildTimetableFlex(
       contents: [
         { type: 'text', text: stopName, weight: 'bold', size: 'xl', color: '#ffffff' },
         { type: 'text', text: dirLabel, size: 'lg', color: '#ffffffcc', margin: 'sm' },
-        { type: 'text', text: '【' + dayType + 'ダイヤ】' + dateStr, size: 'md', weight: 'bold', color: '#ffffff', margin: 'sm' },
+        { type: 'text', text: '【' + dayType + 'ダイヤ】' + (isSwitched ? '' : dateStr), size: 'md', weight: 'bold', color: '#ffffff', margin: 'sm' },
       ],
       backgroundColor: headerColor, paddingAll: '12px',
     },
