@@ -1,6 +1,6 @@
 # TODO - CC-SaaS (まちポータル)
 
-> 最終更新: 2026-09-08(レガシー整理: apps/admin・apps/public・旧docs・旧SQL を archive/ へ移動)
+> 最終更新: 2026-10-12(公式LINE: バス時刻表を Supabase へ移した。お問い合わせの移行をタスクに追加)
 > 実運用中の機能: デジタル回覧板作成 / スケジュール関連(LINE名簿は本リポジトリ外)
 
 ---
@@ -25,6 +25,31 @@
 - [x] `scripts/google-drive-sync.js` のハードコード資格情報を GAS Script Properties へ移動(GAS側への反映は要確認)
 - [ ] ストレージRLSの anon 全開放(`storage-setup-dev.sql` / `production-migrations.sql`)を authenticated 限定に
 - [ ] 本文テーブル(newsletters / articles / event_cards 等)への RLS 適用
+
+---
+
+## 公式LINE(2026-10-12 追加)
+
+Webhook の受け口は Supabase Edge Function `line-webhook`。バス時刻表はここで答え、それ以外は名簿GASへ転送している(`docs/バス時刻表.md`)。
+
+### お問い合わせを Supabase へ移す(遅いので)
+いまは名簿GAS が答えていて、受け口 → GAS の転送のぶん、さらに遅い。バスは移して 2〜6秒 → 1秒以内になった。
+- [ ] 速さを測る(いま: 「お問い合わせ」→種類のボタン 約1.3〜2秒 + 転送のぶん。種類を選んだあと・本文を送ったあとは未測定)
+- [ ] やりとり(種類のボタン・本文の受付・「受け付けました」の返事)を `line-webhook` で答える。受付待ちの状態は Supabase のテーブルに
+- [ ] 記録とメールの置き場所を決める: 案A 記録とメールだけ GAS に後ろで頼む(シート・MailApp をそのまま使える)／案B 記録は Supabase、メールはメール送信サービス
+- [ ] 「問い合わせ担当」(種類 → メール)・「GASテスト対象」の読み方を決める(シートのまま写す or Supabase で持つ)
+- [ ] 毎朝の再通知(`remindInquiries`)をどこで動かすか
+- [ ] GAS と同じ文言・ボタンになるかの比較試験(バスの `scripts/line-webhook-test/parity.mjs` と同じやり方)
+- 仕様: `docs/問い合わせ.md`
+
+### 公開・本番化を待っているもの
+- [ ] お問い合わせを協力者 → 全員へ(いまは `INQUIRY_MODE=test`。管理者だけ)
+- [ ] 登録促進リッチメニューを協力者 → 全員へ(`RICHMENU_SYNC_MODE`。`docs/リッチメニュー.md`)
+- [ ] 夏山坂上を停留所選びに出す(データは用意済み。名簿GAS と bus.ts の `BUS_HIDDEN_STOPS` から消す)
+
+### そのほか
+- [ ] 登録フォームなどから名簿GAS に直接届く通信(LINE を通らないもの)は、まだ誰でも送れる。合言葉などで守るか検討
+- [ ] 試験用の署名(`WEBHOOK_TEST_SECRET`)は試験が落ち着いたら消す
 
 ---
 
@@ -91,7 +116,7 @@
 ## 長期 TODO(将来構想)
 
 - [ ] デジタル入稿 → 広報紙PDF自動生成
-- [ ] LINE連携(通知・リッチメニュー — 現在LINE関連コードは本リポジトリに無し)
+- [x] LINE連携(リッチメニュー管理・週次配信・Webhook の受け口 line-webhook は本リポジトリ。名簿GAS は別)
 - [ ] マルチ組織対応
 - [ ] ユニットテスト(Vitest)/ E2E(Playwright)
 - [ ] メール通知、アナリティクス、Stripe決済
