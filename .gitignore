@@ -43,3 +43,6 @@ apps/circulars/public/report-sample/*.mp4
 
 # スケジュール抽出テストのプロンプトバンドル（build-prompt.mjs が生成）
 scripts/schedule-test/.prompt-bundle.mjs
+
+# 名簿スプレッドシートのGAS（個人情報・トークンを含みうるのでコミットしない）
+scripts/gas/

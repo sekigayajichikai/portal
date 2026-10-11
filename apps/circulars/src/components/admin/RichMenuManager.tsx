@@ -26,6 +26,7 @@ import {
   type Tile,
   type MenuRole,
   ROLES,
+  ROLE_ALIASES,
   DEFAULT_COLORS,
   BOSAI_COLORS,
   PROMO_COLORS,
@@ -241,8 +242,8 @@ export const RichMenuManager: React.FC = () => {
       const richMenuId = created.line.richMenuId;
       const blob = await imageBlob();
       await richMenuApi('upload_image', { richMenuId, contentType: blob.type, base64: await blobToBase64(blob) });
-      // タブ付きなら自分のエイリアスをこの richMenuId に向ける
-      const alias = def.tabs ? def.tabs.aliases[def.tabs.position] : null;
+      // タブ付きなら自分のエイリアス、そうでなければ役割の決まったエイリアス（登録促進＝menu-register）をこの richMenuId に向ける
+      const alias = def.tabs ? def.tabs.aliases[def.tabs.position] : (ROLE_ALIASES[role] ?? null);
       if (alias) await richMenuApi('alias_set', { aliasId: alias, richMenuId });
       // 前に登録したものが既定だったら既定も付け替え、古いメニューは削除
       const old = row.line_rich_menu_id;
@@ -281,6 +282,9 @@ export const RichMenuManager: React.FC = () => {
     .filter((s) => /^U[0-9a-f]{32}$/.test(s));
 
   const lineId = current?.line_rich_menu_id ?? null;
+  /** 役割の決まったエイリアス（登録促進のみ）と、それがいまのメニューを指しているか */
+  const roleAlias = def.tabs ? null : (ROLE_ALIASES[role] ?? null);
+  const roleAliasOk = !!roleAlias && !!lineId && aliases.some((a) => a.richMenuAliasId === roleAlias && a.richMenuId === lineId);
   const tabPreview = def.tabs;
 
   return (
@@ -499,6 +503,13 @@ export const RichMenuManager: React.FC = () => {
               ) : null}
               <div className="mt-2 bg-[#c9a7e6] text-center text-xs py-1.5 rounded text-slate-700">{def.chatBarText || 'メニュー'} ▾</div>
             </div>
+
+            {roleAlias && (
+              <p className={`text-[11px] ${roleAliasOk ? 'text-emerald-700' : 'text-amber-700'}`}>
+                エイリアス <code className="font-mono">{roleAlias}</code>：
+                {roleAliasOk ? 'このメニューを指しています（GAS はこの名前で紐づけます）' : '未設定です。「LINE に登録」すると付きます'}
+              </p>
+            )}
 
             <div className="flex flex-wrap gap-2">
               <button onClick={() => save().catch((e) => showError(e.message))} disabled={!!busy} className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 disabled:opacity-50">

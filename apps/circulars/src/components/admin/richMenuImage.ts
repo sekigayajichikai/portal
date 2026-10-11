@@ -34,9 +34,18 @@ export interface TabsDef {
 export type MenuRole = 'normal' | 'promo' | 'bosai';
 export const ROLES: Array<{ key: MenuRole; label: string; hint: string }> = [
   { key: 'normal', label: '通常メニュー', hint: '登録済みの人に出す。いまの6タイル' },
-  { key: 'promo', label: '登録促進', hint: '未登録の人（全員の既定）に出す' },
+  { key: 'promo', label: '登録促進', hint: '未登録の人にだけ紐づけて出す（GASが毎日同期）' },
   { key: 'bosai', label: '防災訓練タブ', hint: '対象者にだけ、通常メニューとタブで切り替え' },
 ];
+
+/**
+ * 役割ごとの決まったエイリアス（タブ付きでないメニュー用）。
+ * 登録し直すと richMenuId が変わるので、外部（名簿スプレッドシートのGAS）はこの名前で今のメニューを引く。
+ * GAS: GET /v2/bot/richmenu/alias/menu-register → richMenuId
+ */
+export const ROLE_ALIASES: Partial<Record<MenuRole, string>> = {
+  promo: 'menu-register',
+};
 
 export interface RichMenuDef {
   /** 役割（definition JSON の中に持つ。無い旧データは名前から推定） */
