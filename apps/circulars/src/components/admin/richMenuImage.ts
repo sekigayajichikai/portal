@@ -133,7 +133,8 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
         action: { type: 'uri', uri: 'https://liff.line.me/2009265243-QfQURcn1' },
       },
       { icon: '📖', label: '回覧板を\n見てみる', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-      { icon: '❓', label: '登録について\n質問する', action: { type: 'message', text: '登録について質問があります' } },
+      // 送る文「お問い合わせ」で、名簿GAS（Inquiry.js）が種類のボタンを返す
+      { icon: '❓', label: 'お問い合わせ', action: { type: 'message', text: 'お問い合わせ' } },
     ],
   },
   bosai: {
