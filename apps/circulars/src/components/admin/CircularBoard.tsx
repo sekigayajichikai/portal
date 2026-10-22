@@ -1183,7 +1183,8 @@ export const CircularBoard: React.FC = () => {
                         )}
                         <div className="flex-1">
                           <p className="text-base font-semibold text-slate-800">自治会のお知らせ</p>
-                          <p className="text-sm text-slate-600 mt-1">自治会の回覧板（関ヶ谷だより・会報など）。AIが記事ごとに読み取り、要約つきの記事にします</p>
+                          <p className="text-sm font-medium text-primary-700 mt-1">「関ヶ谷だより」「会報ふれあい」はこちら</p>
+                          <p className="text-sm text-slate-600 mt-1">AIが記事ごとに読み取り、要約つきの記事にします</p>
                           <p className="text-xs text-slate-500 mt-1">読み取りに1〜3分ほどかかります</p>
                         </div>
                       </div>
