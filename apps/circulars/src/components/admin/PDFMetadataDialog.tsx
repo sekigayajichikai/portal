@@ -124,7 +124,7 @@ export const PDFMetadataDialog: React.FC<PDFMetadataDialogProps> = ({
               ))}
             </select>
             <p className="text-xs text-slate-500 mt-1">
-              選択肢は管理画面右上の「設定」から追加・編集できます
+              選択肢は上の「マスタ」タブの団体で追加・編集できます。分からなければ「あとで設定する」のままで大丈夫です
             </p>
           </div>
         </div>

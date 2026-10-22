@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { DuplicatePair } from '@cc-saas/shared';
-import { AlertCircle, CheckCircle, X, ArrowRight } from 'lucide-react';
+import { AlertCircle, CheckCircle, ArrowRight } from 'lucide-react';
 
 /**
  * 重複記事の処理アクション
@@ -80,12 +80,9 @@ export const DuplicateDetectionDialog: React.FC<DuplicateDetectionDialogProps> =
     onConfirm(selectedAction, selectedDuplicates);
   };
 
-  /**
-   * 類似度をパーセンテージで表示
-   */
-  const formatSimilarity = (similarity: number): string => {
-    return `${(similarity * 100).toFixed(1)}%`;
-  };
+  /** 似ている度合いを人の言葉で（数字の % は作り手にしか意味がない） */
+  const describeSimilarity = (similarity: number): string =>
+    similarity >= 0.9 ? 'ほぼ同じ内容' : '似ている内容';
 
   /**
    * 類似度に応じた色クラスを取得
@@ -113,12 +110,6 @@ export const DuplicateDetectionDialog: React.FC<DuplicateDetectionDialogProps> =
               </p>
             </div>
           </div>
-          <button
-            onClick={onCancel}
-            className="text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            <X size={24} />
-          </button>
         </div>
 
         {/* アクション選択 */}
@@ -222,7 +213,7 @@ export const DuplicateDetectionDialog: React.FC<DuplicateDetectionDialogProps> =
                   </div>
                   <div className="flex items-center gap-3">
                     <div className={`px-3 py-1 rounded-full text-sm font-bold ${getSimilarityColor(pair.overallSimilarity)}`}>
-                      総合類似度: {formatSimilarity(pair.overallSimilarity)}
+                      {describeSimilarity(pair.overallSimilarity)}
                     </div>
                   </div>
                 </div>
@@ -237,9 +228,6 @@ export const DuplicateDetectionDialog: React.FC<DuplicateDetectionDialogProps> =
                     </div>
                     <h4 className="font-bold text-slate-800 mb-2">{pair.existingArticle.title}</h4>
                     <p className="text-sm text-slate-600">{pair.existingArticle.summary}</p>
-                    <div className="mt-2 text-xs text-slate-500">
-                      タイトル類似度: {formatSimilarity(pair.titleSimilarity)}
-                    </div>
                   </div>
 
                   {/* 矢印 */}
@@ -255,9 +243,6 @@ export const DuplicateDetectionDialog: React.FC<DuplicateDetectionDialogProps> =
                     </div>
                     <h4 className="font-bold text-slate-800 mb-2">{pair.newArticle.title}</h4>
                     <p className="text-sm text-slate-600">{pair.newArticle.summary}</p>
-                    <div className="mt-2 text-xs text-blue-600">
-                      内容類似度: {formatSimilarity(pair.contentSimilarity)}
-                    </div>
                   </div>
                 </div>
               </div>
@@ -273,9 +258,10 @@ export const DuplicateDetectionDialog: React.FC<DuplicateDetectionDialogProps> =
           <div className="flex items-center gap-3">
             <button
               onClick={onCancel}
-              className="px-6 py-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+              className="px-6 py-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap"
+              title="重複の判断をせず、新しい記事を全部追加して閉じます"
             >
-              キャンセル
+              重複を気にせず全部追加
             </button>
             <button
               onClick={handleConfirm}

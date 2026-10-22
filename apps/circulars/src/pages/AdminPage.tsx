@@ -6,8 +6,9 @@ import { WeeklyDigest } from '@/components/admin/WeeklyDigest';
 import { RichMenuManager } from '@/components/admin/RichMenuManager';
 import { MastersPanel } from '@/components/admin/MastersPanel';
 import { EventsPanel } from '@/components/admin/EventsPanel';
-import { FileText, LogOut, Newspaper, Send, LayoutGrid, Database, Calendar, Trash2 } from 'lucide-react';
+import { FileText, LogOut, Newspaper, Send, LayoutGrid, Database, Calendar, Trash2, BookOpen } from 'lucide-react';
 import { TrashDialog } from '@/components/admin/TrashDialog';
+import { HelpDialog } from '@/components/admin/HelpDialog';
 import { appConfirm } from '@/components/ui/feedback';
 
 /** 管理画面の作成対象。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事）/ 'weekly' = 週次配信 / 'richmenu' = LINE リッチメニュー / 'events' = 予定（号をまたぐ予定カードの一覧・編集）/ 'masters' = マスタ（会場・主催団体・発行元） */
@@ -16,6 +17,7 @@ type AdminMode = 'circulars' | 'reports' | 'weekly' | 'richmenu' | 'events' | 'm
 function AdminContent() {
   const { isAuthenticated, isLoading, logout, aiReady } = useAuth();
   const [showTrash, setShowTrash] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   // URLの ?mode=reports で直接レポート画面を開ける（ブックマーク用）
   const [mode, setMode] = useState<AdminMode>(() =>
     (['reports', 'weekly', 'richmenu', 'events', 'masters'].find((m) => m === new URLSearchParams(window.location.search).get('mode')) as AdminMode | undefined) ?? 'circulars'
@@ -61,6 +63,14 @@ function AdminContent() {
         </div>
         <div className="flex items-center gap-1">
           <button
+            onClick={() => setShowHelp(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
+            title="毎月の回覧板の作り方と、困ったときの対処"
+          >
+            <BookOpen size={16} />
+            使い方
+          </button>
+          <button
             onClick={() => setShowTrash(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
           >
@@ -81,6 +91,7 @@ function AdminContent() {
         </div>
       </header>
       {showTrash && <TrashDialog onClose={() => setShowTrash(false)} />}
+      {showHelp && <HelpDialog onClose={() => setShowHelp(false)} />}
       {!aiReady && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-sm text-amber-800">
           AI の読み取りと LINE 配信の準備ができていません。いったん「ログアウト」して、もう一度ログインしてください。

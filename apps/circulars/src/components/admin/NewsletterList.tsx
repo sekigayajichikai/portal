@@ -8,7 +8,7 @@ import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useEffect, useState } from 'react';
 import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getAdminEventCards, addEventCard, updateEventCard, deleteEventCard, requestReview, cancelReview, type AdminEventCard } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
-import { FileText, Calendar, ChevronRight, ChevronUp, ChevronDown, GripVertical, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles, ClipboardCheck, CheckCircle2, MessageSquareWarning, Pencil } from 'lucide-react';
+import { FileText, Calendar, ChevronRight, ChevronUp, ChevronDown, GripVertical, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles, ClipboardCheck, CheckCircle2, MessageSquareWarning, Pencil, Send } from 'lucide-react';
 import { ArticleList } from './ArticleList';
 import { EventCandidateDialog } from './EventCandidateDialog';
 import { EventCardEditDialog } from './EventCardEditDialog';
@@ -82,6 +82,10 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   const [isDuplicating, setIsDuplicating] = useState(false);
   /** PDF関連の時間のかかる作業（サムネイル生成・削除・画像保存）の進行メッセージ（nullなら非表示） */
   const [pdfTaskMessage, setPdfTaskMessage] = useState<string | null>(null);
+  /** 公開・非公開・確認依頼の送信中（二重押しを防ぎ、ボタンのアイコンを回す） */
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isUnpublishing, setIsUnpublishing] = useState(false);
+  const [isRequestingReview, setIsRequestingReview] = useState(false);
 
   // 発行元リスト
   const [publisherPresets, setPublisherPresets] = useState<string[]>([]);
@@ -315,258 +319,306 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
   // 記事表示モード
   if (selectedNewsletter) {
+    const nl = selectedNewsletter;
+    const hasPdf = !!(nl.source_pdf_urls?.length || nl.source_pdf_url);
+    const isDraft = nl.status === 'draft';
+    const isPublished = nl.status === 'published';
+    /**
+     * ボタンの見た目は 2 種類だけにする。
+     * 主ボタン: 「そのときの次の一手」1 つだけに色を付ける（確認を依頼 → 公開する）。
+     * 副ボタン: 白地に枠線。幅が足りなければ折り返す（1 行に 7 個並んで潰れていた）。
+     * 文言は押しても変えない（「…しています…」で幅が動くのを防ぐ）。アイコンだけ回す。
+     */
+    const btnSecondary = 'inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium text-sm whitespace-nowrap shrink-0 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+    const btnPrimary = 'inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-bold text-white whitespace-nowrap shrink-0 disabled:opacity-50 disabled:cursor-not-allowed transition-colors';
+
+    /** 記事を手で 1 つ足す（下書き・その場で直すとき） */
+    const handleAddArticle = async () => {
+      const title = await appPrompt({
+        title: '記事のタイトルを入力',
+        placeholder: '例: 秋祭りのお知らせ',
+        confirmLabel: '追加する',
+      });
+      if (!title?.trim()) return;
+      setIsAddingArticle(true);
+      try {
+        const newArticle = {
+          organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
+          title: title.trim(),
+          category: 'info',
+          article_type: 'official' as const,
+          priority: 'medium' as const,
+          control_date: null,
+          headline: title.trim(),
+          brief: '',
+          summary: '',
+          content: '',
+          tags: [],
+          visibility: 'public' as const,
+          source: '',
+          attachments: [],
+          display_order: articles.length,
+          is_pinned: false,
+          thumbnail_url: null,
+        };
+        await addArticlesToNewsletter(nl.id, [newArticle]);
+        const articleData = await getArticlesByNewsletterId(nl.id);
+        setArticles(articleData);
+      } catch (err: any) { console.error('記事追加エラー:', err); showError('記事を追加できませんでした。時間をおいてもう一度お試しください。'); }
+      finally { setIsAddingArticle(false); }
+    };
+
+    /** 公開中のまま、その場で直す（すぐ住民に見える） */
+    const handleStartLiveEdit = async () => {
+      if (!(await appConfirm({
+        title: '公開中の回覧板を、その場で直しますか？',
+        message: '記事やPDFの追加・手直しが、すぐ住民向けページに出ます。担当者の確認は通りません。大きく作り直すときは「編集用の下書きを作る」を使ってください。',
+        confirmLabel: 'その場で直す',
+      }))) return;
+      setLiveEditId(nl.id);
+    };
+
+    /** 公開版のコピーを下書きとして作る */
+    const handleDuplicate = async () => {
+      if (!(await appConfirm({
+        title: '公開版のコピーを下書きとして作成しますか？',
+        message: '公開中の内容はそのまま表示され続けます。',
+        confirmLabel: 'コピーを作成する',
+      }))) return;
+      setIsDuplicating(true);
+      try {
+        const { newsletter: copy } = await duplicateNewsletterAsDraft(nl.id);
+        const updatedList = await loadCircularNewsletters();
+        setNewsletters(updatedList);
+        const copyWithCount = updatedList.find((n) => n.id === copy.id);
+        if (copyWithCount) {
+          handleSelectNewsletter(copyWithCount);
+        }
+        showToast(`「${copy.title}」の編集用コピーを作成しました`);
+      } catch (error) {
+        console.error('コピー作成エラー:', error);
+        showError('コピーを作成できませんでした。時間をおいてもう一度お試しください。');
+      } finally {
+        setIsDuplicating(false);
+      }
+    };
+
+    /** 担当者に確認を依頼する（確認待ち中はリンクの再表示だけ。トークンは変えない） */
+    const handleRequestReview = async () => {
+      if (nl.review_status === 'pending' && nl.review_token) {
+        setReviewLinkUrl(`${publicSiteUrl()}/review/${nl.review_token}`);
+        return;
+      }
+      if (!(await appConfirm({
+        title: '担当者に確認を依頼しますか？',
+        message: '確認リンクが発行されるので、LINEやメールで担当者に送ってください。',
+        confirmLabel: '依頼する',
+      }))) return;
+      setIsRequestingReview(true);
+      try {
+        const updated = await requestReview(nl.id);
+        setSelectedNewsletter({ ...nl, ...updated } as any);
+        setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
+        setReviewLinkUrl(`${publicSiteUrl()}/review/${updated.review_token}`);
+      } catch (error) {
+        console.error('確認依頼エラー:', error);
+        showError('確認依頼を作成できませんでした。時間をおいてもう一度お試しください。');
+      } finally {
+        setIsRequestingReview(false);
+      }
+    };
+
+    /** 公開する（承認済みの下書きだけ） */
+    const handlePublish = async () => {
+      // 開発環境は本番と同じDBに繋がっているため、公開前に本番反映の警告を出す
+      const isDev = import.meta.env.DEV;
+      if (!(await appConfirm({
+        title: isDev ? '⚠️ 開発環境から本番に公開されます' : `「${nl.title}」を公開しますか？`,
+        message: isDev
+          ? '今は開発環境ですが、本番と同じデータベースに接続しています。公開すると本番サイトにも即反映されます。本当に公開しますか？'
+          : '公開すると住民に表示されます。',
+        confirmLabel: isDev ? '本番に公開する' : '公開する',
+        danger: isDev,
+      }))) return;
+      setIsPublishing(true);
+      try {
+        const updated = await publishNewsletter(nl.id);
+        setSelectedNewsletter({ ...nl, ...updated } as any);
+        setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
+        showToast('公開しました。住民向けページに表示されています。');
+      } catch (error) {
+        console.error('公開エラー:', error);
+        showError('公開できませんでした。時間をおいてもう一度お試しください。');
+      } finally {
+        setIsPublishing(false);
+      }
+    };
+
+    /** 非公開にする */
+    const handleUnpublish = async () => {
+      if (!(await appConfirm({
+        title: `「${nl.title}」を非公開にしますか？`,
+        message: '住民に表示されなくなります。',
+        confirmLabel: '非公開にする',
+      }))) return;
+      setIsUnpublishing(true);
+      try {
+        const updated = await unpublishNewsletter(nl.id);
+        setSelectedNewsletter({ ...nl, ...updated } as any);
+        setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
+        showToast('非公開にしました。住民向けページには表示されません。');
+      } catch (error) {
+        console.error('非公開エラー:', error);
+        showError('非公開にできませんでした。時間をおいてもう一度お試しください。');
+      } finally {
+        setIsUnpublishing(false);
+      }
+    };
+
+    /** 上段右に出す「次の一手」。下書き: 確認を依頼 → 承認後: 公開する。公開中: 非公開にする（控えめ） */
+    const primaryAction = (() => {
+      if (isDraft && nl.review_status === 'approved') {
+        return (
+          <button
+            onClick={handlePublish}
+            disabled={articles.length === 0 || isPublishing}
+            className={`${btnPrimary} bg-green-600 hover:bg-green-700`}
+            title={articles.length === 0 ? '記事が1つもないため公開できません' : '住民向けページに公開する'}
+          >
+            {isPublishing ? <Loader2 size={18} className="animate-spin" /> : <Globe size={18} />}
+            公開する
+          </button>
+        );
+      }
+      if (isDraft) {
+        const label = nl.review_status === 'pending' ? '確認リンクを表示'
+          : nl.review_status === 'changes_requested' ? '再度確認を依頼'
+          : '確認を依頼';
+        return (
+          <button
+            onClick={handleRequestReview}
+            disabled={articles.length === 0 || isRequestingReview}
+            className={`${btnPrimary} bg-primary-600 hover:bg-primary-700`}
+            title={articles.length === 0 ? '記事が1つもないため依頼できません' : '担当者に公開前の確認を依頼'}
+          >
+            {isRequestingReview ? <Loader2 size={18} className="animate-spin" /> : <ClipboardCheck size={18} />}
+            {label}
+          </button>
+        );
+      }
+      if (isPublished) {
+        return (
+          <button
+            onClick={handleUnpublish}
+            disabled={isUnpublishing}
+            className={`${btnSecondary} border-orange-300 text-orange-700 hover:bg-orange-50`}
+            title="住民向けページから下げる"
+          >
+            {isUnpublishing ? <Loader2 size={16} className="animate-spin" /> : <EyeOff size={16} />}
+            非公開にする
+          </button>
+        );
+      }
+      return null;
+    })();
     return (
       <div className="space-y-4">
-        {/* ヘッダーボタン */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={handleBackToList}
-            className="flex items-center gap-2 text-primary-600 hover:text-primary-800 font-medium transition-colors"
-          >
-            <ArrowLeft size={18} />
-            一覧に戻る
-          </button>
+        {/* 一覧へ戻る */}
+        <button
+          onClick={handleBackToList}
+          className="flex items-center gap-2 text-primary-600 hover:text-primary-800 font-medium transition-colors"
+        >
+          <ArrowLeft size={18} />
+          一覧に戻る
+        </button>
 
-          <div className="flex items-center gap-3">
-            {/* PDFクロップ（記事抽出 + 画像追加 統合） */}
-            {(selectedNewsletter?.source_pdf_urls?.length || selectedNewsletter?.source_pdf_url) && canEdit && (
-              <button
-                onClick={() => setShowArticleCrop(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium transition-colors"
-                title="PDFから記事抽出・画像追加"
-              >
-                <Scissors size={18} />
-                PDFの切り抜き
-              </button>
-            )}
+        {/* 回覧板の名前・状態と操作。上段右は「そのときの次の一手」1つだけ。下段は副ボタン（折り返し可） */}
+        <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-2xl font-bold text-slate-800">{nl.title}</h2>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  isPublished ? 'bg-green-100 text-green-700' : isDraft ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'
+                }`}>
+                  {isPublished ? '公開中' : isDraft ? '下書き' : 'アーカイブ'}
+                </span>
+                {nl.parent_id && isDraft && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">編集版</span>
+                )}
+                {isDraft && nl.review_status && (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    nl.review_status === 'approved' ? 'bg-green-100 text-green-700'
+                      : nl.review_status === 'pending' ? 'bg-amber-100 text-amber-700'
+                      : 'bg-orange-100 text-orange-700'
+                  }`}>
+                    {nl.review_status === 'approved' ? '承認済み' : nl.review_status === 'pending' ? '確認待ち' : '修正依頼あり'}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-4 text-sm text-slate-600 mt-2 flex-wrap">
+                <span className="flex items-center gap-1">
+                  <Calendar size={14} />
+                  {new Date(nl.created_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </span>
+                <span className="flex items-center gap-1">
+                  <FileText size={14} />
+                  {articles.length}件の記事
+                </span>
+                <span className="flex items-center gap-1">
+                  <FileText size={14} />
+                  {nl.source_pdf_urls?.length || 0}件のPDF
+                </span>
+              </div>
+            </div>
+            {primaryAction}
+          </div>
 
-            {/* 記事を手動追加（下書きのみ） */}
-            {canEdit && (
-              <button
-                onClick={async () => {
-                  const title = await appPrompt({
-                    title: '記事のタイトルを入力',
-                    placeholder: '例: 秋祭りのお知らせ',
-                    confirmLabel: '追加する',
-                  });
-                  if (!title?.trim()) return;
-                  setIsAddingArticle(true);
-                  try {
-                    const newArticle = {
-                      organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
-                      title: title.trim(),
-                      category: 'info',
-                      article_type: 'official' as const,
-                      priority: 'medium' as const,
-                      control_date: null,
-                      headline: title.trim(),
-                      brief: '',
-                      summary: '',
-                      content: '',
-                      tags: [],
-                      visibility: 'public' as const,
-                      source: '',
-                      attachments: [],
-                      display_order: articles.length,
-                      is_pinned: false,
-                      thumbnail_url: null,
-                    };
-                    await addArticlesToNewsletter(selectedNewsletter.id, [newArticle]);
-                    const articleData = await getArticlesByNewsletterId(selectedNewsletter.id);
-                    setArticles(articleData);
-                  } catch (err: any) { console.error('記事追加エラー:', err); showError('記事を追加できませんでした。時間をおいてもう一度お試しください。'); }
-                  finally { setIsAddingArticle(false); }
-                }}
-                disabled={isAddingArticle}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
-              >
-                {isAddingArticle ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                {isAddingArticle ? '記事を追加しています…' : '記事を追加'}
-              </button>
-            )}
-
-            {/* PDFを追加（下書きのみ） */}
+          <div className="flex items-center gap-2 flex-wrap mt-4 pt-4 border-t border-slate-100">
             {onEditNewsletter && canEdit && (
               <button
-                onClick={() => onEditNewsletter(selectedNewsletter as Newsletter & { article_count: number })}
-                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
+                onClick={() => onEditNewsletter(nl as Newsletter & { article_count: number })}
+                className={btnSecondary}
+                title="回覧板のPDFを読み取って記事にする"
               >
-                <Edit size={18} />
+                <Edit size={16} />
                 PDFを追加
               </button>
             )}
-
-            {/* その場で直す（公開中のまま。すぐ住民に見える） */}
-            {selectedNewsletter.status === 'published' && liveEditId !== selectedNewsletter.id && (
-              <button
-                onClick={async () => {
-                  if (!(await appConfirm({
-                    title: '公開中の回覧板を、その場で直しますか？',
-                    message: '記事やPDFの追加・手直しが、すぐ住民向けページに出ます。担当者の確認は通りません。大きく作り直すときは「編集する」で編集用コピーを作ってください。',
-                    confirmLabel: 'その場で直す',
-                  }))) return;
-                  setLiveEditId(selectedNewsletter.id);
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
-                title="公開中のまま、記事やPDFを追加・手直しする"
-              >
-                <Pencil size={18} />
+            {canEdit && (
+              <button onClick={handleAddArticle} disabled={isAddingArticle} className={btnSecondary} title="PDFを使わずに記事を1つ足す">
+                {isAddingArticle ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                記事を追加
+              </button>
+            )}
+            {hasPdf && canEdit && (
+              <button onClick={() => setShowArticleCrop(true)} className={btnSecondary} title="PDFから記事抽出・画像追加">
+                <Scissors size={16} />
+                PDFの切り抜き
+              </button>
+            )}
+            {isPublished && liveEditId !== nl.id && (
+              <button onClick={handleStartLiveEdit} className={btnSecondary} title="公開中のまま、記事やPDFを追加・手直しする">
+                <Pencil size={16} />
                 その場で直す
               </button>
             )}
-
-            {/* 編集する（公開済み → 下書きコピー作成） */}
-            {selectedNewsletter.status === 'published' && (
-              <button
-                onClick={async () => {
-                  if (!(await appConfirm({
-                    title: '公開版のコピーを下書きとして作成しますか？',
-                    message: '公開中の内容はそのまま表示され続けます。',
-                    confirmLabel: 'コピーを作成する',
-                  }))) return;
-                  setIsDuplicating(true);
-                  try {
-                    const { newsletter: copy } = await duplicateNewsletterAsDraft(selectedNewsletter.id);
-                    // 一覧を再読み込みしてコピーを表示
-                    const updatedList = await loadCircularNewsletters();
-                    setNewsletters(updatedList);
-                    // コピーの詳細画面に遷移
-                    const copyWithCount = updatedList.find((n) => n.id === copy.id);
-                    if (copyWithCount) {
-                      handleSelectNewsletter(copyWithCount);
-                    }
-                    showToast(`「${copy.title}」の編集用コピーを作成しました`);
-                  } catch (error) {
-                    console.error('コピー作成エラー:', error);
-                    showError('コピーを作成できませんでした。時間をおいてもう一度お試しください。');
-                  } finally {
-                    setIsDuplicating(false);
-                  }
-                }}
-                disabled={isDuplicating}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors"
-                title="公開中のものはそのままに、直すための下書きを1つ作ります"
-              >
-                {isDuplicating ? <Loader2 size={18} className="animate-spin" /> : <Copy size={18} />}
-                {isDuplicating ? '編集用の下書きを作っています…' : '編集用の下書きを作る'}
+            {isPublished && (
+              <button onClick={handleDuplicate} disabled={isDuplicating} className={btnSecondary} title="公開中のものはそのままに、直すための下書きを1つ作ります">
+                {isDuplicating ? <Loader2 size={16} className="animate-spin" /> : <Copy size={16} />}
+                編集用の下書きを作る
               </button>
             )}
-
-            {/* プレビュー（住民の画面で確かめる。別タブで全体を見る導線はモーダルの中に置いた） */}
-            <button
-              onClick={() => setShowPreview(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 font-medium transition-colors"
-              title="住民に見える形で確かめる（公開はされません）"
-            >
-              <Smartphone size={18} />
+            <button onClick={() => setShowPreview(true)} className={btnSecondary} title="住民に見える形で確かめる（公開はされません）">
+              <Smartphone size={16} />
               住民の画面で見る
             </button>
-
-            {/* 担当者に確認依頼（下書きのみ） */}
-            {selectedNewsletter.status === 'draft' && (
-              <button
-                onClick={async () => {
-                  // 確認待ち中はリンクの再表示のみ（トークンは変えない）
-                  if (selectedNewsletter.review_status === 'pending' && selectedNewsletter.review_token) {
-                    setReviewLinkUrl(`${publicSiteUrl()}/review/${selectedNewsletter.review_token}`);
-                    return;
-                  }
-                  if (!(await appConfirm({
-                    title: '担当者に確認を依頼しますか？',
-                    message: '確認リンクが発行されるので、LINEやメールで担当者に送ってください。',
-                    confirmLabel: '依頼する',
-                  }))) return;
-                  try {
-                    const updated = await requestReview(selectedNewsletter.id);
-                    setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
-                    setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
-                    setReviewLinkUrl(`${publicSiteUrl()}/review/${updated.review_token}`);
-                  } catch (error) {
-                    console.error('確認依頼エラー:', error);
-                    showError('確認依頼を作成できませんでした。時間をおいてもう一度お試しください。');
-                  }
-                }}
-                disabled={articles.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 font-medium transition-colors"
-                title={articles.length === 0 ? '記事が1つもないため依頼できません' : '担当者に公開前の確認を依頼'}
-              >
-                <ClipboardCheck size={18} />
-                {selectedNewsletter.review_status === 'pending' ? '確認リンクを表示'
-                  : selectedNewsletter.review_status === 'changes_requested' ? '再度確認を依頼'
-                  : '確認を依頼'}
-              </button>
-            )}
-
-            {/* 公開 / 非公開ボタン */}
-            {selectedNewsletter.status === 'draft' ? (
-              <button
-                onClick={async () => {
-                  // 開発環境は本番と同じDBに繋がっているため、公開前に本番反映の警告を出す
-                  const isDev = import.meta.env.DEV;
-                  if (!(await appConfirm({
-                    title: isDev ? '⚠️ 開発環境から本番に公開されます' : `「${selectedNewsletter.title}」を公開しますか？`,
-                    message: isDev
-                      ? '今は開発環境ですが、本番と同じデータベースに接続しています。公開すると本番サイトにも即反映されます。本当に公開しますか？'
-                      : '公開すると住民に表示されます。',
-                    confirmLabel: isDev ? '本番に公開する' : '公開する',
-                    danger: isDev,
-                  }))) return;
-                  try {
-                    const updated = await publishNewsletter(selectedNewsletter.id);
-                    setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
-                    setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
-                    showToast('公開しました。住民向けページに表示されています。');
-                  } catch (error) {
-                    console.error('公開エラー:', error);
-                    showError('公開できませんでした。時間をおいてもう一度お試しください。');
-                  }
-                }}
-                disabled={articles.length === 0 || selectedNewsletter.review_status !== 'approved'}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
-                title={
-                  articles.length === 0 ? '記事が1つもないため公開できません'
-                    : selectedNewsletter.review_status === 'approved' ? '公開する'
-                    : selectedNewsletter.review_status === 'pending' ? '担当者の承認を待っています'
-                    : selectedNewsletter.review_status === 'changes_requested' ? '修正依頼が届いています。直してから再度依頼してください'
-                    : 'まず「確認を依頼」を押してください'
-                }
-              >
-                <Globe size={18} />
-                公開する
-              </button>
-            ) : selectedNewsletter.status === 'published' ? (
-              <button
-                onClick={async () => {
-                  if (!(await appConfirm({
-                    title: `「${selectedNewsletter.title}」を非公開にしますか？`,
-                    message: '住民に表示されなくなります。',
-                    confirmLabel: '非公開にする',
-                  }))) return;
-                  try {
-                    const updated = await unpublishNewsletter(selectedNewsletter.id);
-                    setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
-                    setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
-                    showToast('非公開にしました。住民向けページには表示されません。');
-                  } catch (error) {
-                    console.error('非公開エラー:', error);
-                    showError('非公開にできませんでした。時間をおいてもう一度お試しください。');
-                  }
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium transition-colors"
-                title="非公開にする"
-              >
-                <EyeOff size={18} />
-                非公開にする
-              </button>
-            ) : null}
-
-            {/* 削除ボタン */}
             <button
-              onClick={() => handleDeleteNewsletter(selectedNewsletter as Newsletter & { article_count: number })}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-medium transition-colors"
-              title="削除"
+              onClick={() => handleDeleteNewsletter(nl as Newsletter & { article_count: number })}
+              className="ml-auto inline-flex items-center gap-1 px-2 py-2 text-sm text-slate-400 hover:text-red-600 whitespace-nowrap shrink-0 transition-colors"
+              title="この回覧板を削除（ゴミ箱から戻せます）"
             >
-              <Trash2 size={18} />
+              <Trash2 size={16} />
               削除
             </button>
           </div>
@@ -583,13 +635,13 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               <p className="mt-1">
                 {articles.length === 0 ? (
                   <>
-                    上の「AIで抽出」からPDFを読み取るか、記事を手で足してください。
+                    上の「PDFを追加」から回覧板のPDFを読み取るか、「記事を追加」で手で足してください。
                     記事が1つもないと、確認の依頼も公開もできません。
                   </>
                 ) : (
                   <>
-                    「確認を依頼」を押すと確認リンクが出ます。それを担当の方に送り、
-                    承認されると「公開する」が押せるようになります。
+                    右上の「確認を依頼」を押すと確認リンクが出ます。それを担当の方に送り、
+                    承認されると右上のボタンが「公開する」に変わります。
                   </>
                 )}
               </p>
@@ -604,8 +656,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             <div className="text-sm text-amber-800">
               <p className="font-bold">担当者の確認待ちです</p>
               <p className="mt-1">
-                「確認リンクを表示」からリンクをコピーして、LINEやメールで担当者に送ってください。
-                承認されると「公開する」ボタンが押せるようになります。
+                まだ送っていなければ、右上の「確認リンクを表示」から LINE で担当者に送ってください。
+                承認されると右上のボタンが「公開する」に変わります。
               </p>
               <button
                 onClick={async () => {
@@ -639,7 +691,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 {selectedNewsletter.reviewer_name ? `（${selectedNewsletter.reviewer_name}さん）` : ''}
                 {selectedNewsletter.reviewed_at ? ` ・ ${new Date(selectedNewsletter.reviewed_at).toLocaleString('ja-JP')}` : ''}
               </p>
-              <p className="mt-1">「公開する」ボタンから公開できます。</p>
+              <p className="mt-1">右上の「公開する」から公開できます。</p>
               {selectedNewsletter.review_comment && (
                 <p className="mt-2 p-2 bg-white rounded-lg whitespace-pre-wrap text-slate-700">{selectedNewsletter.review_comment}</p>
               )}
@@ -662,39 +714,6 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             </div>
           </div>
         )}
-
-        {/* Newsletter情報 */}
-        <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">{selectedNewsletter.title}</h2>
-          <div className="flex items-center gap-4 text-sm text-slate-600">
-            <span className="flex items-center gap-1">
-              <Calendar size={14} />
-              {new Date(selectedNewsletter.created_at).toLocaleDateString('ja-JP', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })}
-            </span>
-            <span className="flex items-center gap-1">
-              <FileText size={14} />
-              {articles.length}件の記事
-            </span>
-            <span className="flex items-center gap-1">
-              <FileText size={14} />
-              {selectedNewsletter.source_pdf_urls?.length || 0}件のPDF
-            </span>
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-              selectedNewsletter.status === 'published'
-                ? 'bg-green-100 text-green-700'
-                : selectedNewsletter.status === 'draft'
-                ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-gray-100 text-gray-700'
-            }`}>
-              {selectedNewsletter.status === 'published' ? '公開中' :
-               selectedNewsletter.status === 'draft' ? '下書き' : 'アーカイブ'}
-            </span>
-          </div>
-        </div>
 
         {/* その場で直しているときの知らせ */}
         {selectedNewsletter.status === 'published' && liveEditId === selectedNewsletter.id && (
@@ -1369,20 +1388,29 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               />
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-600 space-y-1">
                 <p className="font-bold text-slate-700">このあとの流れ</p>
-                <p>1. 下の「リンクをコピー」を押します。</p>
-                <p>2. LINE、メールなど、ふだん使っている方法で担当の方に送ります。</p>
-                <p>3. 担当の方が回答すると、この回覧板に「承認済み」または「修正依頼」が付きます。</p>
+                <p>1. 「LINEで送る」を押して、担当の方のトークを選びます（LINE が使えないときは「リンクをコピー」してメールなどで送ります）。</p>
+                <p>2. 担当の方が回答すると、この回覧板に「承認済み」または「修正依頼」が付きます。</p>
                 <p className="text-slate-500">
-                  回答があってもお知らせは届きません。しばらくしてから、この画面を開いて確かめてください。
+                  回答があってもお知らせは届きません。しばらくしてから、この画面を開いて確かめてください（回覧板タブに「承認済み」の印が付きます）。
                 </p>
               </div>
-              <div className="flex gap-2 justify-end">
+              <div className="flex gap-2 justify-end flex-wrap">
                 <button
                   onClick={() => setReviewLinkUrl(null)}
-                  className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg font-medium hover:bg-slate-200 transition"
+                  className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg font-medium hover:bg-slate-200 transition whitespace-nowrap"
                 >
                   閉じる
                 </button>
+                <a
+                  href={`https://line.me/R/share?text=${encodeURIComponent(`「${selectedNewsletter.title}」の公開前の確認をお願いします。下のリンクを開いて「承認」か「修正依頼」を押してください。\n${reviewLinkUrl}`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 py-2 bg-[#06C755] text-white rounded-lg font-medium hover:brightness-95 transition whitespace-nowrap"
+                  title="LINE を開いて、送る相手を選びます"
+                >
+                  <Send size={16} />
+                  LINEで送る
+                </a>
                 <button
                   onClick={async () => {
                     try {
@@ -1393,7 +1421,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                       showError('コピーできませんでした。リンクを長押し（または選択）してコピーしてください。');
                     }
                   }}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition"
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition whitespace-nowrap"
                 >
                   <Copy size={16} />
                   リンクをコピー
@@ -1488,7 +1516,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
             保存された回覧板はありません
           </p>
           <p className="text-sm text-slate-500">
-            回覧板タブで記事を抽出し、「保存する」ボタンをクリックしてください
+            上の「新規作成」で今月の回覧板を作り、「PDFを追加」からPDFを入れると、ここに並びます
           </p>
         </div>
       ) : (

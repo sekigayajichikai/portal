@@ -70,6 +70,7 @@ export const CircularBoard: React.FC = () => {
 
   // テキスト回覧板の状態
   const [circulars, setCirculars] = useState<Circular[]>(MOCK_CIRCULARS);
+  /** 回覧板を作成中（二重押しで同じ号が 2 つできるのを防ぐ。月号・自由入力の両方の作成ボタンで使う） */
   const [isCreating, setIsCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
@@ -258,6 +259,8 @@ export const CircularBoard: React.FC = () => {
    * 保存後は編集モードとして扱い、後からPDFを追加できます。
    */
   const createNewsletter = async (title: string) => {
+    if (isCreating) return;
+    setIsCreating(true);
     try {
       console.log('📝 Newsletter作成開始:', title);
 
@@ -307,6 +310,8 @@ export const CircularBoard: React.FC = () => {
     } catch (error: any) {
       console.error('❌ Newsletter作成エラー:', error);
       showError('回覧板を作成できませんでした。時間をおいてもう一度お試しください。');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -1011,9 +1016,11 @@ export const CircularBoard: React.FC = () => {
 
                   <button
                     onClick={handleCreateMonthlyNewsletter}
-                    className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium transition-colors"
+                    disabled={isCreating}
+                    className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                   >
-                    月号形式で作成
+                    {isCreating && <Loader2 size={18} className="animate-spin" />}
+                    {generateMonthlyTitle()}を作る
                   </button>
                 </div>
 
@@ -1049,10 +1056,10 @@ export const CircularBoard: React.FC = () => {
 
                   <button
                     onClick={handleCreateCustomNewsletter}
-                    disabled={!newsletterTitle}
-                    className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    disabled={!newsletterTitle || isCreating}
+                    className="w-full px-6 py-3 bg-white border border-primary-600 text-primary-700 rounded-lg hover:bg-primary-50 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    カスタムで作成
+                    この名前で作る
                   </button>
                 </div>
               </div>
@@ -1077,9 +1084,10 @@ export const CircularBoard: React.FC = () => {
                   </div>
                   <button
                     onClick={handleResetNewsletter}
-                    className="text-sm underline text-primary-600 hover:text-primary-800"
+                    className="text-sm underline text-primary-600 hover:text-primary-800 whitespace-nowrap"
+                    title="この画面を閉じます。追加した記事は保存済みなので消えません"
                   >
-                    リセット
+                    閉じる（記事は保存済み）
                   </button>
                 </div>
               </div>
@@ -1156,7 +1164,7 @@ export const CircularBoard: React.FC = () => {
                 <div className="space-y-4">
                   {/* 抽出モード選択 */}
                   <div className="space-y-3">
-                    <p className="text-sm font-medium text-slate-700 mb-3">抽出モード</p>
+                    <p className="text-sm font-medium text-slate-700 mb-3">このPDFはどちらですか？</p>
 
                     {/* カード1: 自治会のお知らせ */}
                     <div
@@ -1175,8 +1183,8 @@ export const CircularBoard: React.FC = () => {
                         )}
                         <div className="flex-1">
                           <p className="text-base font-semibold text-slate-800">自治会のお知らせ</p>
-                          <p className="text-sm text-slate-600 mt-1">記事を詳しく作成</p>
-                          <p className="text-xs text-slate-500 mt-1">処理時間: 約30-60秒</p>
+                          <p className="text-sm text-slate-600 mt-1">自治会の回覧板（関ヶ谷だより・会報など）。AIが記事ごとに読み取り、要約つきの記事にします</p>
+                          <p className="text-xs text-slate-500 mt-1">読み取りに1〜3分ほどかかります</p>
                         </div>
                       </div>
                     </div>
@@ -1198,8 +1206,8 @@ export const CircularBoard: React.FC = () => {
                         )}
                         <div className="flex-1">
                           <p className="text-base font-semibold text-slate-800">地域のお知らせ</p>
-                          <p className="text-sm text-slate-600 mt-1">PDFで保管（簡単登録）</p>
-                          <p className="text-xs text-slate-500 mt-1">処理時間: 約5-10秒</p>
+                          <p className="text-sm text-slate-600 mt-1">チラシ・ポスター（学校だより・地域の催しなど）。PDFのまま載せ、題名と発行元だけAIが読み取ります</p>
+                          <p className="text-xs text-slate-500 mt-1">1件あたり数秒で終わります</p>
                         </div>
                       </div>
                     </div>
