@@ -46,6 +46,36 @@ interface NewsletterListProps {
  *
  * 保存された電子回覧板一覧と、選択した電子回覧板の記事を表示します。
  */
+/** 登録済みPDFの1件（画面表示用） */
+interface PdfEntry {
+  url: string;
+  label: string;
+  publisher: string;
+  filename: string;
+  thumbnail: string;
+  /** 'source'=記事のPDF版（PDF版で読む） / 'attachment'=回覧板PDF（PDFのまま載せる） */
+  type: string;
+}
+
+/**
+ * newsletters.source_pdf_urls（文字列 or オブジェクトの配列）を画面に出す順に並べる。
+ * 「PDF版で読む」→「回覧板PDF」の順（同じ種類の中は元の順のまま）。
+ * 画面の一覧・「上へ/下へ」・ドラッグはすべてこの順の番号で扱う。
+ */
+function toPdfEntries(raw: any[]): PdfEntry[] {
+  const entries: PdfEntry[] = raw.map((e: any) => {
+    const url = typeof e === 'string' ? e : e.url;
+    const label = typeof e === 'string' ? '' : (e.label || '');
+    const publisher = typeof e === 'string' ? '' : (e.publisher || '');
+    const thumbnail = typeof e === 'string' ? '' : (e.thumbnail || '');
+    const type = typeof e === 'string' ? 'source' : (e.type || 'source');
+    const filename = url.split('/').pop() || 'file.pdf';
+    return { url, label, publisher, thumbnail, filename, type };
+  });
+  entries.sort((a, b) => (a.type === 'source' ? 0 : 1) - (b.type === 'source' ? 0 : 1));
+  return entries;
+}
+
 export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter, returnToNewsletterId }) => {
   const [newsletters, setNewsletters] = useState<(Newsletter & { article_count: number })[]>([]);
   const [selectedNewsletter, setSelectedNewsletter] = useState<Newsletter | null>(null);
@@ -184,12 +214,20 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
    * 先にローカル状態へ反映してから裏でDBに保存する
    * （1回ごとに全再取得すると遅くて「効いていない」ように見えるため）
    */
+  /**
+   * PDFを並べ替える。from / to は **画面に出ている順**（toPdfEntries の順。PDF版で読む → 回覧板PDF）の番号。
+   * 保存する source_pdf_urls も画面の順に揃える。以前は元の配列の番号で動かしていたため、
+   * 2種類が混在する号では「上へ」で別のPDFが動いて見えた（2026-10-26 修正）。
+   */
   const movePdfEntry = async (from: number, to: number) => {
     if (!selectedNewsletter || from === to) return;
-    const entries: any[] = [...(selectedNewsletter.source_pdf_urls || [])];
-    if (from < 0 || from >= entries.length || to < 0 || to >= entries.length) return;
-    const [moved] = entries.splice(from, 1);
-    entries.splice(to, 0, moved);
+    const raw: any[] = [...(selectedNewsletter.source_pdf_urls || [])];
+    const shown = toPdfEntries(raw);
+    if (from < 0 || from >= shown.length || to < 0 || to >= shown.length) return;
+    const [moved] = shown.splice(from, 1);
+    shown.splice(to, 0, moved);
+    const rawByUrl = new Map(raw.map((e) => [typeof e === 'string' ? e : e.url, e]));
+    const entries: any[] = shown.map((p) => rawByUrl.get(p.url)).filter((e) => e !== undefined);
 
     setSelectedNewsletter({ ...selectedNewsletter, source_pdf_urls: entries } as any);
     setNewsletters((prev) =>
@@ -996,19 +1034,9 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           </div>
         ) : null}
 
-        {/* 登録済みPDF一覧 */}
+        {/* 登録済みPDF一覧（画面の順は toPdfEntries。並べ替え・タグもこの順の番号で扱う） */}
         {(() => {
-          const pdfEntries: { url: string; label: string; publisher: string; filename: string; thumbnail: string; type: string }[] = (selectedNewsletter.source_pdf_urls || []).map((e: any) => {
-            const url = typeof e === 'string' ? e : e.url;
-            const label = typeof e === 'string' ? '' : (e.label || '');
-            const publisher = typeof e === 'string' ? '' : (e.publisher || '');
-            const thumbnail = typeof e === 'string' ? '' : (e.thumbnail || '');
-            const type = typeof e === 'string' ? 'source' : (e.type || 'source');
-            const filename = url.split('/').pop() || 'file.pdf';
-            return { url, label, publisher, thumbnail, filename, type };
-          });
-          // source→attachmentの順にソート
-          pdfEntries.sort((a, b) => (a.type === 'source' ? 0 : 1) - (b.type === 'source' ? 0 : 1));
+          const pdfEntries = toPdfEntries(selectedNewsletter.source_pdf_urls || []);
           const sourcePdfs = pdfEntries.filter(p => p.type === 'source');
           const attachPdfs = pdfEntries.filter(p => p.type !== 'source');
           if (pdfEntries.length === 0) return null;
@@ -1257,14 +1285,11 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                               } catch (error) { console.error('PDF種別変更エラー:', error); showError('変更できませんでした。時間をおいてもう一度お試しください。'); }
                             }}
                             className={`text-xs px-1.5 py-0.5 rounded transition ${
-                              (typeof (selectedNewsletter.source_pdf_urls || [])[i] === 'object' && ((selectedNewsletter.source_pdf_urls || [])[i] as any)?.type === 'source')
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-green-100 text-green-700'
+                              pdf.type === 'source' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
                             }`}
+                            title={pdf.type === 'source' ? '押すと「回覧板PDF」（PDFのまま載せる）に変えます' : '押すと「PDF版で読む」（記事のPDF版）に変えます'}
                           >
-                            {(typeof (selectedNewsletter.source_pdf_urls || [])[i] === 'object' && ((selectedNewsletter.source_pdf_urls || [])[i] as any)?.type === 'source')
-                              ? 'PDF版で読む'
-                              : '回覧板PDF'}
+                            {pdf.type === 'source' ? 'PDF版で読む' : '回覧板PDF'}
                           </button>
                         )}
                       </div>
@@ -1275,7 +1300,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         <div className="flex flex-col gap-1">
                           <button
                             onClick={() => movePdfEntry(i, i - 1)}
-                            disabled={i === 0}
+                            disabled={i === 0 || pdfEntries[i - 1].type !== pdf.type}
                             className="flex items-center gap-0.5 px-2 py-1 text-xs border border-slate-300 bg-white rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 transition"
                             title="1つ上へ移動"
                           >
@@ -1284,7 +1309,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                           </button>
                           <button
                             onClick={() => movePdfEntry(i, i + 1)}
-                            disabled={i >= pdfEntries.length - 1}
+                            disabled={i >= pdfEntries.length - 1 || pdfEntries[i + 1].type !== pdf.type}
                             className="flex items-center gap-0.5 px-2 py-1 text-xs border border-slate-300 bg-white rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 transition"
                             title="1つ下へ移動"
                           >
