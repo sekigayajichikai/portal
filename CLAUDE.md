@@ -21,3 +21,6 @@ Haikuで検証できる仕組みがある。**使い方は `scripts/schedule-tes
 - AIコスト方針: `docs/AIコスト・モデル方針.md`
 - DBスキーマ/マイグレーション: `sql/`（本番Supabaseは iplc=sekigaya-portal。SQLはSQL Editorで手動 or MCP適用）
 - 文書の索引: `docs/README.md` ／ SQLの手順: `sql/README.md` ／ 使っていない旧アプリ・旧SQL: `archive/`（`archive/README.md`）
+
+## 会話のスタイル（自治会DX共通の補足）
+- PR・ブランチ・デプロイなど GitHub / Vercel 上のものを案内するときは、リンクと一緒に「画面のどこから見られるか」（例: リポジトリ上部の「Pull requests」タブ。マージ済みは「Closed」に切り替え）も添える
