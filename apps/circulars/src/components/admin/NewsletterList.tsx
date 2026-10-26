@@ -207,6 +207,27 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
   /** ドラッグ中のPDFの位置（nullなら非ドラッグ） */
   const [dragPdfIndex, setDragPdfIndex] = useState<number | null>(null);
+  /**
+   * 記事一覧を畳むか。号の全体を見渡すとき、記事が多いと下の「登録済みPDF」まで遠いため（2026-10-26）。
+   * ブラウザごとに覚える（localStorage。読めなくても動く）
+   */
+  const [articlesCollapsed, setArticlesCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('newsletter-articles-collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleArticlesCollapsed = () =>
+    setArticlesCollapsed((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem('newsletter-articles-collapsed', next ? '1' : '0');
+      } catch {
+        /* 保存できなくても画面は動く */
+      }
+      return next;
+    });
 
   /**
    * PDFの表示順を移動して保存
@@ -1000,8 +1021,30 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           </div>
         )}
 
+        {/* 記事一覧の見出し（「畳む」で一覧を隠し、下の「登録済みPDF」にすぐ行けるようにする） */}
+        {(() => {
+          const count = viewingPublished ? publishedArticles.length : articles.length;
+          return (
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <FileText size={18} />
+                記事一覧（{count}件）
+                {articlesCollapsed && count > 0 && <span className="text-xs font-normal text-slate-400">畳んでいます</span>}
+              </h3>
+              {count > 0 && (
+                <button
+                  onClick={toggleArticlesCollapsed}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+                  title={articlesCollapsed ? '記事一覧を開く' : '記事一覧を畳んで、下の「登録済みPDF」をすぐ見られるようにする'}
+                >
+                  {articlesCollapsed ? <><ChevronDown size={14} /> 記事一覧を開く</> : <><ChevronUp size={14} /> 記事一覧を畳む</>}
+                </button>
+              )}
+            </div>
+          );
+        })()}
         {/* 記事一覧 */}
-        {isLoadingArticles ? (
+        {articlesCollapsed && (viewingPublished ? publishedArticles.length : articles.length) > 0 ? null : isLoadingArticles ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={32} className="animate-spin text-primary-600" />
             <span className="ml-3 text-slate-600">記事を読み込み中…</span>
