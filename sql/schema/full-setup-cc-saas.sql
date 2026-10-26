@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS event_cards (
   digest_exclude BOOLEAN DEFAULT FALSE, -- 週次配信に載せない（役員向け会議など）
   hero_crop_y REAL,                   -- 一押しカードのチラシ画像の切り出し位置（旧。hero_crop に置き換え）
   hero_crop JSONB,                    -- 一押しカードの画像の切り出し {x,y:0〜1, scale:1〜3}
+  hero_source TEXT CHECK (hero_source IS NULL OR hero_source IN ('pdf', 'photo', 'newsletter_pdf')), -- 一押しカードの画像の元（NULL=自動）
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

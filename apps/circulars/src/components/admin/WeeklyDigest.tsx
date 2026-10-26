@@ -60,6 +60,10 @@ import {
   md,
   topicLink,
   topicImageSource,
+  topicImageKind,
+  availableImageKinds,
+  IMAGE_KINDS,
+  IMAGE_KIND_LABEL,
   buildDigest,
   topicChoices,
   topicDeadline,
@@ -69,6 +73,7 @@ import {
   LINK_KINDS,
   MAX_TOPICS,
   type LinkKind,
+  type ImageKind,
 } from './weeklyDigestCore';
 import { buildGreetingText, buildWeeklyMessages } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
@@ -131,6 +136,11 @@ export const WeeklyDigest: React.FC = () => {
   const pendingDraftRef = useRef<WeeklyDigestDraft | null>(null);
   /** 一押しごとの画像の切り出し（予定ID → {x,y,scale}）。初期値は予定カードの hero_crop（無ければ旧 hero_crop_y） */
   const [crops, setCrops] = useState<Record<string, HeroCrop>>({});
+  /**
+   * 一押しごとの画像の元（予定ID → pdf / photo / newsletter_pdf。null は自動）。初期値は予定カードの hero_source。
+   * 「詳しく見る」のリンク先とは別。「切り抜きを保存」で切り出しと一緒に予定カードへ保存する
+   */
+  const [imageKinds, setImageKinds] = useState<Record<string, ImageKind | null>>({});
   const [savingCrop, setSavingCrop] = useState<string | null>(null);
   /** 編集ダイアログで開いている予定（予定タブ・号の画面と同じダイアログ） */
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
@@ -461,6 +471,11 @@ export const WeeklyDigest: React.FC = () => {
       for (const t of digest.topics) if (!(t.id in n)) n[t.id] = normalizeCrop(t.hero_crop, t.hero_crop_y);
       return n;
     });
+    setImageKinds((prev) => {
+      const n = { ...prev };
+      for (const t of digest.topics) if (!(t.id in n)) n[t.id] = t.hero_source ?? null;
+      return n;
+    });
     // cards: 編集ダイアログで保存したあと（下書きを消して読み直したとき）も、新しい値で埋め直す
   }, [topicKey, cards]);
 
@@ -532,20 +547,28 @@ export const WeeklyDigest: React.FC = () => {
     }
   };
 
-  /** 画像の切り出し（位置と拡大）を予定カードに保存する（次回以降も同じ切り出し） */
+  /** 画像の切り出し（位置と拡大）と画像の元を予定カードに保存する（次回以降も同じ） */
   const saveCrop = async (topic: PublicEventCard) => {
     // 枠の形が未指定なら、いま表示している既定（元画像の向きで決めたもの）を確定して保存する
     const flyer = flyers[topic.id];
     const crop = flyer ? resolveCrop(normalizeCrop(crops[topic.id]), flyer.width, flyer.height) : normalizeCrop(crops[topic.id]);
+    const heroSource = imageKinds[topic.id] ?? null;
     setSavingCrop(topic.id);
     try {
-      const saved = await updateEventCard(topic.id, { hero_crop: crop, hero_crop_y: crop.y });
+      const saved = await updateEventCard(topic.id, { hero_crop: crop, hero_crop_y: crop.y, hero_source: heroSource });
       if (!('hero_crop' in saved)) {
         console.error('DBに hero_crop 列がありません（sql/migrations/2026-09-22-event-cards-hero-crop-json.sql）');
         showError('切り抜きは保存されませんでした。設定が足りません。管理者に連絡してください。');
         return;
       }
-      setCards((prev) => prev.map((c) => (c.id === topic.id ? { ...c, hero_crop: crop, hero_crop_y: crop.y } : c)));
+      if (!('hero_source' in saved)) {
+        // 列が無いときは updateEventCard が黙って外す。切り抜きだけは保存されている
+        console.error('DBに hero_source 列がありません（sql/migrations/2026-10-26-event-cards-hero-source.sql）');
+        showError('切り抜きは保存しましたが、画像の元の選択は保存されませんでした。設定が足りません。管理者に連絡してください。');
+        setCards((prev) => prev.map((c) => (c.id === topic.id ? { ...c, hero_crop: crop, hero_crop_y: crop.y } : c)));
+        return;
+      }
+      setCards((prev) => prev.map((c) => (c.id === topic.id ? { ...c, hero_crop: crop, hero_crop_y: crop.y, hero_source: heroSource } : c)));
       showToast('切り抜きを保存しました');
     } catch (e) {
       console.error(e);
@@ -572,13 +595,23 @@ export const WeeklyDigest: React.FC = () => {
     });
     setFlyerReload((x) => x + 1);
   };
+  /**
+   * 画像の元を切り替える。切り出し位置は元の画像に合わせたものなので既定（中央・等倍・形は自動）に戻し、画像を読み直す。
+   * 「切り抜きを保存」を押すまで予定カードには保存されない
+   */
+  const changeImageKind = (topic: PublicEventCard, kind: ImageKind) => {
+    if (topicImageKind(topic, imageKinds[topic.id]) === kind) return;
+    setImageKinds((prev) => ({ ...prev, [topic.id]: kind }));
+    setCrops((prev) => ({ ...prev, [topic.id]: normalizeCrop(undefined) }));
+    retryFlyer(topic.id);
+  };
 
   // 一押しごとのカード画像の元（チラシPDFの1ページ目、または記事の写真）を canvas に。まだ読んでいない予定だけ。
   // 途中でキャンセルすると「読み込み中」のまま止まることがあるので、結果は常に保存する（表示中でない予定に入っても害はない）
   useEffect(() => {
     for (const t of digest.topics) {
       if (t.id in flyers) continue;
-      const src = topicImageSource(t);
+      const src = topicImageSource(t, imageKinds[t.id]);
       if (!src) {
         setFlyers((prev) => ({ ...prev, [t.id]: null }));
         continue;
@@ -723,10 +756,15 @@ export const WeeklyDigest: React.FC = () => {
     return true;
   };
 
-  /** 予約後に画面の内容が変わったかを見分ける値（チラシ画像そのものは比べず、切り出し位置で代用） */
+  /** 予約後に画面の内容が変わったかを見分ける値（チラシ画像そのものは比べず、画像の元と切り出し位置で代用） */
   const contentKey = useMemo(
-    () => JSON.stringify({ m: buildWeeklyMessages(digest, greeting, { flyerImageUrls: {}, flyerAspects, linkKinds }), crops: digest.topics.map((t) => crops[t.id] ?? null) }),
-    [digest, greeting, flyerAspects, linkKinds, crops]
+    () =>
+      JSON.stringify({
+        m: buildWeeklyMessages(digest, greeting, { flyerImageUrls: {}, flyerAspects, linkKinds }),
+        crops: digest.topics.map((t) => crops[t.id] ?? null),
+        images: digest.topics.map((t) => topicImageKind(t, imageKinds[t.id])),
+      }),
+    [digest, greeting, flyerAspects, linkKinds, crops, imageKinds]
   );
 
   /** いまの内容で予約する（形式チェックを通してから保存。画像も予約した時点のもので固定） */
@@ -811,6 +849,11 @@ export const WeeklyDigest: React.FC = () => {
             const id = editingCardId;
             setDescDrafts(({ [id]: _d, ...rest }) => rest);
             setCrops(({ [id]: _c, ...rest }) => rest);
+            setImageKinds((prev) => {
+              const n = { ...prev };
+              delete n[id];
+              return n;
+            });
             load().then(() => retryFlyer(id));
           }}
         />
@@ -1014,10 +1057,15 @@ export const WeeklyDigest: React.FC = () => {
               const kinds = availableLinkKinds(t);
               const currentKind = topicLink(t, linkKinds[t.id])?.kind ?? null;
               const flyer = flyers[t.id];
-              const imgSrc = topicImageSource(t);
+              const imgSrc = topicImageSource(t, imageKinds[t.id]);
+              const imageKindOptions = availableImageKinds(t);
+              const currentImageKind = topicImageKind(t, imageKinds[t.id]);
+              // 元の選択が変わった（保存値と違う）か。自動（null）と「自動で選ばれる元を明示的に選んだ」は同じ扱い
+              const imageKindDirty = topicImageKind(t) !== currentImageKind;
               const savedCrop = normalizeCrop(t.hero_crop, t.hero_crop_y);
               const curCrop = normalizeCrop(crops[t.id]);
-              const cropDirty = curCrop.x !== savedCrop.x || curCrop.y !== savedCrop.y || curCrop.scale !== savedCrop.scale || (curCrop.aspect ?? null) !== (savedCrop.aspect ?? null);
+              const cropDirty =
+                imageKindDirty || curCrop.x !== savedCrop.x || curCrop.y !== savedCrop.y || curCrop.scale !== savedCrop.scale || (curCrop.aspect ?? null) !== (savedCrop.aspect ?? null);
               return (
                 <div key={t.id} className={`mt-3 rounded-lg border px-3 py-2 ${t.description ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}>
                   <div className="flex items-center justify-between gap-2 mb-1">
@@ -1101,10 +1149,46 @@ export const WeeklyDigest: React.FC = () => {
                       </p>
                     </div>
 
-                    {/* カード画像の切り出し（チラシPDF or 記事の写真。拡大縮小＋ドラッグで位置決め） */}
+                    {/* カード画像の元（チラシPDF／記事の写真／回覧板の先頭PDF）と切り出し（拡大縮小＋ドラッグで位置決め） */}
                     <div className="text-xs">
+                      <p className="font-bold text-slate-600 mb-1">カードに載せる画像</p>
+                      {imageKindOptions.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-1.5">
+                          {/* 3種類を常に並べ、この予定に無いものはグレーアウト（押せない）。リンク先とは別に選べる */}
+                          {IMAGE_KINDS.map((k) => {
+                            const available = imageKindOptions.includes(k);
+                            const on = currentImageKind === k;
+                            return (
+                              <label
+                                key={k}
+                                className={`flex items-center gap-1 px-2 py-1 rounded-full border ${
+                                  !available
+                                    ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed line-through'
+                                    : on
+                                      ? 'bg-slate-700 text-white border-slate-700 cursor-pointer'
+                                      : 'bg-white text-slate-600 border-slate-300 cursor-pointer hover:border-slate-400'
+                                }`}
+                                title={
+                                  !available
+                                    ? k === 'pdf'
+                                      ? 'この予定にはチラシPDFがありません'
+                                      : k === 'photo'
+                                        ? 'この予定のリンク記事には写真がありません'
+                                        : 'この予定の回覧板にはPDFがありません'
+                                    : k === 'newsletter_pdf'
+                                      ? '回覧板の1ページ目を代わりに載せます（この予定の内容と合わないこともあります）'
+                                      : ''
+                                }
+                              >
+                                <input type="radio" name={`image-${t.id}`} className="hidden" disabled={!available} checked={on} onChange={() => available && changeImageKind(t, k)} />
+                                {IMAGE_KIND_LABEL[k]}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
                       <p className="font-bold text-slate-600 mb-1">
-                        カードに載せる画像の切り抜き
+                        切り抜き
                         {imgSrc && (
                           <span className="ml-2 font-normal text-slate-400">
                             {imgSrc.kind === 'photo' ? '（記事の写真）' : imgSrc.fallback ? '（出典の回覧板の先頭PDF・代用）' : '（チラシPDFの1ページ目）'}
@@ -1136,7 +1220,7 @@ export const WeeklyDigest: React.FC = () => {
                             disabled={savingCrop === t.id || !cropDirty}
                             className="mt-1.5 px-2 py-1 text-[11px] font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 disabled:opacity-40"
                           >
-                            {savingCrop === t.id ? '保存しています…' : '切り抜きを保存（次回も同じ）'}
+                            {savingCrop === t.id ? '保存しています…' : imageKindDirty ? '画像の元と切り抜きを保存（次回も同じ）' : '切り抜きを保存（次回も同じ）'}
                           </button>
                         </div>
                       )}

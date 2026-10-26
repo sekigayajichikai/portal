@@ -41,6 +41,12 @@ export interface EventCard {
   hero_crop_y?: number | null;
   /** 一押しカードの画像の切り出し（x,y: 0〜1 の位置、scale: 拡大率 1〜3）。null は上端・等倍 */
   hero_crop?: { x: number; y: number; scale: number } | null;
+  /**
+   * 一押しカードに載せる画像の元を人が選んだもの。
+   * 'pdf'=由来PDF（チラシ）の1ページ目 / 'photo'=リンク記事の写真 / 'newsletter_pdf'=出典号の先頭PDF。
+   * null は自動（チラシ → 記事の写真 → 号の先頭PDF の順）。列が無い場合はundefined
+   */
+  hero_source?: 'pdf' | 'photo' | 'newsletter_pdf' | null;
 }
 
 /** 公開カレンダー表示用に、出典（リンク記事・由来PDF）を含めたイベントカード */
