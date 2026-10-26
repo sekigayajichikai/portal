@@ -3,12 +3,13 @@
 `Drive取り込み-計画.md` の第1段階を動かすための、Google 側の設定。30分ほど。
 画面の文言は 2026-10 時点の Google Cloud コンソール。多少変わっていても項目名で探せる。
 
-## 1. Google Cloud のプロジェクトを作る
+## 1. Google Cloud のプロジェクトを選ぶ（新しく作らなくてよい）
 
-1. https://console.cloud.google.com/ を sekigaya.dx@gmail.com でログインして開く
-2. 上部のプロジェクト名（または「プロジェクトを選択」）→「新しいプロジェクト」
-3. プロジェクト名: `sekigaya-portal-drive` → 「作成」
-4. 作ったプロジェクトが選ばれていることを上部で確認する
+1. https://console.cloud.google.com/ を開く（hanainc.net のアカウントでよい。サービスアカウントはプロジェクトに属するので、誰が作っても動きは同じ）
+2. 上部のプロジェクト名 →「リソースを選択」で、ポータルの Gemini 用に作ってある **CC-SaaS**（ID `gen-lang-client-0398064705`）を選ぶ
+3. 上部のプロジェクト名が CC-SaaS に変わったことを確認する
+
+別のプロジェクトに分けたいときだけ「新しいプロジェクト」で作る（名前の例: `sekigaya-portal-drive`）。
 
 ## 2. Drive API を有効にする
 
@@ -19,13 +20,13 @@
 
 1. 左メニュー「IAM と管理」→「サービス アカウント」→「サービス アカウントを作成」
 2. 名前: `portal-drive-import` → 「作成して続行」。ロールは付けなくてよい → 「完了」
-3. 一覧に出たメールアドレス（`portal-drive-import@sekigaya-portal-drive.iam.gserviceaccount.com` の形）を **控える**
+3. 一覧に出たメールアドレス（`portal-drive-import@gen-lang-client-0398064705.iam.gserviceaccount.com` の形）を **控える**
 4. そのアカウントを開く → タブ「キー」→「鍵を追加」→「新しい鍵を作成」→ JSON → 「作成」
 5. JSON ファイルがダウンロードされる。**これは合言葉と同じ扱い**。メールや LINE で送らない。GitHub の Secrets に貼ったら PC からは削除してよい
 
 ## 4. 共有フォルダをサービスアカウントに共有する
 
-1. Google Drive で共有フォルダ（`202611` などの月フォルダが入っている親フォルダ）を右クリック →「共有」
+1. Google Drive で共有フォルダ（`202611` などの月フォルダが入っている親フォルダ）を右クリック →「共有」。この操作だけは、そのフォルダを開けるアカウント（sekigaya.dx@gmail.com など）で行う
 2. 3 で控えたメールアドレスを入れ、権限は **閲覧者** → 「送信」（通知のチェックは外してよい）
 3. フォルダを開いたときの URL `https://drive.google.com/drive/folders/XXXXXXXX` の `XXXXXXXX` を **控える**（フォルダID）
 
