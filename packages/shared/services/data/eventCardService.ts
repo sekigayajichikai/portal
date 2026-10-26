@@ -60,7 +60,11 @@ export interface PublicEventCard extends EventCard {
     attachments?: Array<{ type?: string; url?: string; label?: string }> | null;
     /** 記事の載っている号（管理画面の取得でだけ入る） */
     newsletter_id?: string;
+    /** 記事の載っている号の状態（draft / published / archived。公開中でなければ住民は記事を開けない） */
+    newsletter_status?: string | null;
   } | null;
+  /** 出典号の状態（includeDraftNewsletters で下書きの号も取ったときに見分ける用） */
+  newsletter_status?: string | null;
   /** 出典号の元PDF（source_pdf_url が無い場合のフォールバック＝号の先頭PDF） */
   newsletter_pdf_url?: string | null;
   /** 出典PDFの表示名（「にしかぜ」等。source_pdf_urls のlabel/publisherから解決） */
@@ -201,7 +205,14 @@ export async function getEventCardsForNewsletters(newsletterIds: string[]): Prom
  * 出典表示用に、リンク記事(id/title/source)と出典号の元PDFを埋め込む。
  */
 export async function getPublishedEventCards(
-  previewNewsletterId?: string
+  previewNewsletterId?: string,
+  opts: {
+    /**
+     * 下書きの号の予定も含める（週次配信用。2026-10-27）。公開前の号に入れた予定も配信の候補にするため。
+     * 旧版（archived）は含めない。各カードに newsletter_status / newsletter_title が入る
+     */
+    includeDraftNewsletters?: boolean;
+  } = {}
 ): Promise<PublicEventCard[]> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase未接続');
@@ -209,22 +220,24 @@ export async function getPublishedEventCards(
   let query = supabase
     .from('event_cards')
     .select(
-      '*, newsletters!inner(status,source_pdf_url,source_pdf_urls), linked_article:articles!linked_article_id(id,title,source,thumbnail_url,attachments)'
+      '*, newsletters!inner(status,title,source_pdf_url,source_pdf_urls), linked_article:articles!linked_article_id(id,title,source,thumbnail_url,attachments,newsletters(status))'
     );
   // 通常は公開済みのみ。公開プレビュー時はプレビュー対象号（下書き）も含めるため、
-  // SQLでは status で絞らずJS側で「公開済み or プレビュー号」を残す。
-  if (!previewNewsletterId) {
+  // SQLでは status で絞らずJS側で「公開済み or プレビュー号」を残す。下書きも含める指定のときは JS 側で旧版だけ外す
+  if (!previewNewsletterId && !opts.includeDraftNewsletters) {
     query = query.eq('newsletters.status', 'published');
   }
   const { data, error } = await query.order('event_date', { ascending: true, nullsFirst: false });
   if (error) throw error;
 
-  const rows = previewNewsletterId
-    ? (data || []).filter(
-        (row: any) =>
-          row.newsletters?.status === 'published' || row.newsletter_id === previewNewsletterId
-      )
-    : data || [];
+  const rows = opts.includeDraftNewsletters
+    ? (data || []).filter((row: any) => row.newsletters?.status === 'published' || row.newsletters?.status === 'draft')
+    : previewNewsletterId
+      ? (data || []).filter(
+          (row: any) =>
+            row.newsletters?.status === 'published' || row.newsletter_id === previewNewsletterId
+        )
+      : data || [];
 
   return rows.map((row: any): PublicEventCard => {
     const nl = row.newsletters;
@@ -245,11 +258,15 @@ export async function getPublishedEventCards(
       source_pdf_label = (matched?.label || matched?.publisher || null) as string | null;
     }
 
+    // リンク記事の号の状態（公開中でなければ住民は記事を開けないので、リンク先の判定に使う）
+    const { newsletters: articleNl, ...articleRest } = linked_article ?? {};
     return {
       ...card,
-      linked_article: linked_article ?? null,
+      linked_article: linked_article ? { ...articleRest, newsletter_status: articleNl?.status ?? null } : null,
       newsletter_pdf_url: firstUrl,
       source_pdf_label,
+      newsletter_status: nl?.status ?? null,
+      newsletter_title: nl?.title ?? null,
     };
   });
 }

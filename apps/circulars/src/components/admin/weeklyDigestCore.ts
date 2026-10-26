@@ -59,25 +59,32 @@ export interface TopicLink {
  *   2. リンク記事があれば記事の個別ページ（/?article=<記事ID>）に直接
  *   3. どちらも無ければ **リンク無し（null）**。予定ページ（/?event=）はカードと同じ情報しか無いので使わない（2026-09-24）
  */
+/**
+ * リンク記事に飛ばせるか。記事の個別ページは公開中の号の記事しか表示しないので、
+ * 下書きの号（公開前）の記事にはリンクしない（2026-10-27。週次配信に下書きの号の予定も載せるようになったため）。
+ * 号の状態が分からない（古い取得経路）ときは従来どおりリンクできる扱い
+ */
+export const articleLinkable = (c: PublicEventCard) =>
+  !!c.linked_article_id && (c.linked_article?.newsletter_status ?? 'published') === 'published';
 export const topicLink = (c: PublicEventCard, kind?: LinkKind): TopicLink | null => {
   // 指定があればそれを優先（指定先が無い場合は従来の優先順に落とす）
   if (kind === 'pdf' && c.source_pdf_url) return { url: c.source_pdf_url, kind: 'pdf', label: 'チラシ（PDF）' };
-  if (kind === 'article' && c.linked_article_id) return { url: `${siteUrl()}/?article=${c.linked_article_id}`, kind: 'article', label: '記事' };
+  if (kind === 'article' && articleLinkable(c)) return { url: `${siteUrl()}/?article=${c.linked_article_id}`, kind: 'article', label: '記事' };
   if (c.source_pdf_url) return { url: c.source_pdf_url, kind: 'pdf', label: 'チラシ（PDF）' };
-  if (c.linked_article_id) return { url: `${siteUrl()}/?article=${c.linked_article_id}`, kind: 'article', label: '記事' };
+  if (articleLinkable(c)) return { url: `${siteUrl()}/?article=${c.linked_article_id}`, kind: 'article', label: '記事' };
   return null;
 };
 /** その予定で選べるリンク先の種類（無ければ空） */
 export const availableLinkKinds = (c: PublicEventCard): LinkKind[] => [
   ...(c.source_pdf_url ? (['pdf'] as LinkKind[]) : []),
-  ...(c.linked_article_id ? (['article'] as LinkKind[]) : []),
+  ...(articleLinkable(c) ? (['article'] as LinkKind[]) : []),
 ];
 export const LINK_KIND_LABEL: Record<LinkKind, string> = { pdf: 'チラシ（PDF）', article: '記事' };
 /**
  * 「押すと詳しい情報がある」予定か（チラシPDF か リンク記事がある）。
  * 行事予定表から拾っただけの予定（合同会議など）は false で、カードの行をタップなしにする。
  */
-export const hasDetailLink = (c: PublicEventCard) => !!c.source_pdf_url || !!c.linked_article_id;
+export const hasDetailLink = (c: PublicEventCard) => !!c.source_pdf_url || articleLinkable(c);
 
 /** 一押しの画像に使うPDF（由来PDFが無ければ号の先頭PDFで代用） */
 export const topicPdf = (c: PublicEventCard | null): { url: string; fallback: boolean } | null => {
