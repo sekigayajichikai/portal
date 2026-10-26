@@ -40,7 +40,6 @@ import {
   hasGeminiEventAccess,
   listWeeklyDigestDrafts,
   saveWeeklyDigestDraft,
-  renameWeeklyDigestDraft,
   deleteWeeklyDigestDraft,
   type WeeklyDigestDraft,
   type PublicEventCard,
@@ -50,14 +49,16 @@ import {
   type WeeklyDigestSend,
   type WeeklyDigestSchedule,
 } from '@cc-saas/shared';
-import { Copy, Check, RefreshCw, Loader2, Send, MessageCircle, ShieldCheck, Users, Sparkles, Trash2, Pencil, Files, Clock } from 'lucide-react';
-import { showError, showToast, appConfirm, appPrompt } from '@/components/ui/feedback';
+import { Copy, Check, RefreshCw, Loader2, Send, MessageCircle, ShieldCheck, Users, Sparkles, Trash2, Pencil, Clock } from 'lucide-react';
+import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 
 import {
   LIMITS,
   siteUrl,
   ymd,
   md,
+  toDate,
+  WEEK,
   topicLink,
   topicImageSource,
   topicImageKind,
@@ -96,6 +97,8 @@ const fmtDateTime = (iso: string) => {
   const d = new Date(iso);
   return `${md(ymd(d))} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
+/** 上部の「配信予定」の表に出す週数（今週＋この数） */
+const WEEKS_AHEAD = 5;
 const SCHEDULE_STATUS_LABEL: Record<WeeklyDigestSchedule['status'], { label: string; cls: string }> = {
   scheduled: { label: '予約中', cls: 'bg-amber-100 text-amber-800' },
   sending: { label: '送信中', cls: 'bg-blue-100 text-blue-700' },
@@ -121,19 +124,18 @@ export const WeeklyDigest: React.FC = () => {
   const [linkKinds, setLinkKinds] = useState<Record<string, LinkKind>>({});
   /** 吹き出しを手で直したか（立っていると自動生成で上書きしない。下書きにも残す） */
   const [greetingEdited, setGreetingEdited] = useState(false);
-  /** 下書き（配信日ごとに複数）: 一覧、いま開いている下書きの id と名前、保存状態、最後に保存した時刻 */
+  /**
+   * 下書き（配信日1つにつき1つ。2026-10-26 に「配信日ごとに複数」をやめた）:
+   * 全配信日の一覧（上部の「配信予定」の表に使う）、いま開いている下書きの id、保存状態、最後に保存した時刻
+   */
   const [drafts, setDrafts] = useState<WeeklyDigestDraft[]>([]);
   const [draftId, setDraftId] = useState<string | null>(null);
-  const [draftName, setDraftName] = useState<string | null>(null);
   const [draftState, setDraftState] = useState<'loading' | 'idle' | 'saving' | 'saved' | 'error'>('loading');
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   /** 最後に読み込んだ／保存した下書きのスナップショット（同じ内容なら保存しない） */
   const lastDraftRef = useRef<string>('');
   /** 自動保存のタイマーから見るための現在値（state だと古い値を掴むため） */
   const draftIdRef = useRef<string | null>(null);
-  const draftNameRef = useRef<string | null>(null);
-  /** 一覧から選んだ下書き（配信日が違うときは配信日を変えてから開く） */
-  const pendingDraftRef = useRef<WeeklyDigestDraft | null>(null);
   /** 一押しごとの画像の切り出し（予定ID → {x,y,scale}）。初期値は予定カードの hero_crop（無ければ旧 hero_crop_y） */
   const [crops, setCrops] = useState<Record<string, HeroCrop>>({});
   /**
@@ -207,8 +209,19 @@ export const WeeklyDigest: React.FC = () => {
   );
   const DEFAULT_DRAFT_KEY = JSON.stringify({ topic_ids: null, excluded_ids: [], link_kinds: {}, greeting: null });
 
-  /** 下書きの表示名（名前が無ければ「配信日の下書き」） */
-  const draftLabel = (d: Pick<WeeklyDigestDraft, 'base_date' | 'name'>) => d.name?.trim() || `${md(d.base_date)} の下書き`;
+  /**
+   * 下書きの保存状態の表示（上部の「下書き」の行と、吹き出し①の入力欄の2か所に出す）。
+   * 吹き出し①は自動保存で保存ボタンが無いため、入力欄のそばにも「保存済み」が見えないと保存されたか分からない
+   */
+  const draftStatus = (
+    <>
+      {draftState === 'loading' && (<><Loader2 size={11} className="animate-spin" /> 下書きを確認中…</>)}
+      {draftState === 'saving' && (<><Loader2 size={11} className="animate-spin" /> 下書きに保存中…</>)}
+      {draftState === 'saved' && (<><Check size={11} className="text-emerald-600" /> 下書きに保存済み{draftSavedAt ? `（${new Date(draftSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）` : ''}</>)}
+      {draftState === 'idle' && '新しい下書き。変更すると自動で保存されます'}
+      {draftState === 'error' && <span className="text-red-600">保存できませんでした（設定が足りないかもしれません。管理者に連絡してください）</span>}
+    </>
+  );
 
   /** 画面を「自動＝既定」に戻し、開いている下書きを無しにする（配信日はそのまま） */
   const resetToDefaults = () => {
@@ -218,9 +231,7 @@ export const WeeklyDigest: React.FC = () => {
     setGreetingEdited(false);
     lastDraftRef.current = DEFAULT_DRAFT_KEY;
     draftIdRef.current = null;
-    draftNameRef.current = null;
     setDraftId(null);
-    setDraftName(null);
     setDraftSavedAt(null);
   };
 
@@ -245,9 +256,7 @@ export const WeeklyDigest: React.FC = () => {
       greeting: d.greeting ?? null,
     });
     draftIdRef.current = d.id;
-    draftNameRef.current = d.name;
     setDraftId(d.id);
-    setDraftName(d.name);
     setDraftSavedAt(d.updated_at ?? null);
     setDraftState('saved');
   };
@@ -259,17 +268,11 @@ export const WeeklyDigest: React.FC = () => {
     return list;
   };
 
-  // 配信日が変わったら: 一覧から選んだ下書きがあればそれを、無ければその日のいちばん新しい下書きを開く（無ければ自動＝既定）
+  // 配信日が変わったら、その日の下書きを開く（無ければ自動＝既定）。古いデータで同じ日に複数あれば、いちばん新しいもの
   useEffect(() => {
     let cancelled = false;
     setDraftState('loading');
     resetToDefaults();
-    const pending = pendingDraftRef.current;
-    pendingDraftRef.current = null;
-    if (pending && pending.base_date === baseDate) {
-      applyDraft(pending);
-      return;
-    }
     refreshDrafts()
       .then((list) => {
         if (cancelled) return;
@@ -295,15 +298,11 @@ export const WeeklyDigest: React.FC = () => {
     const timer = setTimeout(async () => {
       setDraftState('saving');
       try {
-        const isNew = !draftIdRef.current;
-        // 新規のときの名前は「下書き1」「下書き2」…（同じ配信日の件数＋1）
-        const name = isNew ? `下書き${drafts.filter((d) => d.base_date === baseDate).length + 1}` : draftNameRef.current;
-        const row = await saveWeeklyDigestDraft({ id: draftIdRef.current ?? undefined, base_date: baseDate, name, ...draftBody });
+        // 配信日1つにつき1つなので名前は付けない（表示は配信日で見分ける）
+        const row = await saveWeeklyDigestDraft({ id: draftIdRef.current ?? undefined, base_date: baseDate, name: null, ...draftBody });
         lastDraftRef.current = key;
         draftIdRef.current = row.id;
-        draftNameRef.current = row.name;
         setDraftId(row.id);
-        setDraftName(row.name);
         setDraftSavedAt(row.updated_at ?? new Date().toISOString());
         setDraftState('saved');
         refreshDrafts().catch(() => {});
@@ -316,60 +315,10 @@ export const WeeklyDigest: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftBody, draftState === 'loading']);
 
-  /** 一覧から下書きを開く（配信日が違えば配信日を変え、そのあと開く） */
-  const openDraft = (d: WeeklyDigestDraft) => {
-    if (d.id === draftIdRef.current) return;
-    if (d.base_date !== baseDate) {
-      pendingDraftRef.current = d;
-      setBaseDate(d.base_date);
-      return;
-    }
-    setDraftState('loading');
-    resetToDefaults();
-    applyDraft(d);
-  };
-
-  /** この配信日で新しい下書きを始める（最初の変更で保存される） */
-  const newDraft = () => {
-    setDraftState('loading');
-    resetToDefaults();
-    setDraftState('idle');
-  };
-
-  /** 下書きの名前を変える */
-  const renameDraft = async () => {
-    if (!draftIdRef.current) return;
-    const name = await appPrompt({ title: '下書きの名前', message: '例: A案、チラシ強め、10/5 用', defaultValue: draftNameRef.current ?? '', confirmLabel: '変更' });
-    if (name == null) return;
-    try {
-      await renameWeeklyDigestDraft(draftIdRef.current, name.trim());
-      draftNameRef.current = name.trim();
-      setDraftName(name.trim());
-      refreshDrafts().catch(() => {});
-    } catch (e) {
-      console.error(e);
-      showError('名前を変えられませんでした。');
-    }
-  };
-
-  /** いまの内容で下書きを複製し、複製の方を開く */
-  const duplicateDraft = async () => {
-    try {
-      const name = `${draftNameRef.current?.trim() || `下書き`} のコピー`;
-      const row = await saveWeeklyDigestDraft({ base_date: baseDate, name, ...draftBody });
-      applyDraft(row);
-      refreshDrafts().catch(() => {});
-      showToast(`「${name}」を作りました。こちらを編集しています`);
-    } catch (e) {
-      console.error(e);
-      showError('複製できませんでした。');
-    }
-  };
-
   /** 開いている下書きを削除して自動（既定）に戻す */
   const discardDraft = async () => {
     const ok = await appConfirm({
-      title: `「${draftName?.trim() || `${md(baseDate)} の下書き`}」を捨てますか？`,
+      title: `${md(baseDate)} 配信の下書きを捨てますか？`,
       message: '一押しの選択・この週だけ外した予定・リンク先・手で直した文が消え、自動で組み立てた状態に戻ります。紹介文と画像の切り抜き（予定に保存したもの）は残ります。',
       confirmLabel: '下書きを捨てる',
     });
@@ -640,8 +589,9 @@ export const WeeklyDigest: React.FC = () => {
     setGreeting(buildGreetingText(digest));
   }, [digest, greetingEdited]);
 
-  const loadHistory = () => getWeeklyDigestSends(8).then(setHistory);
-  const loadSchedules = () => getWeeklyDigestSchedules(8).then(setSchedules);
+  // 上部の「配信予定」の表で今後5週分を見るので、件数は多めに読む
+  const loadHistory = () => getWeeklyDigestSends(30).then(setHistory);
+  const loadSchedules = () => getWeeklyDigestSchedules(40).then(setSchedules);
   const loadQuota = () => getLineQuota().then(setQuota);
   useEffect(() => {
     loadHistory();
@@ -827,6 +777,37 @@ export const WeeklyDigest: React.FC = () => {
   const alreadySentThisWeek = history.find((h) => h.mode === 'broadcast' && h.base_date === baseDate);
   /** この配信日の、まだ送っていない予約 */
   const pendingThisWeek = schedules.find((s) => s.status === 'scheduled' && s.base_date === baseDate);
+  /** この配信日の予約（取り消し済みは除く。「LINE に送る」の予約欄に出す） */
+  const schedulesThisWeek = schedules.filter((s) => s.status !== 'canceled' && s.base_date === baseDate);
+
+  /**
+   * 上部の「配信予定」の表の行。配信日の曜日で、今週（今日以前のいちばん近いその曜日）から WEEKS_AHEAD 週先まで。
+   * 範囲内にある曜日違いの下書き・予約・配信と、いま開いている配信日も行にする（見落とさないように）。
+   * 1か月分をまとめて予約するとき、「どの週が未作成・未予約か」を一目で分かるようにするため（2026-10-26）。
+   */
+  const weekRows = useMemo(() => {
+    const today = ymd(new Date());
+    const diff = (toDate(today).getDay() - toDate(baseDate).getDay() + 7) % 7;
+    const start = addDays(today, -diff);
+    const end = addDays(start, WEEKS_AHEAD * 7);
+    const dates = new Set<string>();
+    for (let i = 0; i <= WEEKS_AHEAD; i++) dates.add(addDays(start, i * 7));
+    for (const d of drafts) if (d.base_date >= start && d.base_date <= end) dates.add(d.base_date);
+    for (const sc of schedules) if (sc.status !== 'canceled' && sc.base_date >= start && sc.base_date <= end) dates.add(sc.base_date);
+    for (const h of history) if (h.mode === 'broadcast' && h.base_date >= start && h.base_date <= end) dates.add(h.base_date);
+    dates.add(baseDate);
+    return Array.from(dates)
+      .sort()
+      .map((date) => ({
+        date,
+        // 古いデータで同じ配信日に複数あれば、いちばん新しいもの（一覧は更新の新しい順）
+        draft: drafts.find((d) => d.base_date === date) ?? null,
+        // 予約は新しい順なので、先頭が最新（取り消し済みは除く）
+        schedule: schedules.find((sc) => sc.status !== 'canceled' && sc.base_date === date) ?? null,
+        sent: history.find((h) => h.mode === 'broadcast' && h.base_date === date) ?? null,
+        past: date < today,
+      }));
+  }, [baseDate, drafts, schedules, history]);
 
   const counts = {
     topic: digest.topics.length,
@@ -886,57 +867,93 @@ export const WeeklyDigest: React.FC = () => {
             </button>
           </div>
         </div>
-        {/* 下書き（配信日ごとに複数。一押しの選択・外した予定・リンク先・手で直した吹き出しを自動保存） */}
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 mt-2 text-[11px] text-slate-500">
-          <label className="flex items-center gap-1">
-            <span className="text-slate-500">下書き</span>
-            <select
-              value={draftId ?? 'new'}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === 'new') newDraft();
-                else {
-                  const d = drafts.find((x) => x.id === v);
-                  if (d) openDraft(d);
-                }
-              }}
-              className="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white max-w-[280px]"
-              title="開く下書きを選ぶ。配信日が違う下書きを選ぶと配信日も変わります"
-            >
-              <option value="new">＋ 新しい下書き（{md(baseDate)} 配信）</option>
-              {Array.from(new Set(drafts.map((d) => d.base_date))).map((date) => (
-                <optgroup key={date} label={`${md(date)} 配信`}>
-                  {drafts
-                    .filter((d) => d.base_date === date)
-                    .map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {draftLabel(d)}（更新 {new Date(d.updated_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）
-                      </option>
-                    ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-          <span className="flex items-center gap-1 text-slate-400">
-            {draftState === 'loading' && (<><Loader2 size={11} className="animate-spin" /> 下書きを確認中…</>)}
-            {draftState === 'saving' && (<><Loader2 size={11} className="animate-spin" /> 保存中…</>)}
-            {draftState === 'saved' && (<><Check size={11} className="text-emerald-600" /> 保存済み{draftSavedAt ? `（${new Date(draftSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）` : ''}</>)}
-            {draftState === 'idle' && '新しい下書き。変更すると自動で保存されます'}
-            {draftState === 'error' && <span className="text-red-600">保存できませんでした（設定が足りないかもしれません。管理者に連絡してください）</span>}
-          </span>
-          {draftId && (
-            <>
-              <button onClick={renameDraft} className="flex items-center gap-1 hover:text-slate-800" title="この下書きの名前を変える">
-                <Pencil size={11} /> 名前を変える
-              </button>
-              <button onClick={duplicateDraft} className="flex items-center gap-1 hover:text-slate-800" title="いまの内容で別の下書きを作る（A案・B案の比較用）">
-                <Files size={11} /> 複製
-              </button>
-              <button onClick={discardDraft} className="flex items-center gap-1 hover:text-red-600" title="この下書きを消して、自動で組み立てた状態に戻す">
-                <Trash2 size={11} /> 捨てる
-              </button>
-            </>
-          )}
+        {/* 配信予定の表（配信日1つにつき下書き1つ。下書きは一押しの選択・外した予定・リンク先・手で直した吹き出しを自動保存） */}
+        <div className="mt-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
+            <p className="text-xs font-bold text-slate-600">
+              配信予定（{WEEK[toDate(baseDate).getDay()]}曜配信・今週から{WEEKS_AHEAD}週先まで）
+            </p>
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+              <span className="flex items-center gap-1">{draftStatus}</span>
+              {draftId && (
+                <button onClick={discardDraft} className="flex items-center gap-1 hover:text-red-600" title="この配信日の下書きを消して、自動で組み立てた状態に戻す">
+                  <Trash2 size={11} /> この配信日の下書きを捨てる
+                </button>
+              )}
+            </span>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-3 py-1.5 text-left font-bold whitespace-nowrap">配信日</th>
+                  <th className="px-3 py-1.5 text-left font-bold whitespace-nowrap">下書き</th>
+                  <th className="px-3 py-1.5 text-left font-bold whitespace-nowrap">予約・配信</th>
+                  <th className="px-3 py-1.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {weekRows.map((r) => {
+                  const isOpen = r.date === baseDate;
+                  const sc = r.schedule;
+                  const changed = isOpen && sc?.status === 'scheduled' && sc.content_key !== contentKey;
+                  const st = sc ? SCHEDULE_STATUS_LABEL[sc.status] : null;
+                  return (
+                    <tr key={r.date} className={`border-t border-slate-100 ${isOpen ? 'bg-emerald-50' : r.past ? 'text-slate-400' : ''}`}>
+                      <td className="px-3 py-1.5 whitespace-nowrap">
+                        <span className="font-bold">{md(r.date)}</span>
+                        {isOpen && <span className="ml-1.5 text-[10px] text-emerald-700">開いています</span>}
+                      </td>
+                      <td className="px-3 py-1.5 whitespace-nowrap">
+                        {r.draft ? (
+                          <span className="text-slate-700">✓ 作成済み <span className="text-slate-400">（更新 {fmtDateTime(r.draft.updated_at)}）</span></span>
+                        ) : isOpen && draftId ? (
+                          <span className="text-slate-700">✓ 作成済み</span>
+                        ) : (
+                          <span className="text-slate-400">未作成（自動のまま）</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        {r.sent ? (
+                          <span className="font-bold text-emerald-700">✓ 送信済み {fmtDateTime(r.sent.sent_at)}</span>
+                        ) : sc && st ? (
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            <span className={`px-1.5 py-0.5 rounded font-bold ${st.cls}`}>{st.label}</span>
+                            <span>{fmtDateTime(sc.status === 'sent' && sc.sent_at ? sc.sent_at : sc.send_at)}</span>
+                            {sc.status === 'scheduled' && (
+                              <button onClick={() => cancelSchedule(sc)} className="text-slate-400 hover:text-red-600 underline">
+                                取り消す
+                              </button>
+                            )}
+                            {changed && <span className="text-amber-700 font-bold">⚠ 予約後に内容が変わっています（送られるのは予約した時点の内容）</span>}
+                            {sc.status === 'failed' && sc.error && <span className="text-red-600 break-all">理由: {sc.error}</span>}
+                          </span>
+                        ) : r.past ? (
+                          <span className="text-slate-400">配信なし</span>
+                        ) : (
+                          <span className="font-bold text-amber-700">未予約</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                        {!isOpen && (
+                          <button
+                            onClick={() => setBaseDate(r.date)}
+                            className="px-2.5 py-1 font-bold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+                            title="この配信日を開く（下書きがあれば続きから）"
+                          >
+                            {r.draft ? '開く' : 'この週を作る'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            下書きは配信日ごとに1つ。配信日を開いて一押し・リンク先・吹き出しを直すと自動で保存されます。予約は下の「LINE に送る」から配信日ごとに行います。別の曜日に送るときは右上の「配信日」で日付を選んでください。
+          </p>
         </div>
 
         {loading ? (
@@ -1263,18 +1280,22 @@ export const WeeklyDigest: React.FC = () => {
           <div className="grid gap-4 lg:grid-cols-2 mt-4">
             <div className="space-y-3">
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-500">テキスト（吹き出し①・編集できます）</label>
-                  <button
-                    onClick={() => {
-                      setGreetingEdited(false);
-                      setGreeting(buildGreetingText(digest));
-                    }}
-                    className={`text-[11px] hover:text-slate-800 ${greetingEdited ? 'text-amber-700 font-bold' : 'text-slate-500'}`}
-                    title="自動生成の文に戻す（手で直した内容は消えます）"
-                  >
-                    {greetingEdited ? '手で直した文（作り直す）' : '作り直す'}
-                  </button>
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1">
+                  <label className="text-xs font-bold text-slate-500">テキスト（吹き出し①・直すと下書きに自動保存）</label>
+                  <span className="flex items-center gap-2 text-[11px]">
+                    {/* 保存ボタンが無いので、ここにも保存状態を出す（上部の「下書き」の行と同じ） */}
+                    <span className="flex items-center gap-1 text-slate-400">{draftStatus}</span>
+                    <button
+                      onClick={() => {
+                        setGreetingEdited(false);
+                        setGreeting(buildGreetingText(digest));
+                      }}
+                      className={`hover:text-slate-800 ${greetingEdited ? 'text-amber-700 font-bold' : 'text-slate-500'}`}
+                      title="自動生成の文に戻す（手で直した内容は消えます）"
+                    >
+                      {greetingEdited ? '手で直した文（作り直す）' : '作り直す'}
+                    </button>
+                  </span>
                 </div>
                 <textarea
                   value={greeting}
@@ -1355,10 +1376,10 @@ export const WeeklyDigest: React.FC = () => {
                     {scheduling ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />} この内容で予約
                   </button>
                 </div>
-                {schedules.filter((s) => s.status !== 'canceled').length > 0 && (
+                {/* この配信日の予約だけ（他の週は上部の「配信予定」の表で見る） */}
+                {schedulesThisWeek.length > 0 && (
                   <ul className="text-[11px] text-slate-600 space-y-1">
-                    {schedules
-                      .filter((s) => s.status !== 'canceled')
+                    {schedulesThisWeek
                       .map((s) => {
                         const st = SCHEDULE_STATUS_LABEL[s.status];
                         const changed = s.status === 'scheduled' && s.base_date === baseDate && s.content_key !== contentKey;
@@ -1403,7 +1424,7 @@ export const WeeklyDigest: React.FC = () => {
                 <div className="pt-1">
                   <p className="text-xs font-bold text-slate-500 mb-1">配信履歴</p>
                   <ul className="text-[11px] text-slate-500 space-y-0.5">
-                    {history.map((h) => (
+                    {history.slice(0, 8).map((h) => (
                       <li key={h.id}>
                         {new Date(h.sent_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{' '}
                         <span className={`px-1.5 py-0.5 rounded font-bold ${h.mode === 'broadcast' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
