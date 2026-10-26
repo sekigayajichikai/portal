@@ -515,8 +515,14 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
       const futureItems = r.value.items.filter((c) => c.event_date >= todayStr);
       const isSingleFlyer = r.value.source === 'pdf' && futureItems.length === 1;
       for (const c of futureItems) {
-        // 過去除外の保険は上で済み（今日より前の予定は候補に載せない）。同じ予定が別の出典にもあれば先の（記事側の）1件だけ残す
-        if (seen.some((s) => isSameEvent(s, c))) continue;
+        // 過去除外の保険は上で済み（今日より前の予定は候補に載せない）。同じ予定が別の出典にもあれば先の（記事側の）1件だけ残す。
+        // ただし PDF 側からは由来PDF（チラシ）の URL をもらっておく（2026-10-26）。以前は捨てていたため、
+        // 記事とチラシの両方に載っている予定が「記事にリンク」だけになり、チラシにはリンクできなかった
+        const dupIndex = seen.findIndex((s) => isSameEvent(s, c));
+        if (dupIndex >= 0) {
+          if (!merged[dupIndex].sourcePdfUrl && r.value.pdfUrl) merged[dupIndex].sourcePdfUrl = r.value.pdfUrl;
+          continue;
+        }
         seen.push(c);
 
         const hints: string[] = [];
@@ -939,7 +945,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
                           {srcLabel && (
                             <span
                               className="text-[11px] text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 max-w-[16rem] truncate"
-                              title={`発行元/媒体: ${srcLabel}`}
+                              title={c.source === 'pdf' ? `発行元/媒体: ${srcLabel}` : `このチラシにも載っています。登録すると由来PDF（チラシ）にもなります: ${srcLabel}`}
                             >
                               📄 {srcLabel}
                             </span>

@@ -27,6 +27,7 @@ export * from './services/data/organizerService.js';
 export * from './services/data/venueService.js';
 export * from './services/data/eventCardService.js';
 export * from './services/data/lineBroadcastService.js';
+export * from './services/data/driveImportService.js';
 export * from './services/data/lineRichMenuService.js';
 export * from './services/data/weeklyDigestDraftService.js';
 export * from './services/data/likeService.js';
