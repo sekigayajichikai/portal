@@ -2,7 +2,7 @@
  * 週次配信の LINE メッセージ（テキスト＋Flex カルーセル）を組み立てる
  *
  * 1回の配信 = ① 短いテキスト（見出し＋ひとこと） → ② ⭐一押しカード（1枚） → ③ Flex カルーセル
- *   ② ⭐ 今週の一押し … 見出し帯＋（最大2件を縦に）チラシ画像（正方形・切り出し位置は人が決める）＋タイトル・日時・場所・紹介文＋「詳しく見る」
+ *   ② ⭐ 今週の一押し … 見出し帯＋（最大5件を縦に）チラシ画像（正方形・切り出し位置は人が決める）＋タイトル・日時・場所・紹介文＋「詳しく見る」
  *      （カルーセルは全カードの高さが揃う仕様なので、背の高い一押しは別の吹き出しにする）
  *   ③ カルーセルの中身（該当が無いカードは出さない）:
  *     1. 📅 今週の予定 … 行ごとにタップで詳細（⏰締切間近があれば先頭に）
@@ -29,7 +29,7 @@ const BLUE = '#1d4ed8';
 const SITE_BLUE = '#2563eb';
 /** 一押しの見出し帯（⭐ の琥珀色。他のカードと役割が違うことが分かる色） */
 const AMBER = '#b45309';
-const GRAY = '#888888';
+const GRAY = '#444444'; // 2026-10-27 に #888888 から濃く（主催・場所が読みづらいという声）
 
 export interface FlexBuildOptions {
   /** 一押しごとのチラシ画像（予定ID → https・枠に切り出したもの）。無い予定は画像なし */
@@ -103,8 +103,9 @@ function eventRow(
     text(opts.whenText, { size: 'md', color: opts.whenColor ?? BLUE, weight: 'bold' }),
     text(`${opts.prefix ?? ''}${c.title}`, { size: 'md', weight: 'bold' }),
   ];
-  for (const s of opts.sub ?? []) lines.push(text(s.text, { size: 'sm', color: s.color ?? GRAY, ...(s.bold ? { weight: 'bold' } : {}) }));
-  if (c.event_location) lines.push(text(c.event_location, { size: 'sm', color: GRAY }));
+  // 主催・場所などは本文と同じ大きさ（md）・濃いグレー。高齢の方が多いので小さい薄字にしない（2026-10-27）
+  for (const s of opts.sub ?? []) lines.push(text(s.text, { size: 'md', color: s.color ?? GRAY, ...(s.bold ? { weight: 'bold' } : {}) }));
+  if (c.event_location) lines.push(text(c.event_location, { size: 'md', color: GRAY }));
   return {
     type: 'box',
     layout: 'horizontal',
@@ -126,7 +127,7 @@ function eventRow(
 }
 
 /**
- * 一押しバブル（1枚のカードに最大2件を縦に並べる）
+ * 一押しバブル（1枚のカードに最大5件＝MAX_TOPICS を縦に並べる）
  *
  *   ⭐ 今週の一押し（見出し帯）
  *   ┌ 画像（正方形・切り出し位置は人が決める）
@@ -190,9 +191,9 @@ function topicBubble(d: Digest, opts: FlexBuildOptions) {
     const when = `${md(t.event_date!)}${t.event_time ? ` ${t.event_time}` : ''}`;
     items.push(dl?.thisWeek ? text(`開催 ${when}`, { size: 'md', color: '#555555' }) : text(when, { size: 'md', color: BLUE, weight: 'bold' }));
     // 締切が来週以降なら灰色の1行で添える（今週締切は上の帯で伝える）
-    if (dl && !dl.thisWeek) items.push(text(topicDeadlineText(dl), { size: 'sm', color: '#666666' }));
+    if (dl && !dl.thisWeek) items.push(text(topicDeadlineText(dl), { size: 'md', color: '#444444' }));
     const place = [t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ') + audienceFee(t);
-    if (place) items.push(text(`📍 ${place}`, { size: 'sm', color: '#666666' }));
+    if (place) items.push(text(`📍 ${place}`, { size: 'md', color: '#444444' }));
     if (t.description) items.push(text(t.description, { size: 'md', color: '#333333', margin: 'md' }));
     if (link) items.push({ ...primaryButton(mainLabel, link.url, AMBER), margin: 'md' });
     blocks.push({ type: 'box', layout: 'vertical', spacing: 'sm', contents: items });
@@ -259,7 +260,7 @@ function reportBubble(r: Digest['reports'][number]) {
   const thumb = (r as { thumbnail_url?: string | null }).thumbnail_url || null;
   const brief = ((r as { brief?: string | null }).brief || (r as { summary?: string | null }).summary || '').trim();
   const body: unknown[] = [text('📰 新しいレポート', { size: 'sm', color: RED, weight: 'bold' }), text(r.title, { weight: 'bold', size: 'lg' })];
-  if (brief) body.push(text(brief.slice(0, 80), { size: 'md', color: '#666666' }));
+  if (brief) body.push(text(brief.slice(0, 80), { size: 'md', color: '#444444' }));
   return {
     type: 'bubble',
     size: 'mega',

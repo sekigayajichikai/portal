@@ -9,6 +9,7 @@
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
+import { CropAspectButtons, centeredAspectCrop } from './CropAspectButtons';
 import 'react-image-crop/dist/ReactCrop.css';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -59,6 +60,12 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
 
   // クロップ関連
   const [crop, setCrop] = useState<Crop>();
+  /** 切り抜き枠の形（undefined=自由）。選ぶと枠を比率固定にして中央に出し直す */
+  const [cropAspect, setCropAspect] = useState<number | undefined>(undefined);
+  const changeCropAspect = (a: number | undefined) => {
+    setCropAspect(a);
+    setCrop(centeredAspectCrop(imgRef.current, a));
+  };
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const [isCropping, setIsCropping] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -377,6 +384,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
             <Scissors size={20} className="text-primary-600" />
             画像の切り抜き
           </h2>
+          <CropAspectButtons value={cropAspect} onChange={changeCropAspect} />
         </div>
 
         <div className="flex items-center gap-3">
@@ -490,7 +498,7 @@ export const ImageCropPage: React.FC<ImageCropPageProps> = ({
               {pageDataUrl && (
                 <div style={{ width: `${zoom}%`, minWidth: '100%' }}>
                   {isCropping ? (
-                    <ReactCrop crop={crop} onChange={(c) => setCrop(c)} onComplete={(c) => setCompletedCrop(c)}>
+                    <ReactCrop crop={crop} aspect={cropAspect} onChange={(c) => setCrop(c)} onComplete={(c) => setCompletedCrop(c)}>
                       <img ref={imgRef} src={pageDataUrl} alt={`Page ${currentPage}`}
                         className="w-full h-auto shadow-lg rounded" crossOrigin="anonymous" />
                     </ReactCrop>
