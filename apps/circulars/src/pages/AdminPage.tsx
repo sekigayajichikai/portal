@@ -11,7 +11,7 @@ import { TrashDialog } from '@/components/admin/TrashDialog';
 import { HelpDialog } from '@/components/admin/HelpDialog';
 import { appConfirm } from '@/components/ui/feedback';
 
-/** 管理画面の作成対象。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事）/ 'weekly' = 週次配信 / 'richmenu' = LINE リッチメニュー / 'events' = 予定（号をまたぐ予定カードの一覧・編集）/ 'masters' = マスタ（会場・主催団体・発行元） */
+/** 管理画面の作成対象（タブの並びは 回覧板 → 予定 → 週次配信 → リッチメニュー → 関ヶ谷レポート → マスタ。毎月の作業の順。2026-10-27）。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事）/ 'weekly' = 週次配信 / 'richmenu' = LINE リッチメニュー / 'events' = 予定（号をまたぐ予定カードの一覧・編集）/ 'masters' = マスタ（会場・主催団体・発行元） */
 type AdminMode = 'circulars' | 'reports' | 'weekly' | 'richmenu' | 'events' | 'masters';
 
 function AdminContent() {
@@ -130,15 +130,16 @@ function AdminContent() {
             )}
           </button>
           <button
-            onClick={() => setMode('reports')}
+            onClick={() => setMode('events')}
             className={`flex items-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition ${
-              mode === 'reports'
-                ? 'border-[#c0392b] text-[#a93226]'
+              mode === 'events'
+                ? 'border-blue-600 text-blue-700'
                 : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
+            title="すべての回覧板の予定を一覧・編集"
           >
-            <Newspaper size={16} />
-            関ヶ谷レポート
+            <Calendar size={16} />
+            予定
           </button>
           <button
             onClick={() => setMode('weekly')}
@@ -163,16 +164,15 @@ function AdminContent() {
             リッチメニュー
           </button>
           <button
-            onClick={() => setMode('events')}
+            onClick={() => setMode('reports')}
             className={`flex items-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition ${
-              mode === 'events'
-                ? 'border-blue-600 text-blue-700'
+              mode === 'reports'
+                ? 'border-[#c0392b] text-[#a93226]'
                 : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
-            title="すべての回覧板の予定を一覧・編集"
           >
-            <Calendar size={16} />
-            予定
+            <Newspaper size={16} />
+            関ヶ谷レポート
           </button>
           <button
             onClick={() => setMode('masters')}

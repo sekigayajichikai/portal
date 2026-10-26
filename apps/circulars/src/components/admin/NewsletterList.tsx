@@ -207,6 +207,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
 
   /** ドラッグ中のPDFの位置（nullなら非ドラッグ） */
   const [dragPdfIndex, setDragPdfIndex] = useState<number | null>(null);
+  /** AIで予定を取り込んだ直後か（予定タブで重複・日時の確認を促す注意を出す。×か号を離れると消える） */
+  const [eventsJustImported, setEventsJustImported] = useState(false);
   /**
    * 号の画面の各欄（予定・記事一覧・登録済みPDF）を畳むか。号の全体を見渡すとき、
    * 記事が多いと下の欄まで遠いため（2026-10-26）。ブラウザごとに覚える（localStorage。読めなくても動く）
@@ -287,6 +289,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
    * 一覧に戻る
    */
   const handleBackToList = () => {
+    setEventsJustImported(false);
     setSelectedNewsletter(null);
     setArticles([]);
     setError(null);
@@ -919,6 +922,27 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               {eventCards.length > 0 && collapseButton('events', '予定')}
             </div>
           </div>
+          {/* AIで予定を取り込んだ直後の注意: 別の号との重複・日時の間違いは予定タブで確かめる */}
+          {eventsJustImported && (
+            <div className="mb-3 rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3 flex flex-wrap items-start gap-3 text-sm">
+              <AlertCircle size={20} className="text-amber-700 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-[16rem]">
+                <p className="font-bold text-amber-900">予定を取り込みました。次に「予定」タブで確認してください。</p>
+                <p className="text-amber-800 mt-1">
+                  同じ催しが前の号（行事予定表など）にも入っていて二重になっていないか、日付・時間が紙面と合っているか、を見てください。
+                  二重なら片方を削除（ゴミ箱から戻せます）、由来PDFや記事リンクは残す方に付け直します。
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <a href="/admin?mode=events" className="px-4 py-2 text-sm font-bold text-white bg-amber-600 rounded-lg hover:bg-amber-700">
+                  予定タブを開く
+                </a>
+                <button onClick={() => setEventsJustImported(false)} className="p-2 text-amber-700 hover:bg-amber-100 rounded-lg" title="閉じる">
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          )}
           {showEventExtract && selectedNewsletter && (
             <EventCandidateDialog
               newsletter={selectedNewsletter}
@@ -928,6 +952,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 try {
                   await reloadEventCards(selectedNewsletter.id);
                 } catch { /* 再取得失敗時は既存表示を維持 */ }
+                setEventsJustImported(true);
               }}
               onClose={() => setShowEventExtract(false)}
             />
