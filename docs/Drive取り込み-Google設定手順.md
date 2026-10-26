@@ -3,16 +3,26 @@
 `Drive取り込み-計画.md` の第1段階を動かすための、Google 側の設定。30分ほど。
 画面の文言は 2026-10 時点の Google Cloud コンソール。多少変わっていても項目名で探せる。
 
-## 1. Google Cloud のプロジェクトを作る（sekigaya.dx@gmail.com で・組織の外に）
+## 1. Google Cloud のプロジェクトを選ぶ（CC-SaaS に相乗り。2026-10-26 にはなが決定）
 
-1. https://console.cloud.google.com/ を **sekigaya.dx@gmail.com** でログインして開く（右上のアカウント写真で切り替え）
-2. 上部のプロジェクト名（または「プロジェクトを選択」）→「新しいプロジェクト」
-3. プロジェクト名: `sekigaya-portal-drive`。「組織」の欄は「組織なし」のまま → 「作成」
-4. 作ったプロジェクトが選ばれていることを上部で確認する
+1. https://console.cloud.google.com/ を hanainc.net のアカウントで開く
+2. 上部のプロジェクト名 →「リソースを選択」で、ポータルの Gemini 用に作ってある **CC-SaaS**（ID `gen-lang-client-0398064705`）を選ぶ
 
-> **hanainc.net のアカウント／既存の CC-SaaS プロジェクトでは作らない。** 会社の組織には「サービスアカウントの鍵を作らせない」
-> 組織ポリシー（`iam.disableServiceAccountKeyCreation`）が効いていて、手順 3 の鍵の作成でブロックされる（2026-10-26 に確認）。
-> 個人の Gmail アカウントのプロジェクトには組織ポリシーが無いので鍵が作れる。Gemini のキーは CC-SaaS のままでよい。
+### 1-2. 組織ポリシーをこのプロジェクトだけ外す（鍵を作るために必要）
+
+hanainc.net の組織には「サービスアカウントの鍵を作らせない」組織ポリシー（`iam.disableServiceAccountKeyCreation`）が
+効いていて、そのままだと手順 3 の鍵の作成が「サービス アカウント キーの作成が無効になっています」でブロックされる。
+組織全体はそのままにして、CC-SaaS だけ「適用しない」に上書きする。
+
+1. **権限の確認**: 上部のプロジェクト選択で種類「組織」の **hanainc.net** を選ぶ → 「IAM と管理」→「IAM」。
+   自分の行に **組織ポリシー管理者**（Organization Policy Administrator）が無ければ、「アクセス権を付与」で自分のメールにこのロールを付けて保存（Workspace の特権管理者なら自分で付けられる。反映に1〜2分）
+2. 上部で **CC-SaaS** に戻す → 「IAM と管理」→「**組織のポリシー**」
+3. フィルタに `iam.disableServiceAccountKeyCreation`（「サービス アカウント キーの作成を無効化」）→ 行を開く → 「**ポリシーを管理**」
+4. 「ポリシーのソース」を「**親のポリシーをオーバーライドする**」、ルールの適用を「**適用しない**」にして「**ポリシーを設定**」
+5. 数分待ってから手順 3 の鍵の作成へ。この上書きは残しておく（鍵の作り直しや、第2段階の Edge Function 用にも使うため）
+
+> 別案: 組織の外（sekigaya.dx@gmail.com）で新しいプロジェクトを作れば、組織ポリシーが無いので上の 1-2 は不要。
+> 自治会の仕組みを会社の組織から切り離したくなったときはこちら。Gemini のキーはどちらでも CC-SaaS のままでよい。
 
 ## 2. Drive API を有効にする
 
@@ -23,7 +33,7 @@
 
 1. 左メニュー「IAM と管理」→「サービス アカウント」→「サービス アカウントを作成」
 2. 名前: `portal-drive-import` → 「作成して続行」。ロールは付けなくてよい → 「完了」
-3. 一覧に出たメールアドレス（`portal-drive-import@sekigaya-portal-drive.iam.gserviceaccount.com` の形）を **控える**
+3. 一覧に出たメールアドレス（`portal-drive-import@gen-lang-client-0398064705.iam.gserviceaccount.com` の形）を **控える**
 4. そのアカウントを開く → タブ「キー」→「鍵を追加」→「新しい鍵を作成」→ JSON → 「作成」
 5. JSON ファイルがダウンロードされる。**これは合言葉と同じ扱い**。メールや LINE で送らない。GitHub の Secrets に貼ったら PC からは削除してよい
 
