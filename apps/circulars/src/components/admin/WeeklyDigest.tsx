@@ -184,8 +184,12 @@ export const WeeklyDigest: React.FC = () => {
   /** 今月の LINE 通数（取れなければ null で表示しない） */
   const [quota, setQuota] = useState<LineQuota | null>(null);
 
-  const load = async () => {
-    setLoading(true);
+  /**
+   * 予定とレポートを読み込む。silent のときは「読み込み中」を出さずに裏で差し替える
+   * （他の画面で由来PDFや記事リンクを付けて戻ってきたとき用。2026-10-27）
+   */
+  const load = async (opts: { silent?: boolean } = {}) => {
+    if (!opts.silent) setLoading(true);
     try {
       // 公開前（下書き）の号の予定も候補に入れる（2026-10-27）。画面では「◯月号・未公開」の印を付ける
       const [c, ns] = await Promise.all([getPublishedEventCards(undefined, { includeDraftNewsletters: true }), getNewsletters('published')]);
@@ -205,12 +209,23 @@ export const WeeklyDigest: React.FC = () => {
       console.error('週次配信の読み込みエラー:', e);
       showError('予定データを読み込めませんでした。');
     } finally {
-      setLoading(false);
+      if (!opts.silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     load();
+    // 他のタブ・画面（予定タブ、号の画面）で予定を直して戻ってきたら、裏で静かに読み直す
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') load({ silent: true });
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
@@ -910,7 +925,7 @@ export const WeeklyDigest: React.FC = () => {
               title="曜日と違う日に送るときはここで日付を選ぶ"
             />
             <button
-              onClick={load}
+              onClick={() => load()}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
               title="予定データを読み直す"
             >
