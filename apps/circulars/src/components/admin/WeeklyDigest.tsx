@@ -1188,7 +1188,13 @@ export const WeeklyDigest: React.FC = () => {
                 <div key={t.id} className={`mt-3 rounded-lg border px-3 py-2 ${t.description ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <label className="text-sm font-bold text-slate-600">
-                      ⭐ 一押し{digest.topics.length > 1 ? `${i + 1}` : ''}「{t.title}」の紹介文（1〜2文）
+                      ⭐ 一押し{digest.topics.length > 1 ? `${i + 1}` : ''}「{t.title}」
+                      {t.newsletter_title && (
+                        <span className="ml-1 font-normal text-slate-600" title="この予定が登録されている号。同じ催しが別の号にもあるときの見分けに">
+                          （{t.newsletter_title}{t.newsletter_status === 'draft' ? '・未公開' : ''}）
+                        </span>
+                      )}{' '}
+                      の紹介文（1〜2文）
                     </label>
                     <div className="flex items-center gap-1.5">
                       <button
