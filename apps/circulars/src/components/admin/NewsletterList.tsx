@@ -208,26 +208,42 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   /** ドラッグ中のPDFの位置（nullなら非ドラッグ） */
   const [dragPdfIndex, setDragPdfIndex] = useState<number | null>(null);
   /**
-   * 記事一覧を畳むか。号の全体を見渡すとき、記事が多いと下の「登録済みPDF」まで遠いため（2026-10-26）。
-   * ブラウザごとに覚える（localStorage。読めなくても動く）
+   * 号の画面の各欄（予定・記事一覧・登録済みPDF）を畳むか。号の全体を見渡すとき、
+   * 記事が多いと下の欄まで遠いため（2026-10-26）。ブラウザごとに覚える（localStorage。読めなくても動く）
    */
-  const [articlesCollapsed, setArticlesCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('newsletter-articles-collapsed') === '1';
-    } catch {
-      return false;
-    }
-  });
-  const toggleArticlesCollapsed = () =>
-    setArticlesCollapsed((v) => {
-      const next = !v;
+  type CollapsibleSection = 'events' | 'articles' | 'pdfs';
+  const [collapsed, setCollapsed] = useState<Record<CollapsibleSection, boolean>>(() => {
+    const read = (key: CollapsibleSection) => {
       try {
-        localStorage.setItem('newsletter-articles-collapsed', next ? '1' : '0');
+        return localStorage.getItem(`newsletter-collapsed:${key}`) === '1';
+      } catch {
+        return false;
+      }
+    };
+    return { events: read('events'), articles: read('articles'), pdfs: read('pdfs') };
+  });
+  const toggleCollapsed = (key: CollapsibleSection) =>
+    setCollapsed((prev) => {
+      const next = !prev[key];
+      try {
+        localStorage.setItem(`newsletter-collapsed:${key}`, next ? '1' : '0');
       } catch {
         /* 保存できなくても画面は動く */
       }
-      return next;
+      return { ...prev, [key]: next };
     });
+  /** 「◯◯を畳む／開く」ボタン（高齢の方も押しやすいよう大きめ・濃いめ。畳んでいる間は青で目立たせる） */
+  const collapseButton = (key: CollapsibleSection, label: string) => (
+    <button
+      onClick={() => toggleCollapsed(key)}
+      className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold rounded-lg border-2 transition shrink-0 ${
+        collapsed[key] ? 'text-white bg-primary-600 border-primary-600 hover:bg-primary-700' : 'text-slate-800 bg-white border-slate-400 hover:bg-slate-100'
+      }`}
+      title={collapsed[key] ? `${label}を開く` : `${label}を畳んで、下の欄をすぐ見られるようにする`}
+    >
+      {collapsed[key] ? <><ChevronDown size={18} /> {label}を開く</> : <><ChevronUp size={18} /> {label}を畳む</>}
+    </button>
+  );
 
   /**
    * PDFの表示順を移動して保存
@@ -855,11 +871,12 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
         {/* イベントカード管理 */}
         <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               🗓️ 今後の予定 ({eventCards.length}件)
+              {collapsed.events && eventCards.length > 0 && <span className="text-sm font-normal text-slate-600">（畳んでいます）</span>}
             </h3>
             {/* イベントカードは予定情報のメンテナンスなので公開後も編集可能 */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap justify-end">
               <button
                 onClick={() => setShowEventExtract(true)}
                 disabled={
@@ -899,6 +916,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               >
                 <Plus size={16} /> 追加
               </button>
+              {eventCards.length > 0 && collapseButton('events', '予定')}
             </div>
           </div>
           {showEventExtract && selectedNewsletter && (
@@ -921,6 +939,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               onChanged={() => reloadEventCards(selectedNewsletter.id).catch(() => {})}
             />
           )}
+          {collapsed.events && eventCards.length > 0 ? null : (
+            <>
           {eventCards.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-4">予定がありません</p>
           ) : (
@@ -1011,6 +1031,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               })}
             </div>
           )}
+            </>
+          )}
         </div>
 
         {/* 公開版プレビュー表示中 */}
@@ -1029,26 +1051,14 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <FileText size={20} />
                 記事一覧（{count}件）
-                {articlesCollapsed && count > 0 && <span className="text-sm font-normal text-slate-600">（畳んでいます）</span>}
+                {collapsed.articles && count > 0 && <span className="text-sm font-normal text-slate-600">（畳んでいます）</span>}
               </h3>
-              {count > 0 && (
-                <button
-                  onClick={toggleArticlesCollapsed}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold rounded-lg border-2 transition ${
-                    articlesCollapsed
-                      ? 'text-white bg-primary-600 border-primary-600 hover:bg-primary-700'
-                      : 'text-slate-800 bg-white border-slate-400 hover:bg-slate-100'
-                  }`}
-                  title={articlesCollapsed ? '記事一覧を開く' : '記事一覧を畳んで、下の「登録済みPDF」をすぐ見られるようにする'}
-                >
-                  {articlesCollapsed ? <><ChevronDown size={18} /> 記事一覧を開く</> : <><ChevronUp size={18} /> 記事一覧を畳む</>}
-                </button>
-              )}
+              {count > 0 && collapseButton('articles', '記事一覧')}
             </div>
           );
         })()}
         {/* 記事一覧 */}
-        {articlesCollapsed && (viewingPublished ? publishedArticles.length : articles.length) > 0 ? null : isLoadingArticles ? (
+        {collapsed.articles && (viewingPublished ? publishedArticles.length : articles.length) > 0 ? null : isLoadingArticles ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={32} className="animate-spin text-primary-600" />
             <span className="ml-3 text-slate-600">記事を読み込み中…</span>
@@ -1091,11 +1101,13 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           return (
             <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                  <FileText size={18} />
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <FileText size={20} />
                   登録済みPDF ({pdfEntries.length}件)
+                  {collapsed.pdfs && <span className="text-sm font-normal text-slate-600">（畳んでいます）</span>}
                 </h3>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                {collapseButton('pdfs', 'PDF一覧')}
                 {pdfEntries.length > 0 && (
                   <button
                     onClick={async () => {
@@ -1190,6 +1202,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 )}
                 </div>
               </div>
+              {collapsed.pdfs ? null : (
+                <>
               {/* サムネイル生成・削除など時間のかかる作業の進行表示 */}
               {pdfTaskMessage && (
                 <div className="mb-3">
@@ -1392,6 +1406,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                   </React.Fragment>
                 ))}
               </div>
+                </>
+              )}
             </div>
           );
         })()}
