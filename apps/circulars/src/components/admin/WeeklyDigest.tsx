@@ -187,7 +187,8 @@ export const WeeklyDigest: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const [c, ns] = await Promise.all([getPublishedEventCards(), getNewsletters('published')]);
+      // 公開前（下書き）の号の予定も候補に入れる（2026-10-27）。画面では「◯月号・未公開」の印を付ける
+      const [c, ns] = await Promise.all([getPublishedEventCards(undefined, { includeDraftNewsletters: true }), getNewsletters('published')]);
       setCards(c);
       const frame = ns.find((n) => n.title === REPORT_NEWSLETTER_TITLE);
       if (frame) {
@@ -1063,6 +1064,11 @@ export const WeeklyDigest: React.FC = () => {
                       <span className="truncate">
                         {star ? '⭐ ' : ''}
                         {md(c.event_date!)} {c.title}
+                        {c.newsletter_status === 'draft' && (
+                          <span className="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-700" title="この予定の号はまだ公開前です。配信はできますが、記事へのリンクは付かず、チラシPDFがあればそちらにつなぎます">
+                            {c.newsletter_title ?? '号'}・未公開
+                          </span>
+                        )}
                         {due?.thisWeek && (
                           <span className="ml-1 text-[10px] px-1 rounded bg-red-100 text-red-700 font-bold">
                             ⏰今週締切 {md(due.deadline)}{due.guessed ? '頃' : ''}
@@ -1092,6 +1098,11 @@ export const WeeklyDigest: React.FC = () => {
                           <span className="shrink-0 text-slate-400 w-24">{section}</span>
                           <span className="truncate">
                             {card.event_date ? md(card.event_date) : ''} {card.title}
+                            {card.newsletter_status === 'draft' && (
+                              <span className="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-700" title="この予定の号はまだ公開前です。配信はできますが、記事へのリンクは付かず、チラシPDFがあればそちらにつなぎます">
+                                {card.newsletter_title ?? '号'}・未公開
+                              </span>
+                            )}
                           </span>
                         </label>
                         <button
@@ -1191,7 +1202,15 @@ export const WeeklyDigest: React.FC = () => {
                                     ? 'bg-slate-700 text-white border-slate-700 cursor-pointer'
                                     : 'bg-white text-slate-600 border-slate-300 cursor-pointer hover:border-slate-400'
                               }`}
-                              title={!available ? (k === 'pdf' ? 'この予定にはチラシPDFがありません' : 'この予定にはリンク記事がありません') : ''}
+                              title={
+                                !available
+                                  ? k === 'pdf'
+                                    ? 'この予定にはチラシPDFがありません'
+                                    : t.linked_article_id
+                                      ? 'リンク記事の号がまだ公開前なので、記事には飛ばせません（号を公開すると選べます）'
+                                      : 'この予定にはリンク記事がありません'
+                                  : ''
+                              }
                             >
                               <input type="radio" name={`link-${t.id}`} className="hidden" disabled={!available} checked={on} onChange={() => available && setLinkKinds((prev) => ({ ...prev, [t.id]: k }))} />
                               {LINK_KIND_LABEL[k]}
