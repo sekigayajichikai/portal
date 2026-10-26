@@ -72,7 +72,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
       <div className="bg-white rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap max-w-[260px] shadow-sm text-slate-800">
         {greeting}
       </div>
-      {/* ② ⭐一押し（1枚だけの吹き出しに最大2件を縦に。カルーセルと高さを揃えなくて済む） */}
+      {/* ② ⭐一押し（1枚だけの吹き出しに最大5件を縦に。カルーセルと高さを揃えなくて済む） */}
       {d.topics.length > 0 && (
         <div className="flex">
           <Bubble>

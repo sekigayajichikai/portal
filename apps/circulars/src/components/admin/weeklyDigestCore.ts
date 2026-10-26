@@ -212,7 +212,7 @@ export interface Digest {
  *   ⏰ 締切間近 … 締切が配信の週（配信日から7日間）のうちのもの（申込受付中から抜き出して先頭に）
  */
 /** 一押しの最大件数（1枚のカードに縦に並べる） */
-export const MAX_TOPICS = 2;
+export const MAX_TOPICS = 5; // 2026-10-27 に 2 → 5（1か月分をまとめて作るとき、催しの多い週に備えて）
 
 export interface DigestOptions {
   /**
