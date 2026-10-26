@@ -9,6 +9,7 @@
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
+import { CropAspectButtons, centeredAspectCrop } from './CropAspectButtons';
 import 'react-image-crop/dist/ReactCrop.css';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -94,6 +95,12 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
 
   // クロップ
   const [crop, setCrop] = useState<Crop>();
+  /** 切り抜き枠の形（undefined=自由）。選ぶと枠を比率固定にして中央に出し直す */
+  const [cropAspect, setCropAspect] = useState<number | undefined>(undefined);
+  const changeCropAspect = (a: number | undefined) => {
+    setCropAspect(a);
+    setCrop(centeredAspectCrop(imgRef.current, a));
+  };
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -350,6 +357,7 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
             </button>
           </div>
 
+          <CropAspectButtons value={cropAspect} onChange={changeCropAspect} />
           {savedCount > 0 && <span className="text-sm text-green-600 font-medium">{savedCount}件保存済み</span>}
         </div>
         <button onClick={onClose}
@@ -402,7 +410,7 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
             <div className="flex-1 overflow-auto p-4 bg-slate-100">
               {pageDataUrl && (
                 <div style={{ width: `${zoom}%`, minWidth: '100%' }}>
-                  <ReactCrop crop={crop} onChange={c => setCrop(c)} onComplete={c => setCompletedCrop(c)}>
+                  <ReactCrop crop={crop} aspect={cropAspect} onChange={c => setCrop(c)} onComplete={c => setCompletedCrop(c)}>
                     <img ref={imgRef} src={pageDataUrl} alt={`Page ${currentPage}`}
                       className="w-full h-auto shadow-lg rounded" crossOrigin="anonymous" />
                   </ReactCrop>
