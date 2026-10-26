@@ -97,19 +97,49 @@ export const topicPhoto = (c: PublicEventCard | null): string | null => {
 };
 
 /**
- * 一押しカードに載せる画像の元。優先順:
+ * 一押しカードに載せる画像の元の種類（画面のラジオもこの順）。
+ *   pdf            = 由来PDF（チラシ）の1ページ目
+ *   photo          = リンク記事の写真（扉写真 → 画像添付の先頭）
+ *   newsletter_pdf = 出典号の先頭PDF（代用。内容が合わないこともある）
+ */
+export type ImageKind = NonNullable<PublicEventCard['hero_source']>;
+export const IMAGE_KINDS: ImageKind[] = ['pdf', 'photo', 'newsletter_pdf'];
+export const IMAGE_KIND_LABEL: Record<ImageKind, string> = { pdf: 'チラシ（PDF）', photo: '記事の写真', newsletter_pdf: '回覧板の先頭PDF' };
+/** その予定で選べる画像の元（無ければ空） */
+export const availableImageKinds = (c: PublicEventCard): ImageKind[] => [
+  ...(c.source_pdf_url ? (['pdf'] as ImageKind[]) : []),
+  ...(topicPhoto(c) ? (['photo'] as ImageKind[]) : []),
+  ...(c.newsletter_pdf_url ? (['newsletter_pdf'] as ImageKind[]) : []),
+];
+
+/**
+ * 一押しカードに載せる画像の元。
+ * 人が選んだ種類（kind。省略時は予定カードの hero_source）があり、その元がこの予定にあればそれ。
+ * 無ければ自動の優先順:
  *   1. 由来PDF（チラシ）の1ページ目
  *   2. リンク記事の写真（記事由来の予定）
  *   3. 出典号の先頭PDF（代用。内容が合わないこともある）
+ * 「詳しく見る」のリンク先（topicLink）とは独立。リンク先を記事にしても画像は変わらない。
  */
 export type TopicImageSource = { kind: 'pdf'; url: string; fallback: boolean } | { kind: 'photo'; url: string };
-export const topicImageSource = (c: PublicEventCard | null): TopicImageSource | null => {
+export const topicImageSource = (c: PublicEventCard | null, kind?: ImageKind | null): TopicImageSource | null => {
   if (!c) return null;
-  if (c.source_pdf_url) return { kind: 'pdf', url: c.source_pdf_url, fallback: false };
+  const chosen = kind === undefined ? c.hero_source : kind;
   const photo = topicPhoto(c);
+  if (chosen === 'pdf' && c.source_pdf_url) return { kind: 'pdf', url: c.source_pdf_url, fallback: false };
+  if (chosen === 'photo' && photo) return { kind: 'photo', url: photo };
+  if (chosen === 'newsletter_pdf' && c.newsletter_pdf_url) return { kind: 'pdf', url: c.newsletter_pdf_url, fallback: true };
+  if (c.source_pdf_url) return { kind: 'pdf', url: c.source_pdf_url, fallback: false };
   if (photo) return { kind: 'photo', url: photo };
   if (c.newsletter_pdf_url) return { kind: 'pdf', url: c.newsletter_pdf_url, fallback: true };
   return null;
+};
+/** いま使われている画像の元の種類（表示中のラジオを決める）。無ければ null */
+export const topicImageKind = (c: PublicEventCard | null, kind?: ImageKind | null): ImageKind | null => {
+  const src = topicImageSource(c, kind);
+  if (!src) return null;
+  if (src.kind === 'photo') return 'photo';
+  return src.fallback ? 'newsletter_pdf' : 'pdf';
 };
 
 /** 申込が必要な予定（締切付き） */

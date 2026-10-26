@@ -32,10 +32,10 @@ import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 import { OrganizerSelect, CATEGORY_KEYS, CATEGORY_META, KIND_KEYS, KIND_META } from './EventCandidateDialog';
 import { ArticleLinkPicker } from './ArticleLinkPicker';
 import { CropEditor } from './CropEditor';
-import { type HeroCrop, normalizeCrop, resolveCrop, loadImageCanvas, renderPdfFirstPage } from './heroCrop';
+import { type HeroCrop, DEFAULT_CROP, normalizeCrop, resolveCrop, loadImageCanvas, renderPdfFirstPage } from './heroCrop';
 import { inspectPdf, type PdfInfo } from './pdfInspect';
 import { PdfPagePeek } from './PdfPagePeek';
-import { topicImageSource } from './weeklyDigestCore';
+import { topicImageSource, topicImageKind, availableImageKinds, IMAGE_KINDS, IMAGE_KIND_LABEL, type ImageKind } from './weeklyDigestCore';
 
 interface EventCardEditDialogProps {
   cardId: string;
@@ -62,6 +62,8 @@ interface Form {
   digest_exclude: boolean;
   linked_article_id: string | null;
   source_pdf_url: string | null;
+  /** 週次配信カードの画像の元（null は自動） */
+  hero_source: EventCard['hero_source'];
 }
 
 function toForm(c: AdminEventCard): Form {
@@ -82,6 +84,7 @@ function toForm(c: AdminEventCard): Form {
     digest_exclude: !!c.digest_exclude,
     linked_article_id: c.linked_article_id,
     source_pdf_url: c.source_pdf_url ?? null,
+    hero_source: c.hero_source ?? null,
   };
 }
 
@@ -105,6 +108,7 @@ function toValues(f: Form): Partial<EventCard> {
     digest_exclude: f.digest_exclude,
     linked_article_id: f.linked_article_id,
     source_pdf_url: f.source_pdf_url,
+    hero_source: f.hero_source ?? null,
   };
 }
 
@@ -219,6 +223,10 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
         const c = resolveCrop(crop, cropSource.width, cropSource.height);
         updates.hero_crop = c;
         updates.hero_crop_y = c.y;
+      } else if ('hero_source' in updates) {
+        // 画像の元を変えたのに切り抜きを調整していない: 古い切り抜きは前の画像に合わせたものなので既定に戻す
+        updates.hero_crop = DEFAULT_CROP;
+        updates.hero_crop_y = DEFAULT_CROP.y;
       }
       const saved = await updateEventCard(card.id, updates);
       // 未追加の列は updateEventCard が黙って外すので、返ってきた行に列が無ければ知らせる
@@ -309,8 +317,18 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
     }
   };
 
-  /** 切り出しの元画像（保存済みの由来PDF・記事の写真・号の先頭PDFの順。週次配信と同じ） */
-  const imgSrc = card ? topicImageSource(card) : null;
+  /** 切り出しの元画像（人が選んだ元 → 保存済みの由来PDF・記事の写真・号の先頭PDFの順。週次配信と同じ） */
+  const imgSrc = card ? topicImageSource(card, form?.hero_source) : null;
+  const imageKindOptions = card ? availableImageKinds(card) : [];
+  const currentImageKind = card ? topicImageKind(card, form?.hero_source) : null;
+  /** 画像の元を切り替える。読み込んだ画像と切り抜きは前の元に合わせたものなので捨てる（押せばまた読み込める） */
+  const changeImageKind = (k: ImageKind) => {
+    if (currentImageKind === k) return;
+    set({ hero_source: k });
+    setCropSource(null);
+    setCrop(null);
+    setCropState('idle');
+  };
   const loadCropSource = async () => {
     if (!imgSrc || !card) return;
     setCropState('loading');
@@ -567,10 +585,44 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
               )}
             </div>
 
-            {/* 画像の切り出し（週次配信の一押しカード用） */}
+            {/* 画像の元と切り出し（週次配信の一押しカード用） */}
             <div>
+              <label className={labelCls}>週次配信カードに載せる画像</label>
+              {imageKindOptions.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-1.5 text-xs">
+                  {/* 3種類を常に並べ、この予定に無いものはグレーアウト。「詳しく見る」のリンク先とは別 */}
+                  {IMAGE_KINDS.map((k) => {
+                    const available = imageKindOptions.includes(k);
+                    const on = currentImageKind === k;
+                    return (
+                      <label
+                        key={k}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-full border ${
+                          !available
+                            ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed line-through'
+                            : on
+                              ? 'bg-slate-700 text-white border-slate-700 cursor-pointer'
+                              : 'bg-white text-slate-600 border-slate-300 cursor-pointer hover:border-slate-400'
+                        }`}
+                        title={
+                          !available
+                            ? k === 'pdf'
+                              ? 'この予定にはチラシPDFがありません'
+                              : k === 'photo'
+                                ? 'この予定のリンク記事には写真がありません'
+                                : 'この予定の回覧板にはPDFがありません'
+                            : ''
+                        }
+                      >
+                        <input type="radio" name="hero-source" className="hidden" disabled={!available} checked={on} onChange={() => available && changeImageKind(k)} />
+                        {IMAGE_KIND_LABEL[k]}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
               <label className={labelCls}>
-                週次配信カードの画像の切り抜き
+                切り抜き
                 {imgSrc && (
                   <span className="ml-1 font-normal text-slate-400">
                     {imgSrc.kind === 'photo' ? '（記事の写真）' : imgSrc.fallback ? '（回覧板の先頭PDF・代用）' : '（チラシPDFの1ページ目）'}
