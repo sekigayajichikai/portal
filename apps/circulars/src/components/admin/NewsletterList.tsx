@@ -1026,18 +1026,22 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           const count = viewingPublished ? publishedArticles.length : articles.length;
           return (
             <div className="flex items-center justify-between gap-2">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                <FileText size={18} />
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <FileText size={20} />
                 記事一覧（{count}件）
-                {articlesCollapsed && count > 0 && <span className="text-xs font-normal text-slate-400">畳んでいます</span>}
+                {articlesCollapsed && count > 0 && <span className="text-sm font-normal text-slate-600">（畳んでいます）</span>}
               </h3>
               {count > 0 && (
                 <button
                   onClick={toggleArticlesCollapsed}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+                  className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold rounded-lg border-2 transition ${
+                    articlesCollapsed
+                      ? 'text-white bg-primary-600 border-primary-600 hover:bg-primary-700'
+                      : 'text-slate-800 bg-white border-slate-400 hover:bg-slate-100'
+                  }`}
                   title={articlesCollapsed ? '記事一覧を開く' : '記事一覧を畳んで、下の「登録済みPDF」をすぐ見られるようにする'}
                 >
-                  {articlesCollapsed ? <><ChevronDown size={14} /> 記事一覧を開く</> : <><ChevronUp size={14} /> 記事一覧を畳む</>}
+                  {articlesCollapsed ? <><ChevronDown size={18} /> 記事一覧を開く</> : <><ChevronUp size={18} /> 記事一覧を畳む</>}
                 </button>
               )}
             </div>
