@@ -104,7 +104,7 @@ const SCHEDULE_STATUS_LABEL: Record<WeeklyDigestSchedule['status'], { label: str
   sending: { label: '送信中', cls: 'bg-blue-100 text-blue-700' },
   sent: { label: '送信済み', cls: 'bg-emerald-50 text-emerald-700' },
   failed: { label: '失敗', cls: 'bg-red-100 text-red-700' },
-  canceled: { label: '取り消し済み', cls: 'bg-slate-100 text-slate-500' },
+  canceled: { label: '取り消し済み', cls: 'bg-slate-100 text-slate-600' },
 };
 
 export const WeeklyDigest: React.FC = () => {
@@ -873,12 +873,12 @@ export const WeeklyDigest: React.FC = () => {
               <Send size={20} className="text-emerald-600" />
               週次配信（今週のお知らせ）
             </h2>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-sm text-slate-600 mt-1">
               公開中の予定とレポートから、公式LINEで流すカードを自動で組み立てます。下の「LINE に送る」からテスト送信で確かめてから配信してください。
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-xs text-slate-500">配信の曜日</label>
+            <label className="text-sm text-slate-600">配信の曜日</label>
             <select
               value={weekday ?? toDate(baseDate).getDay()}
               onChange={(e) => changeWeekday(Number(e.target.value))}
@@ -891,7 +891,7 @@ export const WeeklyDigest: React.FC = () => {
                 </option>
               ))}
             </select>
-            <label className="text-xs text-slate-500">配信日</label>
+            <label className="text-sm text-slate-600">配信日</label>
             <input
               type="date"
               value={baseDate}
@@ -911,10 +911,10 @@ export const WeeklyDigest: React.FC = () => {
         {/* 配信予定の表（配信日1つにつき下書き1つ。下書きは一押しの選択・外した予定・リンク先・手で直した吹き出しを自動保存） */}
         <div className="mt-4">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
-            <p className="text-xs font-bold text-slate-600">
+            <p className="text-sm font-bold text-slate-600">
               配信予定（{WEEK[toDate(baseDate).getDay()]}曜配信・今週から{WEEKS_AHEAD}週先まで）
             </p>
-            <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
               <span className="flex items-center gap-1">{draftStatus}</span>
               {draftId && (
                 <button onClick={discardDraft} className="flex items-center gap-1 hover:text-red-600" title="この配信日の下書きを消して、自動で組み立てた状態に戻す">
@@ -924,8 +924,8 @@ export const WeeklyDigest: React.FC = () => {
             </span>
           </div>
           <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full text-xs">
-              <thead className="bg-slate-50 text-slate-500">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600">
                 <tr>
                   <th className="px-3 py-1.5 text-left font-bold whitespace-nowrap">配信日</th>
                   <th className="px-3 py-1.5 text-left font-bold whitespace-nowrap">下書き</th>
@@ -940,18 +940,18 @@ export const WeeklyDigest: React.FC = () => {
                   const changed = isOpen && sc?.status === 'scheduled' && sc.content_key !== contentKey;
                   const st = sc ? SCHEDULE_STATUS_LABEL[sc.status] : null;
                   return (
-                    <tr key={r.date} className={`border-t border-slate-100 ${isOpen ? 'bg-emerald-50' : r.past ? 'text-slate-400' : ''}`}>
+                    <tr key={r.date} className={`border-t border-slate-100 ${isOpen ? 'bg-emerald-50' : r.past ? 'text-slate-600' : ''}`}>
                       <td className="px-3 py-1.5 whitespace-nowrap">
                         <span className="font-bold">{md(r.date)}</span>
-                        {isOpen && <span className="ml-1.5 text-[10px] text-emerald-700">開いています</span>}
+                        {isOpen && <span className="ml-1.5 text-xs text-emerald-700">開いています</span>}
                       </td>
                       <td className="px-3 py-1.5 whitespace-nowrap">
                         {r.draft ? (
-                          <span className="text-slate-700">✓ 作成済み <span className="text-slate-400">（更新 {fmtDateTime(r.draft.updated_at)}）</span></span>
+                          <span className="text-slate-700">✓ 作成済み <span className="text-slate-600">（更新 {fmtDateTime(r.draft.updated_at)}）</span></span>
                         ) : isOpen && draftId ? (
                           <span className="text-slate-700">✓ 作成済み</span>
                         ) : (
-                          <span className="text-slate-400">未作成（自動のまま）</span>
+                          <span className="text-slate-600">未作成（自動のまま）</span>
                         )}
                       </td>
                       <td className="px-3 py-1.5">
@@ -962,7 +962,7 @@ export const WeeklyDigest: React.FC = () => {
                             <span className={`px-1.5 py-0.5 rounded font-bold ${st.cls}`}>{st.label}</span>
                             <span>{fmtDateTime(sc.status === 'sent' && sc.sent_at ? sc.sent_at : sc.send_at)}</span>
                             {sc.status === 'scheduled' && (
-                              <button onClick={() => cancelSchedule(sc)} className="text-slate-400 hover:text-red-600 underline">
+                              <button onClick={() => cancelSchedule(sc)} className="text-slate-600 hover:text-red-600 underline">
                                 取り消す
                               </button>
                             )}
@@ -970,7 +970,7 @@ export const WeeklyDigest: React.FC = () => {
                             {sc.status === 'failed' && sc.error && <span className="text-red-600 break-all">理由: {sc.error}</span>}
                           </span>
                         ) : r.past ? (
-                          <span className="text-slate-400">配信なし</span>
+                          <span className="text-slate-600">配信なし</span>
                         ) : (
                           <span className="font-bold text-amber-700">未予約</span>
                         )}
@@ -992,19 +992,19 @@ export const WeeklyDigest: React.FC = () => {
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">
+          <p className="text-xs text-slate-600 mt-1">
             下書きは配信日ごとに1つ。配信日を開いて一押し・リンク先・吹き出しを直すと自動で保存されます。予約は下の「LINE に送る」から配信日ごとに行います。別の曜日に送るときは右上の「配信日」で日付を選んでください。
           </p>
         </div>
 
         {loading ? (
-          <div className="flex items-center gap-2 text-slate-400 text-sm py-10 justify-center">
+          <div className="flex items-center gap-2 text-slate-600 text-sm py-10 justify-center">
             <Loader2 size={16} className="animate-spin" /> 予定を読み込み中…
           </div>
         ) : (
           <>
             {/* 内訳（何が何件入ったか） */}
-            <div className="flex flex-wrap gap-2 mt-4 text-xs">
+            <div className="flex flex-wrap gap-2 mt-4 text-sm">
               {[
                 ['⭐ 一押し', counts.topic, MAX_TOPICS],
                 ['📰 レポート', counts.reports, LIMITS.reports],
@@ -1014,13 +1014,13 @@ export const WeeklyDigest: React.FC = () => {
               ].map(([label, n, max]) => (
                 <span
                   key={String(label)}
-                  className={`px-2 py-1 rounded-full border ${Number(n) > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
+                  className={`px-2 py-1 rounded-full border ${Number(n) > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
                 >
                   {label} {n}
                   {max !== null ? `/${max}` : ''}件
                 </span>
               ))}
-              <span className="px-2 py-1 text-slate-400">合計 {total} 件</span>
+              <span className="px-2 py-1 text-slate-600">合計 {total} 件</span>
             </div>
             {total === 0 && (
               <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
@@ -1029,19 +1029,19 @@ export const WeeklyDigest: React.FC = () => {
             )}
 
             {/* ⭐一押しを人が選ぶ（最大2件・チェックした順）。外れた予定は今週の範囲内なら「今週の予定」に普通の行として載る */}
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs">
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm">
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <span className="font-bold text-slate-700">⭐ 今週の一押し（最大{MAX_TOPICS}件・チェックした順）</span>
-                <span className="text-slate-500">
+                <span className="text-slate-600">
                   {topicIds === undefined ? '自動: ⭐候補のうち直近の1件' : topicIds.length === 0 ? '今週は一押しなし（テキスト→カード一覧の2吹き出し）' : `${topicIds.length}件を選択中`}
                 </span>
                 {topicIds !== undefined && (
-                  <button onClick={() => setTopicIds(undefined)} className="text-slate-500 hover:text-slate-800 underline">
+                  <button onClick={() => setTopicIds(undefined)} className="text-slate-600 hover:text-slate-800 underline">
                     自動に戻す
                   </button>
                 )}
                 {topicIds === undefined && currentTopicIds.length > 0 && (
-                  <button onClick={() => setTopicIds([])} className="text-slate-500 hover:text-slate-800 underline">
+                  <button onClick={() => setTopicIds([])} className="text-slate-600 hover:text-slate-800 underline">
                     今週は一押しなし
                   </button>
                 )}
@@ -1060,17 +1060,17 @@ export const WeeklyDigest: React.FC = () => {
                   return (
                     <label key={c.id} className={`flex items-center gap-1.5 cursor-pointer select-none ${disabled ? 'opacity-40' : ''} ${on ? 'text-slate-800 font-bold' : 'text-slate-600'}`}>
                       <input type="checkbox" checked={on} disabled={disabled} onChange={() => toggleTopic(c.id)} />
-                      {on && <span className="text-[10px] px-1 rounded bg-amber-500 text-white">{order + 1}</span>}
+                      {on && <span className="text-xs px-1 rounded bg-amber-500 text-white">{order + 1}</span>}
                       <span className="truncate">
                         {star ? '⭐ ' : ''}
                         {md(c.event_date!)} {c.title}
                         {c.newsletter_status === 'draft' && (
-                          <span className="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-700" title="この予定の号はまだ公開前です。配信はできますが、記事へのリンクは付かず、チラシPDFがあればそちらにつなぎます">
+                          <span className="ml-1 text-xs px-1 rounded bg-slate-200 text-slate-700" title="この予定の号はまだ公開前です。配信はできますが、記事へのリンクは付かず、チラシPDFがあればそちらにつなぎます">
                             {c.newsletter_title ?? '号'}・未公開
                           </span>
                         )}
                         {due?.thisWeek && (
-                          <span className="ml-1 text-[10px] px-1 rounded bg-red-100 text-red-700 font-bold">
+                          <span className="ml-1 text-xs px-1 rounded bg-red-100 text-red-700 font-bold">
                             ⏰今週締切 {md(due.deadline)}{due.guessed ? '頃' : ''}
                           </span>
                         )}
@@ -1084,7 +1084,7 @@ export const WeeklyDigest: React.FC = () => {
             {/* 拾われた予定の一覧。チェックを外すとこの週のカードから消える。「今後も載せない」は予定カードに保存 */}
             {digestItems.length > 0 && (
               <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <p className="text-xs font-bold text-slate-600 mb-1">
+                <p className="text-sm font-bold text-slate-600 mb-1">
                   載せる予定（チェックを外すと今週の配信から外れます）
                   {excluded.size > 0 && <span className="ml-2 font-normal text-amber-700">{excluded.size}件を外しています</span>}
                 </p>
@@ -1092,14 +1092,14 @@ export const WeeklyDigest: React.FC = () => {
                   {digestItems.map(({ card, section }) => {
                     const on = !excluded.has(card.id);
                     return (
-                      <li key={card.id} className="flex items-center gap-2 text-xs">
-                        <label className={`flex items-center gap-1.5 cursor-pointer select-none flex-1 min-w-0 ${on ? 'text-slate-700' : 'text-slate-400 line-through'}`}>
+                      <li key={card.id} className="flex items-center gap-2 text-sm">
+                        <label className={`flex items-center gap-1.5 cursor-pointer select-none flex-1 min-w-0 ${on ? 'text-slate-700' : 'text-slate-600 line-through'}`}>
                           <input type="checkbox" checked={on} onChange={() => toggleExcluded(card.id)} />
-                          <span className="shrink-0 text-slate-400 w-24">{section}</span>
+                          <span className="shrink-0 text-slate-600 w-24">{section}</span>
                           <span className="truncate">
                             {card.event_date ? md(card.event_date) : ''} {card.title}
                             {card.newsletter_status === 'draft' && (
-                              <span className="ml-1 text-[10px] px-1 rounded bg-slate-200 text-slate-700" title="この予定の号はまだ公開前です。配信はできますが、記事へのリンクは付かず、チラシPDFがあればそちらにつなぎます">
+                              <span className="ml-1 text-xs px-1 rounded bg-slate-200 text-slate-700" title="この予定の号はまだ公開前です。配信はできますが、記事へのリンクは付かず、チラシPDFがあればそちらにつなぎます">
                                 {card.newsletter_title ?? '号'}・未公開
                               </span>
                             )}
@@ -1107,7 +1107,7 @@ export const WeeklyDigest: React.FC = () => {
                         </label>
                         <button
                           onClick={() => excludeForever(card)}
-                          className="shrink-0 text-[11px] text-slate-400 hover:text-red-600"
+                          className="shrink-0 text-xs text-slate-600 hover:text-red-600"
                           title="予定に「週次配信に載せない」を付けて、今後の配信にも出さない（役員向け会議など）"
                         >
                           🚫 今後も載せない
@@ -1137,13 +1137,13 @@ export const WeeklyDigest: React.FC = () => {
               return (
                 <div key={t.id} className={`mt-3 rounded-lg border px-3 py-2 ${t.description ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'}`}>
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <label className="text-xs font-bold text-slate-600">
+                    <label className="text-sm font-bold text-slate-600">
                       ⭐ 一押し{digest.topics.length > 1 ? `${i + 1}` : ''}「{t.title}」の紹介文（1〜2文）
                     </label>
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => setEditingCardId(t.id)}
-                        className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition"
+                        className="flex items-center gap-1 px-3 py-1 text-sm font-bold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition"
                         title="日時・場所・記事リンク・由来PDFなど、予定の全項目を編集します（予定タブと同じ画面）"
                       >
                         <Pencil size={12} /> この予定を編集
@@ -1152,7 +1152,7 @@ export const WeeklyDigest: React.FC = () => {
                         <button
                           onClick={() => generateDescription(t)}
                           disabled={generatingDesc !== null || savingDesc === t.id}
-                          className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 transition disabled:opacity-40"
+                          className="flex items-center gap-1 px-3 py-1 text-sm font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 transition disabled:opacity-40"
                           title={`AIが${t.source_pdf_url ? 'チラシPDF' : t.linked_article_id ? 'リンク記事' : 'タイトルと情報'}から1〜2文の紹介文を作ります。読んで直してから保存してください`}
                         >
                           {generatingDesc === t.id ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
@@ -1162,7 +1162,7 @@ export const WeeklyDigest: React.FC = () => {
                       <button
                         onClick={() => saveDescription(t)}
                         disabled={savingDesc === t.id || !dirty}
-                        className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 transition disabled:opacity-40"
+                        className="flex items-center gap-1 px-3 py-1 text-sm font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 transition disabled:opacity-40"
                       >
                         {savingDesc === t.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
                         {savingDesc === t.id ? '保存しています…' : '紹介文を保存'}
@@ -1176,7 +1176,7 @@ export const WeeklyDigest: React.FC = () => {
                     placeholder="例: 地元の作品展示と演奏会。お茶を飲みながら気軽に楽しめます。"
                     className="w-full text-sm border border-slate-300 rounded-lg px-2 py-1.5 resize-none leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                   />
-                  <p className="text-[11px] text-slate-400 mt-1">
+                  <p className="text-xs text-slate-600 mt-1">
                     {t.description
                       ? '保存すると予定にも残り、次回以降もこの紹介文が使われます。'
                       : 'まだ紹介文がありません。ここで入力（または「AIで紹介文を作る」）して保存すると、カードに載ります（予定にも保存されます）。'}{' '}
@@ -1185,7 +1185,7 @@ export const WeeklyDigest: React.FC = () => {
 
                   <div className="mt-2 grid gap-3 sm:grid-cols-2">
                     {/* リンク先（チラシPDF／記事。予定ページはカードと同じ情報しか無いので使わない） */}
-                    <div className="text-xs">
+                    <div className="text-sm">
                       <p className="font-bold text-slate-600 mb-1">「詳しく見る」のリンク先</p>
                       <div className="flex flex-wrap gap-2">
                         {/* 2種類を常に並べ、この予定に無いものはグレーアウト（押せない） */}
@@ -1218,7 +1218,7 @@ export const WeeklyDigest: React.FC = () => {
                           );
                         })}
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-1">
+                      <p className="text-xs text-slate-600 mt-1">
                         {kinds.length === 0
                           ? 'この予定にはチラシも記事も無いので、「詳しく見る」ボタンは付きません。カードの文字だけで伝わるよう紹介文を書いてください。'
                           : `カードのボタン・画像のタップ先に使います。グレーはこの予定に無いもの。${kinds.length === 2 ? '指定しなければ チラシPDF → 記事 の順です。' : ''}`}
@@ -1226,7 +1226,7 @@ export const WeeklyDigest: React.FC = () => {
                     </div>
 
                     {/* カード画像の元（チラシPDF／記事の写真／回覧板の先頭PDF）と切り出し（拡大縮小＋ドラッグで位置決め） */}
-                    <div className="text-xs">
+                    <div className="text-sm">
                       <p className="font-bold text-slate-600 mb-1">カードに載せる画像</p>
                       {imageKindOptions.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-1.5">
@@ -1266,27 +1266,27 @@ export const WeeklyDigest: React.FC = () => {
                       <p className="font-bold text-slate-600 mb-1">
                         切り抜き
                         {imgSrc && (
-                          <span className="ml-2 font-normal text-slate-400">
+                          <span className="ml-2 font-normal text-slate-600">
                             {imgSrc.kind === 'photo' ? '（記事の写真）' : imgSrc.fallback ? '（出典の回覧板の先頭PDF・代用）' : '（チラシPDFの1ページ目）'}
                           </span>
                         )}
                       </p>
                       {flyerStates[t.id] === 'loading' ? (
-                        <p className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 画像を読み込み中…</p>
+                        <p className="text-slate-600 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 画像を読み込み中…</p>
                       ) : !flyer ? (
                         imgSrc ? (
-                          <div className="text-slate-500 space-y-1">
+                          <div className="text-slate-600 space-y-1">
                             <p>
                               画像を読み込めませんでした。{' '}
                               <button onClick={() => retryFlyer(t.id)} className="text-blue-600 hover:underline font-bold">
                                 もう一度読み込む
                               </button>
                             </p>
-                            {flyerErrors[t.id] && <p className="text-[11px] text-slate-400 break-all">理由: {flyerErrors[t.id]}</p>}
-                            <p className="text-[11px] text-slate-400">PCのメモリが足りないときやPDFが大きいときに起きることがあります。それでも駄目なら、画像なしのカードで送れます。</p>
+                            {flyerErrors[t.id] && <p className="text-xs text-slate-600 break-all">理由: {flyerErrors[t.id]}</p>}
+                            <p className="text-xs text-slate-600">PCのメモリが足りないときやPDFが大きいときに起きることがあります。それでも駄目なら、画像なしのカードで送れます。</p>
                           </div>
                         ) : (
-                          <p className="text-slate-400">この予定にはチラシPDFも記事の写真も無いので、カードは文字だけになります。</p>
+                          <p className="text-slate-600">この予定にはチラシPDFも記事の写真も無いので、カードは文字だけになります。</p>
                         )
                       ) : (
                         <div>
@@ -1294,7 +1294,7 @@ export const WeeklyDigest: React.FC = () => {
                           <button
                             onClick={() => saveCrop(t)}
                             disabled={savingCrop === t.id || !cropDirty}
-                            className="mt-1.5 px-2 py-1 text-[11px] font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 disabled:opacity-40"
+                            className="mt-1.5 px-2 py-1 text-xs font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 disabled:opacity-40"
                           >
                             {savingCrop === t.id ? '保存しています…' : imageKindDirty ? '画像の元と切り抜きを保存（次回も同じ）' : '切り抜きを保存（次回も同じ）'}
                           </button>
@@ -1318,20 +1318,20 @@ export const WeeklyDigest: React.FC = () => {
                 <MessageCircle size={18} className="text-emerald-600" />
                 LINE に送る（カード形式）
               </h3>
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="text-sm text-slate-600 mt-1">
                 短いテキスト → ⭐一押しカード → カード一覧（今週の予定／申込受付中／レポート）の3つの吹き出しを1回の配信（1通）で送ります。まず「テスト送信」で自分のLINEに届く見た目を確認してから「全員に配信」してください。
               </p>
             </div>
           </div>
 
           {alreadySentThisWeek && (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
               ⚠ この配信日（{md(baseDate)}）はすでに全員配信済みです（{new Date(alreadySentThisWeek.sent_at).toLocaleString('ja-JP')}）。二重配信に注意してください。
             </p>
           )}
 
           {pendingThisWeek && (
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
               ⏰ この配信日（{md(baseDate)}）は {fmtDateTime(pendingThisWeek.send_at)} に全員配信を予約しています。
             </p>
           )}
@@ -1340,16 +1340,16 @@ export const WeeklyDigest: React.FC = () => {
             <div className="space-y-3">
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1">
-                  <label className="text-xs font-bold text-slate-500">テキスト（吹き出し①・直すと下書きに自動保存）</label>
-                  <span className="flex items-center gap-2 text-[11px]">
+                  <label className="text-sm font-bold text-slate-600">テキスト（吹き出し①・直すと下書きに自動保存）</label>
+                  <span className="flex items-center gap-2 text-xs">
                     {/* 保存ボタンが無いので、ここにも保存状態を出す（上部の「下書き」の行と同じ） */}
-                    <span className="flex items-center gap-1 text-slate-400">{draftStatus}</span>
+                    <span className="flex items-center gap-1 text-slate-600">{draftStatus}</span>
                     <button
                       onClick={() => {
                         setGreetingEdited(false);
                         setGreeting(buildGreetingText(digest));
                       }}
-                      className={`hover:text-slate-800 ${greetingEdited ? 'text-amber-700 font-bold' : 'text-slate-500'}`}
+                      className={`hover:text-slate-800 ${greetingEdited ? 'text-amber-700 font-bold' : 'text-slate-600'}`}
                       title="自動生成の文に戻す（手で直した内容は消えます）"
                     >
                       {greetingEdited ? '手で直した文（作り直す）' : '作り直す'}
@@ -1370,7 +1370,7 @@ export const WeeklyDigest: React.FC = () => {
                 <button
                   onClick={() => send('validate')}
                   disabled={sending !== null}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
                   title="送らずに LINE 側で形式だけチェックします"
                 >
                   {sending === 'validate' ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />} 形式チェック
@@ -1378,7 +1378,7 @@ export const WeeklyDigest: React.FC = () => {
                 <button
                   onClick={() => send('test')}
                   disabled={sending !== null}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
                   title="自分のLINEにだけ送ります"
                 >
                   {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（自分に）
@@ -1386,7 +1386,7 @@ export const WeeklyDigest: React.FC = () => {
                 <button
                   onClick={() => send('admins')}
                   disabled={sending !== null}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 transition disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 transition disabled:opacity-50"
                   title="管理者（リッチメニューの「管理者だけに反映」と同じ人）にだけ送ります。人数ぶん通数を使います"
                 >
                   {sending === 'admins' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 管理者に送る（確認用）
@@ -1394,19 +1394,19 @@ export const WeeklyDigest: React.FC = () => {
                 <button
                   onClick={() => send('broadcast')}
                   disabled={sending !== null}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 transition disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 transition disabled:opacity-50"
                   title="公式LINEの友だち全員に配信します（確認あり）"
                 >
                   {sending === 'broadcast' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 全員に配信
                 </button>
               </div>
-              <details className="text-xs text-slate-500">
+              <details className="text-sm text-slate-600">
                 <summary className="cursor-pointer select-none">開発者向け</summary>
                 <div className="mt-2 flex items-center gap-2">
                   <button
                     onClick={copyFlexJson}
                     disabled={sending !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
                   >
                     <Copy size={14} /> Flex JSON をコピー
                   </button>
@@ -1416,7 +1416,7 @@ export const WeeklyDigest: React.FC = () => {
               {/* 予約配信（予約した時点の内容で、指定の日時に全員へ。pg_cron が5分ごとに送る） */}
               <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="text-sm font-bold text-slate-700 flex items-center gap-1">
                     <Clock size={14} className="text-amber-700" /> 日時を指定して全員に配信
                   </span>
                   <input
@@ -1424,12 +1424,12 @@ export const WeeklyDigest: React.FC = () => {
                     value={scheduleAt}
                     onChange={(e) => setScheduleAt(e.target.value)}
                     step={300}
-                    className="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white"
+                    className="text-sm border border-slate-300 rounded-lg px-2 py-1 bg-white"
                   />
                   <button
                     onClick={schedule}
                     disabled={scheduling || sending !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition disabled:opacity-50"
                     title="いまの内容（画像も）で予約します。指定の時刻から5分以内に送られます"
                   >
                     {scheduling ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />} この内容で予約
@@ -1437,7 +1437,7 @@ export const WeeklyDigest: React.FC = () => {
                 </div>
                 {/* この配信日の予約だけ（他の週は上部の「配信予定」の表で見る） */}
                 {schedulesThisWeek.length > 0 && (
-                  <ul className="text-[11px] text-slate-600 space-y-1">
+                  <ul className="text-xs text-slate-600 space-y-1">
                     {schedulesThisWeek
                       .map((s) => {
                         const st = SCHEDULE_STATUS_LABEL[s.status];
@@ -1449,7 +1449,7 @@ export const WeeklyDigest: React.FC = () => {
                               {fmtDateTime(s.send_at)} に送信（配信日 {md(s.base_date)}）
                             </span>
                             {s.status === 'scheduled' && (
-                              <button onClick={() => cancelSchedule(s)} className="text-slate-400 hover:text-red-600 underline">
+                              <button onClick={() => cancelSchedule(s)} className="text-slate-600 hover:text-red-600 underline">
                                 取り消す
                               </button>
                             )}
@@ -1461,11 +1461,11 @@ export const WeeklyDigest: React.FC = () => {
                   </ul>
                 )}
               </div>
-              {sendNote && <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 whitespace-pre-wrap">{sendNote}</p>}
+              {sendNote && <p className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 whitespace-pre-wrap">{sendNote}</p>}
               {/* 今月の通数（LINE から取得。API で送った分も含む。LINE公式アカウントの管理画面の配信一覧には API 分は出ない） */}
               {quota && (
                 <p
-                  className={`text-xs font-bold rounded-lg px-3 py-1.5 border ${
+                  className={`text-sm font-bold rounded-lg px-3 py-1.5 border ${
                     quota.limit != null && quota.limit - quota.used < 50 ? 'text-red-700 bg-red-50 border-red-200' : 'text-slate-700 bg-slate-50 border-slate-200'
                   }`}
                 >
@@ -1475,14 +1475,14 @@ export const WeeklyDigest: React.FC = () => {
                     : `${quota.used} 通使用（上限なし）`}
                 </p>
               )}
-              <p className="text-[11px] text-slate-400">
+              <p className="text-xs text-slate-600">
                 テスト送信と全員配信は、送るたびに公式LINEの通数（無料枠は月200通）を使います。全員配信は「友だちの人数」ぶん減ります。テスト送信は1通です。チラシ画像は送信時に自動でアップロードされます。
               </p>
 
               {history.length > 0 && (
                 <div className="pt-1">
-                  <p className="text-xs font-bold text-slate-500 mb-1">配信履歴</p>
-                  <ul className="text-[11px] text-slate-500 space-y-0.5">
+                  <p className="text-sm font-bold text-slate-600 mb-1">配信履歴</p>
+                  <ul className="text-xs text-slate-600 space-y-0.5">
                     {history.slice(0, 8).map((h) => (
                       <li key={h.id}>
                         {new Date(h.sent_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{' '}
@@ -1499,14 +1499,14 @@ export const WeeklyDigest: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">見た目のプレビュー（実際の描画はテスト送信で確認）</label>
+              <label className="text-sm font-bold text-slate-600 block mb-1">見た目のプレビュー（実際の描画はテスト送信で確認）</label>
               <FlexPreview digest={digest} greeting={greeting} flyerSrcs={flyerSrcs} flyerAspects={flyerAspects} linkKinds={linkKinds} />
             </div>
           </div>
         </div>
       )}
 
-      <div className="bg-white p-5 rounded-2xl shadow border border-slate-200 text-xs text-slate-500 space-y-1">
+      <div className="bg-white p-5 rounded-2xl shadow border border-slate-200 text-sm text-slate-600 space-y-1">
         <p className="font-bold text-slate-600">組み立てのルール</p>
         <p>・⭐一押し: 配信候補（⭐）のうち開催が近いもの1件。紹介文（1〜2文）と、チラシPDF→記事→予定ページの順でいちばん直接的なURLを添えます ／ 📰レポート: 直近14日に公開したもの最大2件</p>
         <p>・📅今週の予定: 要予約以外で配信日から7日間、最大6件 ／ 📝申込受付中: 要予約で締切が14日以内、締切順に最大4件</p>

@@ -47,8 +47,9 @@ const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; pref
           {prefix}
           {c.title}
         </span>
-        {sub && <span className="block text-xs text-slate-600">{sub}</span>}
-        {c.event_location && <span className="block text-xs text-slate-400">{c.event_location}</span>}
+        {/* 主催・場所は本文と同じ大きさ・濃いグレー（実機の Flex と同じ。2026-10-27） */}
+        {sub && <span className="block text-sm text-slate-700">{sub}</span>}
+        {c.event_location && <span className="block text-sm text-slate-700">{c.event_location}</span>}
       </span>
       {/* 押せる行だけ「詳しく ›」（本文と同じ大きさの太字・濃いグレー）。枠は固定幅で、押せない行も位置を揃える */}
       <span className="shrink-0 text-sm font-bold text-slate-600 text-right w-16">{linkable ? '詳しく ›' : ''}</span>
@@ -77,7 +78,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#b45309' }}>
               <div className="text-base font-bold">⭐ 今週の一押し</div>
-              <div className="text-xs opacity-80">
+              <div className="text-sm opacity-90">
                 {md(d.from)}〜{md(d.to)} のお知らせ
               </div>
             </div>
@@ -107,9 +108,9 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
                       ) : (
                         <div className="text-sm font-bold text-blue-700">{when}</div>
                       )}
-                      {dl && !dl.thisWeek && <div className="text-xs text-slate-500">{topicDeadlineText(dl)}</div>}
+                      {dl && !dl.thisWeek && <div className="text-sm text-slate-700">{topicDeadlineText(dl)}</div>}
                       {(t.event_location || t.organizer) && (
-                        <div className="text-xs text-slate-500">
+                        <div className="text-sm text-slate-700">
                           📍 {[t.event_location, t.organizer ? `主催: ${t.organizer}` : null].filter(Boolean).join(' / ')}
                           {audienceFee(t)}
                         </div>
@@ -135,7 +136,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2563eb' }}>
               <div className="text-base font-bold">📅 今週の予定</div>
-              <div className="text-xs opacity-80">
+              <div className="text-sm opacity-90">
                 {md(d.from)}〜{md(d.to)}　{ROW_HINT}
               </div>
             </div>
@@ -152,7 +153,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2f6f4e' }}>
               <div className="text-base font-bold">📝 申込受付中</div>
-              <div className="text-xs opacity-80">{ROW_HINT}</div>
+              <div className="text-sm opacity-90">{ROW_HINT}</div>
             </div>
             <div className="px-3 pb-2">
               {/* ⏰締切間近（今週締切）を先頭に、その後は締切順 */}
@@ -186,9 +187,9 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
             <Bubble key={r.id}>
               {thumb && <img src={thumb} alt="" className="w-full object-cover" style={{ aspectRatio: '16/9' }} />}
               <div className="px-3 pt-3 pb-1 space-y-1">
-                <div className="text-xs font-bold text-red-700">📰 新しいレポート</div>
+                <div className="text-sm font-bold text-red-700">📰 新しいレポート</div>
                 <div className="text-base font-bold leading-snug">{r.title}</div>
-                {brief && <div className="text-sm text-slate-500">{brief.slice(0, 80)}</div>}
+                {brief && <div className="text-sm text-slate-700">{brief.slice(0, 80)}</div>}
               </div>
               <div className="px-3 pb-3 pt-2 mt-auto">
                 <a href={`${siteUrl()}/?report=${r.id}`} target="_blank" rel="noopener noreferrer" className="block text-center rounded-lg py-2 text-sm font-bold text-white" style={{ background: '#c0392b' }}>
