@@ -49,7 +49,7 @@ import {
   type WeeklyDigestSend,
   type WeeklyDigestSchedule,
 } from '@cc-saas/shared';
-import { Copy, Check, RefreshCw, Loader2, Send, MessageCircle, ShieldCheck, Users, Sparkles, Trash2, Pencil, Clock } from 'lucide-react';
+import { Copy, Check, RefreshCw, Loader2, Send, MessageCircle, ShieldCheck, Users, Sparkles, Trash2, Pencil, Clock, ChevronUp, ChevronDown } from 'lucide-react';
 import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 
 import {
@@ -383,6 +383,16 @@ export const WeeklyDigest: React.FC = () => {
       if (base.includes(id)) return base.filter((x) => x !== id);
       if (base.length >= MAX_TOPICS) return base;
       return [...base, id];
+    });
+  /** 一押しの順番を1つ上／下へ（1番目と2番目の入れ替え。2026-10-27。以前はチェックし直すしかなかった） */
+  const moveTopic = (id: string, dir: -1 | 1) =>
+    setTopicIds(() => {
+      const base = [...currentTopicIds];
+      const i = base.indexOf(id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= base.length) return base;
+      [base[i], base[j]] = [base[j], base[i]];
+      return base;
     });
 
   /** チェック一覧の行（一押し・締切間近・今週の予定・申込受付中の順） */
@@ -1058,7 +1068,8 @@ export const WeeklyDigest: React.FC = () => {
                   const order = currentTopicIds.indexOf(c.id);
                   const disabled = !on && currentTopicIds.length >= MAX_TOPICS;
                   return (
-                    <label key={c.id} className={`flex items-center gap-1.5 cursor-pointer select-none ${disabled ? 'opacity-40' : ''} ${on ? 'text-slate-800 font-bold' : 'text-slate-600'}`}>
+                    <div key={c.id} className="flex items-center gap-1.5 min-w-0">
+                    <label className={`flex items-center gap-1.5 cursor-pointer select-none min-w-0 ${disabled ? 'opacity-40' : ''} ${on ? 'text-slate-800 font-bold' : 'text-slate-600'}`}>
                       <input type="checkbox" checked={on} disabled={disabled} onChange={() => toggleTopic(c.id)} />
                       {on && <span className="text-xs px-1 rounded bg-amber-500 text-white">{order + 1}</span>}
                       <span className="truncate">
@@ -1076,6 +1087,30 @@ export const WeeklyDigest: React.FC = () => {
                         )}
                       </span>
                     </label>
+                    {/* 一押しが2件あるときの順番の入れ替え（1番目がカードの上になる） */}
+                    {on && currentTopicIds.length > 1 && (
+                      <span className="flex items-center gap-0.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => moveTopic(c.id, -1)}
+                          disabled={order === 0}
+                          className="p-1 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-30"
+                          title="1つ上へ（カードで先に出す）"
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveTopic(c.id, 1)}
+                          disabled={order === currentTopicIds.length - 1}
+                          className="p-1 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-30"
+                          title="1つ下へ"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      </span>
+                    )}
+                    </div>
                   );
                 })}
               </div>
