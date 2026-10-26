@@ -70,12 +70,29 @@ const monthTitle = (month) => {
 };
 const mediaOf = (name) => MEDIA.find((k) => (name ?? '').replace(/[\s　]/g, '').includes(k)) ?? null;
 const md5 = (buf) => createHash('md5').update(buf).digest('hex');
+/** 号に登録済みの PDF（source_pdf_urls は文字列かオブジェクトの配列） */
+const pdfEntriesOf = (newsletter) =>
+  (newsletter.source_pdf_urls || []).map((e) => (typeof e === 'string' ? { url: e, label: '' } : { url: e.url, label: e.label || '' }));
+/** 「対象外」を取込記録に残す（次回から静かに飛ばすため） */
+async function recordSkip(supabase, file, month, media, reason) {
+  if (DRY_RUN) return;
+  const { error } = await supabase.from('drive_imports').upsert(
+    { drive_file_id: file.id, drive_name: file.name, drive_md5: file.md5Checksum ?? null, drive_modified_at: file.modifiedTime, month_folder: month, media, kind: 'source', status: 'skipped', error: reason },
+    { onConflict: 'drive_file_id' }
+  );
+  if (error) console.warn('対象外の記録に失敗:', error.message);
+}
 
 // ---- 結果のまとめ（メール本文・ログ） ----
-const report = { months: {}, failed: 0, imported: 0, updated: 0, skipped: 0 };
+const report = { months: {}, failed: 0, imported: 0, updated: 0, skipped: 0, quiet: 0 };
 const note = (month, line) => {
   (report.months[month] ??= []).push(line);
   console.log(`[${month}] ${line}`);
+};
+/** 前回までに処理済み（取込済み・対象外）のもの。ログには出すがメールの本文には件数だけ */
+const quiet = (month, line) => {
+  report.quiet++;
+  console.log(`[${month}] （処理済み）${line}`);
 };
 
 async function main() {
@@ -126,10 +143,14 @@ async function main() {
       const media = mediaOf(file.name);
       const prev = imports.find((r) => r.drive_file_id === file.id);
       try {
-        // 1) 同じファイルを取り込み済み
+        // 1) 同じファイルを処理済み（取込済み・対象外として記録済み）
         if (prev && prev.status !== 'failed') {
           if (prev.drive_md5 === file.md5Checksum) {
-            note(month, `取込済み: ${file.name}`);
+            quiet(month, `${prev.status === 'skipped' ? '対象外' : '取込済み'}: ${file.name}`);
+            continue;
+          }
+          if (prev.status === 'skipped') {
+            quiet(month, `対象外（Drive 側で更新あり）: ${file.name}`);
             continue;
           }
           // Drive 側で差し替えられた: 自動ではやり直さず「更新あり」にして知らせる
@@ -138,7 +159,7 @@ async function main() {
             report.updated++;
             if (!DRY_RUN) await supabase.from('drive_imports').update({ status: 'updated', drive_name: file.name, drive_modified_at: file.modifiedTime }).eq('id', prev.id);
           } else {
-            note(month, `更新あり（通知済み）: ${file.name}`);
+            quiet(month, `更新あり（通知済み）: ${file.name}`);
           }
           continue;
         }
@@ -164,10 +185,28 @@ async function main() {
           continue;
         }
 
-        // 号（無ければ下書きで作る）
+        // 号（無ければ下書きで作る）。同じ題名が下書きと公開版の両方にあれば下書き（編集中のコピー）を選ぶ
         newsletters ??= await shared.getNewsletters();
         const title = monthTitle(month);
-        let newsletter = newsletters.find((n) => n.status !== 'archived' && n.title.replace(/\s/g, '') === title);
+        const sameTitle = newsletters.filter((n) => n.status !== 'archived' && n.title.replace(/\s/g, '') === title);
+        let newsletter = sameTitle.find((n) => n.status === 'draft') ?? sameTitle[0];
+
+        // 止め具1: 公開済みの号には自動で足さない（人が入れた記事と二重になるため）
+        if (newsletter && newsletter.status !== 'draft') {
+          note(month, `対象外: ${file.name} → 号「${newsletter.title}」は公開済みなので自動では足しません（直すなら管理画面の「その場で直す」から手で）`);
+          report.skipped++;
+          await recordSkip(supabase, file, month, media, `号「${newsletter.title}」は公開済み`);
+          continue;
+        }
+        // 止め具2: 下書きの号に、同じ媒体の PDF が手で登録済みなら足さない
+        const manual = newsletter ? pdfEntriesOf(newsletter).find((e) => mediaOf(e.label) === media || mediaOf(decodeURIComponent(e.url ?? '')) === media) : null;
+        if (manual) {
+          note(month, `対象外: ${file.name} → 号「${newsletter.title}」には「${manual.label || media}」が手で登録済みです（二重になるので足しません）`);
+          report.skipped++;
+          await recordSkip(supabase, file, month, media, `手で登録済み: ${manual.label || media}`);
+          continue;
+        }
+
         if (!newsletter) {
           const saved = await shared.saveNewsletter(
             {
@@ -245,7 +284,10 @@ async function main() {
   // ---- まとめ ----
   const lines = [];
   const anyChange = report.imported + report.updated + report.skipped + report.failed > 0;
-  lines.push(report.failed > 0 ? `❌ 失敗 ${report.failed} 件があります` : anyChange ? `✅ 取り込み ${report.imported} 件` : '新着はありませんでした');
+  lines.push(
+    report.failed > 0 ? `❌ 失敗 ${report.failed} 件があります` : report.imported > 0 ? `✅ 取り込み ${report.imported} 件` : anyChange ? '取り込みはありません（お知らせがあります）' : '新着はありませんでした'
+  );
+  if (report.quiet > 0) lines.push(`（処理済みで飛ばしたもの ${report.quiet} 件）`);
   for (const [month, ls] of Object.entries(report.months)) {
     lines.push('', `## ${monthTitle(month)}（フォルダ ${month}）`, ...ls.map((l) => `- ${l}`));
   }
