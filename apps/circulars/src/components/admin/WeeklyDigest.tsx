@@ -108,7 +108,33 @@ const SCHEDULE_STATUS_LABEL: Record<WeeklyDigestSchedule['status'], { label: str
 };
 
 export const WeeklyDigest: React.FC = () => {
-  const [baseDate, setBaseDate] = useState<string>(ymd(new Date()));
+  /**
+   * 配信の曜日（0=日〜6=土）。選ぶと配信日がその曜日の直近（今日を含む）になり、配信予定の表もその曜日で並ぶ。
+   * ブラウザごとに覚える（localStorage。未設定なら今日の曜日のまま＝従来どおり）
+   */
+  const [weekday, setWeekday] = useState<number | null>(() => {
+    try {
+      const v = localStorage.getItem('weekly-digest-weekday');
+      return v === null ? null : Number(v);
+    } catch {
+      return null;
+    }
+  });
+  /** 今日以降でいちばん近い、その曜日の日付（今日がその曜日なら今日） */
+  const upcoming = (wd: number) => {
+    const today = new Date();
+    return addDays(ymd(today), (wd - today.getDay() + 7) % 7);
+  };
+  const [baseDate, setBaseDate] = useState<string>(() => (weekday === null ? ymd(new Date()) : upcoming(weekday)));
+  const changeWeekday = (wd: number) => {
+    setWeekday(wd);
+    try {
+      localStorage.setItem('weekly-digest-weekday', String(wd));
+    } catch {
+      /* 保存できなくても画面は動く */
+    }
+    setBaseDate(upcoming(wd));
+  };
   const [cards, setCards] = useState<PublicEventCard[]>([]);
   const [reports, setReports] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
@@ -850,13 +876,27 @@ export const WeeklyDigest: React.FC = () => {
               公開中の予定とレポートから、公式LINEで流すカードを自動で組み立てます。下の「LINE に送る」からテスト送信で確かめてから配信してください。
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs text-slate-500">配信の曜日</label>
+            <select
+              value={weekday ?? toDate(baseDate).getDay()}
+              onChange={(e) => changeWeekday(Number(e.target.value))}
+              className="text-sm border border-slate-300 rounded-lg px-2 py-1.5 bg-white"
+              title="毎週この曜日に配信する。選ぶと配信日が直近のその曜日になり、下の配信予定の表もこの曜日で並びます（次回も覚えます）"
+            >
+              {WEEK.map((w, i) => (
+                <option key={i} value={i}>
+                  {w}曜
+                </option>
+              ))}
+            </select>
             <label className="text-xs text-slate-500">配信日</label>
             <input
               type="date"
               value={baseDate}
               onChange={(e) => setBaseDate(e.target.value)}
               className="text-sm border border-slate-300 rounded-lg px-2 py-1.5"
+              title="曜日と違う日に送るときはここで日付を選ぶ"
             />
             <button
               onClick={load}
