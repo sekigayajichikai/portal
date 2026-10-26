@@ -207,6 +207,20 @@ export const WeeklyDigest: React.FC = () => {
   );
   const DEFAULT_DRAFT_KEY = JSON.stringify({ topic_ids: null, excluded_ids: [], link_kinds: {}, greeting: null });
 
+  /**
+   * 下書きの保存状態の表示（上部の「下書き」の行と、吹き出し①の入力欄の2か所に出す）。
+   * 吹き出し①は自動保存で保存ボタンが無いため、入力欄のそばにも「保存済み」が見えないと保存されたか分からない
+   */
+  const draftStatus = (
+    <>
+      {draftState === 'loading' && (<><Loader2 size={11} className="animate-spin" /> 下書きを確認中…</>)}
+      {draftState === 'saving' && (<><Loader2 size={11} className="animate-spin" /> 下書きに保存中…</>)}
+      {draftState === 'saved' && (<><Check size={11} className="text-emerald-600" /> 下書きに保存済み{draftSavedAt ? `（${new Date(draftSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）` : ''}</>)}
+      {draftState === 'idle' && '新しい下書き。変更すると自動で保存されます'}
+      {draftState === 'error' && <span className="text-red-600">保存できませんでした（設定が足りないかもしれません。管理者に連絡してください）</span>}
+    </>
+  );
+
   /** 下書きの表示名（名前が無ければ「配信日の下書き」） */
   const draftLabel = (d: Pick<WeeklyDigestDraft, 'base_date' | 'name'>) => d.name?.trim() || `${md(d.base_date)} の下書き`;
 
@@ -917,13 +931,7 @@ export const WeeklyDigest: React.FC = () => {
               ))}
             </select>
           </label>
-          <span className="flex items-center gap-1 text-slate-400">
-            {draftState === 'loading' && (<><Loader2 size={11} className="animate-spin" /> 下書きを確認中…</>)}
-            {draftState === 'saving' && (<><Loader2 size={11} className="animate-spin" /> 保存中…</>)}
-            {draftState === 'saved' && (<><Check size={11} className="text-emerald-600" /> 保存済み{draftSavedAt ? `（${new Date(draftSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）` : ''}</>)}
-            {draftState === 'idle' && '新しい下書き。変更すると自動で保存されます'}
-            {draftState === 'error' && <span className="text-red-600">保存できませんでした（設定が足りないかもしれません。管理者に連絡してください）</span>}
-          </span>
+          <span className="flex items-center gap-1 text-slate-400">{draftStatus}</span>
           {draftId && (
             <>
               <button onClick={renameDraft} className="flex items-center gap-1 hover:text-slate-800" title="この下書きの名前を変える">
@@ -1263,18 +1271,22 @@ export const WeeklyDigest: React.FC = () => {
           <div className="grid gap-4 lg:grid-cols-2 mt-4">
             <div className="space-y-3">
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-500">テキスト（吹き出し①・編集できます）</label>
-                  <button
-                    onClick={() => {
-                      setGreetingEdited(false);
-                      setGreeting(buildGreetingText(digest));
-                    }}
-                    className={`text-[11px] hover:text-slate-800 ${greetingEdited ? 'text-amber-700 font-bold' : 'text-slate-500'}`}
-                    title="自動生成の文に戻す（手で直した内容は消えます）"
-                  >
-                    {greetingEdited ? '手で直した文（作り直す）' : '作り直す'}
-                  </button>
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1">
+                  <label className="text-xs font-bold text-slate-500">テキスト（吹き出し①・直すと下書きに自動保存）</label>
+                  <span className="flex items-center gap-2 text-[11px]">
+                    {/* 保存ボタンが無いので、ここにも保存状態を出す（上部の「下書き」の行と同じ） */}
+                    <span className="flex items-center gap-1 text-slate-400">{draftStatus}</span>
+                    <button
+                      onClick={() => {
+                        setGreetingEdited(false);
+                        setGreeting(buildGreetingText(digest));
+                      }}
+                      className={`hover:text-slate-800 ${greetingEdited ? 'text-amber-700 font-bold' : 'text-slate-500'}`}
+                      title="自動生成の文に戻す（手で直した内容は消えます）"
+                    >
+                      {greetingEdited ? '手で直した文（作り直す）' : '作り直す'}
+                    </button>
+                  </span>
                 </div>
                 <textarea
                   value={greeting}
