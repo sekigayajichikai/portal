@@ -2,6 +2,7 @@
  * PDF の切り抜き（ArticleCropPage / ImageCropPage）で、切り抜き枠の形（縦横比）を選ぶボタン列（2026-10-27）。
  * 「自由」なら今まで通り好きな形。形を選ぶと枠がその比率に固定され、ページの中央にその形の枠を出し直す。
  */
+/* global HTMLImageElement */
 import React from 'react';
 import { centerCrop, makeAspectCrop, type Crop } from 'react-image-crop';
 
