@@ -22,6 +22,7 @@ import { uploadPDF, uploadImage } from '@cc-saas/shared/services/data/storageSer
 import { MOCK_CIRCULARS, MOCK_CATEGORIES, MOCK_ARTICLES } from '@cc-saas/shared/constants';
 import { Sparkles, Loader2, Calendar, FileText, Upload, Trash2, Save, Check, ChevronRight, Edit3, ArrowLeft, X } from 'lucide-react';
 import { showToast, showError, appConfirm, ProcessingIndicator } from '@/components/ui/feedback';
+import { isPdfFile, isImageFile, imagesToPdfFile } from '@/lib/imageToPdf';
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import { MonthlyGuide } from './MonthlyGuide';
 import { ArticleList } from './ArticleList';
@@ -241,14 +242,32 @@ export const CircularBoard: React.FC = () => {
   };
 
   /**
-   * PDFファイル選択時の処理
+   * ファイル選択時の処理（自治会のお知らせ）。
+   * PDF ならそのまま。写真（JPG/PNG/WebP）なら、その場で PDF に変換して PDF として扱う（複数選べば1枚＝1ページ）。
+   * あとの処理はすべて PDF 前提なので、入口でそろえる（lib/imageToPdf.ts）
    */
-  const handlePDFSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === 'application/pdf') {
-      setSelectedPDF(file);
-    } else {
-      showError('PDFファイルを選択してください');
+  const handlePDFSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = ''; // 同じファイルをもう一度選べるように
+    if (files.length === 0) return;
+    const pdfs = files.filter(isPdfFile);
+    const images = files.filter(isImageFile);
+    if (pdfs.length > 0) {
+      setSelectedPDF(pdfs[0]);
+      if (files.length > 1) showToast('PDF は1つずつ登録します。最初の PDF を使います', 'error');
+      return;
+    }
+    if (images.length === 0) {
+      showError('PDF か写真（JPG・PNG）を選んでください');
+      return;
+    }
+    try {
+      const pdf = await imagesToPdfFile(images);
+      setSelectedPDF(pdf);
+      showToast(images.length > 1 ? `写真 ${images.length} 枚を ${images.length} ページの PDF にしました` : '写真を PDF にしました');
+    } catch (e) {
+      console.error('写真の PDF 変換エラー:', e);
+      showError('写真を PDF にできませんでした。別の写真で試すか、スマホの「書類をスキャン」で PDF にしてください。');
     }
   };
 
@@ -577,14 +596,27 @@ export const CircularBoard: React.FC = () => {
    * 地域のお知らせバルクインポート
    */
   const handleBulkImport = async (files: FileList) => {
-    // FileListをArrayにコピー（inputリセットで消えるため）
-    const pdfFiles = Array.from(files).filter(
-      f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
-    );
+    // FileListをArrayにコピー（inputリセットで消えるため）。写真は1枚ずつ別の PDF にする（チラシは1枚＝1件のため）
+    const picked = Array.from(files);
+    const pdfFiles: File[] = [];
+    let convertFailed = 0;
+    for (const f of picked) {
+      if (isPdfFile(f)) {
+        pdfFiles.push(f);
+      } else if (isImageFile(f)) {
+        try {
+          pdfFiles.push(await imagesToPdfFile([f]));
+        } catch (e) {
+          console.error('写真の PDF 変換エラー:', f.name, e);
+          convertFailed++;
+        }
+      }
+    }
+    if (convertFailed > 0) showError(`${convertFailed} 枚の写真を PDF にできませんでした（その分は登録しません）`);
 
     console.log('📦 バルクインポート開始:', pdfFiles.length, '件', 'newsletter:', currentNewsletter?.id);
     if (!currentNewsletter || pdfFiles.length === 0) {
-      showError('PDFファイルが選択されていません');
+      showError('PDF か写真（JPG・PNG）が選択されていません');
       return;
     }
 
@@ -1219,7 +1251,7 @@ export const CircularBoard: React.FC = () => {
                     <div className="border-2 border-dashed border-green-400 rounded-lg p-6 text-center bg-green-50">
                       <input
                         type="file"
-                        accept="application/pdf"
+                        accept="application/pdf,image/jpeg,image/png,image/webp"
                         multiple
                         onChange={(e) => {
                           if (e.target.files && e.target.files.length > 0) {
@@ -1246,9 +1278,9 @@ export const CircularBoard: React.FC = () => {
                           <>
                             <Upload size={32} className="text-green-500" />
                             <span className="text-sm font-medium text-green-700">
-                              クリックしてPDFを選択
+                              クリックしてPDFか写真を選択
                             </span>
-                            <span className="text-xs text-green-500">1件でも複数でもまとめて登録できます</span>
+                            <span className="text-xs text-green-500">1件でも複数でもまとめて登録できます。写真（JPG・PNG）は1枚ずつ PDF にして登録します</span>
                           </>
                         )}
                       </label>
@@ -1261,7 +1293,8 @@ export const CircularBoard: React.FC = () => {
                   <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors">
                     <input
                       type="file"
-                      accept="application/pdf"
+                      accept="application/pdf,image/jpeg,image/png,image/webp"
+                      multiple
                       onChange={handlePDFSelect}
                       className="hidden"
                       id="pdf-add"
@@ -1284,7 +1317,7 @@ export const CircularBoard: React.FC = () => {
                         <>
                           <Upload size={32} className="text-slate-400" />
                           <span className="text-sm font-medium text-slate-600">
-                            クリックしてPDFを選択
+                            クリックしてPDFか写真を選択
                           </span>
                           <span className="text-xs text-slate-400">最大10MBまで</span>
                         </>
