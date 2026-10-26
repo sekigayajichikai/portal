@@ -52,17 +52,17 @@ hanainc.net の組織には「サービスアカウントの鍵を作らせな�
 ## 5. GitHub に Secrets を登録する
 
 1. https://github.com/sekigayajichikai/portal/settings/secrets/actions を開く（リポジトリ上部の「Settings」→ 左の「Secrets and variables」→「Actions」）
-2. 「New repository secret」で次を1つずつ登録する
+2. 「New repository secret」で次を1つずつ登録する（Name は大文字のまま正確に）
 
 | Name | Secret（値） |
 |---|---|
 | `GDRIVE_SA_KEY` | 3 で下ろした JSON の中身をそのまま全部貼る |
-| `GDRIVE_ROOT_FOLDER_ID` | 4 のフォルダID |
 | `ANTHROPIC_API_KEY` | Claude のキー（Supabase の `ai-proxy` に入れているものと同じでよい） |
-| `SUPABASE_URL` | `https://iplcopuwwzbtwoakqifh.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase ダッシュボード → Project Settings → API → `service_role`（**anon ではない方**。公開しない） |
-| `NOTIFY_GMAIL_USER` | `sekigaya.dx@gmail.com` |
 | `NOTIFY_GMAIL_APP_PASSWORD` | 下の 6 で作るアプリパスワード |
+
+Supabase の URL、通知先メール、共有フォルダの ID（`1LMPmgHN-s1EUoEpmDD8BTQ5QHu1wk0rA`）は秘密ではないのでプログラム側に書いてある。
+フォルダを変えたときだけ `GDRIVE_ROOT_FOLDER_ID` を Secret に足す。
 
 ## 6. 通知メール用の Gmail アプリパスワード
 
@@ -70,8 +70,12 @@ hanainc.net の組織には「サービスアカウントの鍵を作らせな�
 2. https://myaccount.google.com/apppasswords → アプリ名 `portal-drive-import` → 「作成」
 3. 出てきた16文字を `NOTIFY_GMAIL_APP_PASSWORD` に登録する（この画面を閉じると二度と見られない。無くしたら作り直す）
 
-## 7. 動作確認（実装後）
+## 7. 本番DBに取込記録のテーブルを作る
 
-1. GitHub の「Actions」タブ → 左の「Drive 取り込み」→ 右の「Run workflow」で手動実行
-2. 数分後に sekigaya.dx@gmail.com にメールが届く。管理画面の回覧板タブに、その月の号（下書き）と記事ができている
+Supabase の SQL Editor で `sql/migrations/2026-10-26-drive-imports.sql` の全文を実行する（テーブル追加のみ）。
+
+## 8. 動作確認
+
+1. GitHub の「Actions」タブ → 左の「Drive 取り込み」→ 右の「Run workflow」。最初は「試しに見るだけ」にチェックを入れて実行し、Summary に「取り込み開始: 会報ふれあい…」のように出ることを確かめる
+2. もう一度「Run workflow」をチェック無しで実行。数分後に sekigaya.dx@gmail.com にメールが届き、管理画面の回覧板タブにその月の号（下書き）と記事ができている
 3. うまくいかないときは Actions の実行ログを見るか、エラーメールの文面を Claude に貼る

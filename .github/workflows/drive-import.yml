@@ -1,0 +1,69 @@
+# Google Drive の月フォルダから「関ヶ谷だより」「会報ふれあい」を自動で取り込み、記事にする
+# （docs/Drive取り込み-計画.md 第1段階。プログラムは scripts/drive-import/）
+#
+# - 毎朝 7:00（日本時間）に動く。手動実行は GitHub の「Actions」タブ → 「Drive 取り込み」 → 「Run workflow」
+# - 必要な Secrets（リポジトリの Settings → Secrets and variables → Actions）:
+#     GDRIVE_SA_KEY, ANTHROPIC_API_KEY, SUPABASE_SERVICE_ROLE_KEY, NOTIFY_GMAIL_APP_PASSWORD
+#   任意: GDRIVE_ROOT_FOLDER_ID（既定はプログラム内）, DEFAULT_ORGANIZATION_ID
+# - 結果は sekigaya.dx@gmail.com にメール（変化があったとき。25日〜月末は「新着なし」でも送る）
+name: Drive 取り込み
+
+on:
+  schedule:
+    - cron: '0 22 * * *' # UTC 22:00 = JST 07:00
+  workflow_dispatch:
+    inputs:
+      months:
+        description: '対象の月フォルダ（例 202611。カンマ区切り。空なら今月と来月）'
+        required: false
+        default: ''
+      dry_run:
+        description: '試しに見るだけ（何も変更しない）'
+        type: boolean
+        default: false
+
+concurrency:
+  group: drive-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: 取り込み
+        id: run
+        env:
+          GDRIVE_SA_KEY: ${{ secrets.GDRIVE_SA_KEY }}
+          GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
+          SUPABASE_URL: https://iplcopuwwzbtwoakqifh.supabase.co
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEFAULT_ORGANIZATION_ID: ${{ secrets.DEFAULT_ORGANIZATION_ID }}
+          MONTHS: ${{ github.event.inputs.months }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '' }}
+          SUMMARY_FILE: ${{ github.workspace }}/drive-import-summary.md
+        run: node scripts/drive-import/index.mjs
+      - name: 結果を Actions の画面にも出す
+        if: always()
+        run: |
+          if [ -f drive-import-summary.md ]; then cat drive-import-summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: メールで知らせる
+        if: always() && steps.run.outputs.notify == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: sekigaya.dx@gmail.com
+          password: ${{ secrets.NOTIFY_GMAIL_APP_PASSWORD }}
+          subject: ${{ steps.run.outputs.subject || '回覧板ポータル Drive 取り込み' }}
+          to: sekigaya.dx@gmail.com
+          from: 回覧板ポータル <sekigaya.dx@gmail.com>
+          body: file://drive-import-summary.md

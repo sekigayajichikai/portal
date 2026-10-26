@@ -10,7 +10,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { getNewsletters, getArticlesByNewsletterId, getEventCards } from '@cc-saas/shared';
+import { getNewsletters, getArticlesByNewsletterId, getEventCards, getDriveImportsByNewsletterId, type DriveImport } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
 import { Check, PartyPopper, ArrowRight, Circle, AlertTriangle } from 'lucide-react';
 
@@ -147,9 +147,14 @@ function judge(newsletters: NewsletterWithCount[], focusId?: string | null): Gui
 function buildChecklist(
   draft: NewsletterWithCount,
   articles: Article[],
-  eventCardCount: number
+  eventCardCount: number,
+  driveImports: DriveImport[] = []
 ): ChecklistItem[] {
   const official = articles.filter((a) => a.article_type === 'official');
+  // Drive から自動で取り込んだもの（scripts/drive-import）。あれば先頭で「確認」を促す
+  const autoImported = driveImports.filter((d) => d.status === 'imported' || d.status === 'updated');
+  const autoArticles = autoImported.reduce((n, d) => n + (d.articles_created || 0), 0);
+  const autoUpdated = autoImported.filter((d) => d.status === 'updated').length;
   const localInfo = articles.filter((a) => a.article_type === 'local-info');
   const officialWithPhoto = official.filter((a) => a.thumbnail_url);
 
@@ -166,6 +171,15 @@ function buildChecklist(
   const localInfoCount = Math.max(localInfoPdfCount, localInfo.length);
 
   return [
+    ...(autoImported.length > 0
+      ? [
+          {
+            state: 'warn' as const,
+            label: `Drive から自動で取り込んだ記事を確認（${autoImported.map((d) => d.media ?? d.pdf_label ?? d.drive_name).join('・')}、記事 ${autoArticles}件）${autoUpdated > 0 ? ` ⚠ Drive 側で差し替えあり ${autoUpdated}件` : ''}`,
+            hint: '毎朝の自動取り込みで入った記事です。題名・本文を読んで直してください（AIの読み取りなので誤りがあります）。「差し替えあり」は取り込んだ後に Drive の PDF が新しくなったもので、記事は前の版のままです',
+          },
+        ]
+      : []),
     {
       state: official.length > 0 ? 'done' : 'todo',
       label: `自治会のお知らせ（${official.length}件）`,
@@ -246,11 +260,12 @@ export const MonthlyGuide: React.FC<MonthlyGuideProps> = ({ onCreateNew, onOpenN
         if (detailed && (g.step === 1 || g.step === 2) && g.targetId) {
           const draft = data.find((n) => n.id === g.targetId);
           if (draft) {
-            const [articles, cards] = await Promise.all([
+            const [articles, cards, driveImports] = await Promise.all([
               getArticlesByNewsletterId(draft.id),
               getEventCards(draft.id).catch(() => []),
+              getDriveImportsByNewsletterId(draft.id).catch(() => []),
             ]);
-            setChecklist(buildChecklist(draft, articles, cards.length));
+            setChecklist(buildChecklist(draft, articles, cards.length, driveImports));
             return;
           }
         }

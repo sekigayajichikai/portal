@@ -46,3 +46,5 @@ scripts/schedule-test/.prompt-bundle.mjs
 
 # 名簿スプレッドシートのGAS（個人情報・トークンを含みうるのでコミットしない）
 scripts/gas/
+scripts/drive-import/.shared-bundle.mjs
+.env.drive-import.local
