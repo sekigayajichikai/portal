@@ -177,15 +177,8 @@ async function main() {
           continue;
         }
 
-        // 3) 取り込む
-        note(month, `取り込み開始: ${file.name}（${Math.round((Number(file.size) || 0) / 1024)} KB）`);
-        if (DRY_RUN) {
-          note(month, `  → DRY RUN: 「${monthTitle(month)}」に PDF を登録し、記事化します`);
-          report.imported++;
-          continue;
-        }
-
-        // 号（無ければ下書きで作る）。同じ題名が下書きと公開版の両方にあれば下書き（編集中のコピー）を選ぶ
+        // 3) 号を決めて止め具を通す（DRY RUN でもここまでは同じ判定をする）
+        //    同じ題名が下書きと公開版の両方にあれば下書き（編集中のコピー）を選ぶ
         newsletters ??= await shared.getNewsletters();
         const title = monthTitle(month);
         const sameTitle = newsletters.filter((n) => n.status !== 'archived' && n.title.replace(/\s/g, '') === title);
@@ -207,7 +200,14 @@ async function main() {
           continue;
         }
 
+        // 4) 取り込む
+        note(month, `取り込み開始: ${file.name}（${Math.round((Number(file.size) || 0) / 1024)} KB）`);
         if (!newsletter) {
+          if (DRY_RUN) {
+            note(month, `  → DRY RUN: 号「${title}」を下書きで作り、PDF を登録して記事化します`);
+            report.imported++;
+            continue;
+          }
           const saved = await shared.saveNewsletter(
             {
               organization_id: process.env.DEFAULT_ORGANIZATION_ID || null,
@@ -225,7 +225,12 @@ async function main() {
           newsletters.push(newsletter);
           note(month, `  号「${title}」を下書きで作りました`);
         } else {
-          note(month, `  号「${newsletter.title}」（${newsletter.status === 'draft' ? '下書き' : newsletter.status}）に足します`);
+          if (DRY_RUN) {
+            note(month, `  → DRY RUN: 下書きの号「${newsletter.title}」に PDF を登録して記事化します`);
+            report.imported++;
+            continue;
+          }
+          note(month, `  下書きの号「${newsletter.title}」に足します`);
         }
 
         // PDF をダウンロードして Storage に保存
