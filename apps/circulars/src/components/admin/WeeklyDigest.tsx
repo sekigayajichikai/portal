@@ -756,10 +756,15 @@ export const WeeklyDigest: React.FC = () => {
     return true;
   };
 
-  /** 予約後に画面の内容が変わったかを見分ける値（チラシ画像そのものは比べず、切り出し位置で代用） */
+  /** 予約後に画面の内容が変わったかを見分ける値（チラシ画像そのものは比べず、画像の元と切り出し位置で代用） */
   const contentKey = useMemo(
-    () => JSON.stringify({ m: buildWeeklyMessages(digest, greeting, { flyerImageUrls: {}, flyerAspects, linkKinds }), crops: digest.topics.map((t) => crops[t.id] ?? null) }),
-    [digest, greeting, flyerAspects, linkKinds, crops]
+    () =>
+      JSON.stringify({
+        m: buildWeeklyMessages(digest, greeting, { flyerImageUrls: {}, flyerAspects, linkKinds }),
+        crops: digest.topics.map((t) => crops[t.id] ?? null),
+        images: digest.topics.map((t) => topicImageKind(t, imageKinds[t.id])),
+      }),
+    [digest, greeting, flyerAspects, linkKinds, crops, imageKinds]
   );
 
   /** いまの内容で予約する（形式チェックを通してから保存。画像も予約した時点のもので固定） */
