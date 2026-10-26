@@ -18,9 +18,42 @@ import { addArticlesToNewsletter, updateArticle } from '@cc-saas/shared';
 import { extractArticleFromImage } from '@cc-saas/shared/services/ai/claudeService';
 import { uploadImage } from '@cc-saas/shared/services/data/storageService';
 import { MOCK_CATEGORIES } from '@cc-saas/shared/constants';
-import { showError, ProcessingIndicator } from '@/components/ui/feedback';
+import { showError, showToast, ProcessingIndicator } from '@/components/ui/feedback';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+
+/**
+ * 定番記事のプリセット（2026-10-26）。
+ * 関ヶ谷だよりの4コマ漫画のように、毎月同じ題名で「本文なし・画像だけ」の記事を1回で作るためのもの。
+ * 画像モードで範囲を追加したあと、このボタンを押すと、題名固定の記事を作って（同じ題名の記事がその号にあればそれに）画像を付ける。
+ * 題名や種類を変えるときはここを直す。
+ */
+const COMIC_PRESET = {
+  label: '4コマ漫画',
+  title: '釜利谷駐在所４コマ漫画　画：しばやまよしの',
+  category: 'info',
+} as const;
+
+/** 本文なしの空の記事（画像モードの「新しい記事」と定番記事で使う） */
+const blankArticle = (title: string, displayOrder: number, category = 'info') => ({
+  organization_id: import.meta.env.VITE_DEFAULT_ORGANIZATION_ID || null,
+  title,
+  category,
+  article_type: 'official' as const,
+  priority: 'medium' as const,
+  control_date: null,
+  headline: title,
+  brief: '',
+  summary: '',
+  content: '',
+  tags: [],
+  visibility: 'public' as const,
+  source: '',
+  attachments: [],
+  display_order: displayOrder,
+  is_pinned: false,
+  thumbnail_url: null,
+});
 
 type CropMode = 'article' | 'image' | 'thumbnail';
 
@@ -224,6 +257,28 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
     }
   };
 
+  /**
+   * 切り抜いた画像をアップロードして記事に付ける（扉写真が無ければ最初の画像を扉写真に）。
+   * 画像モードの保存と、定番記事（4コマ漫画）の保存の両方で使う
+   */
+  const attachCropsToArticle = async (article: Article) => {
+    const currentAttachments = [...(article.attachments || [])];
+    for (const item of cropItems) {
+      const file = new File([item.blob], `cropped-${Date.now()}.png`, { type: 'image/png' });
+      const uploadResult = await uploadImage(file);
+      currentAttachments.push({ type: 'image' as const, url: uploadResult.url, label: '' });
+    }
+    const updates: any = { attachments: currentAttachments };
+    if (!article.thumbnail_url && currentAttachments.find((a: any) => a.type === 'image')) {
+      updates.thumbnail_url = currentAttachments.find((a: any) => a.type === 'image').url;
+    }
+    await updateArticle(article.id, updates);
+    setArticles(prev => prev.map(a => (a.id === article.id ? { ...a, ...updates } : a)));
+    setSavedCount(prev => prev + 1);
+    setCropItems(prev => { prev.forEach(i => URL.revokeObjectURL(i.previewUrl)); return []; });
+    onSaved();
+  };
+
   /** 画像モード: 保存 */
   const handleSaveImage = async () => {
     if (cropItems.length === 0 || !selectedArticleId) return;
@@ -231,28 +286,39 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
     try {
       const article = articles.find(a => a.id === selectedArticleId);
       if (!article) return;
-      let currentAttachments = [...(article.attachments || [])];
-
-      for (const item of cropItems) {
-        const file = new File([item.blob], `cropped-${Date.now()}.png`, { type: 'image/png' });
-        const uploadResult = await uploadImage(file);
-        currentAttachments.push({ type: 'image' as const, url: uploadResult.url, label: '' });
-      }
-
-      const updates: any = { attachments: currentAttachments };
-      if (!article.thumbnail_url && currentAttachments.find((a: any) => a.type === 'image')) {
-        updates.thumbnail_url = currentAttachments.find((a: any) => a.type === 'image').url;
-      }
-      await updateArticle(selectedArticleId, updates);
-
-      setArticles(prev => prev.map(a => a.id === selectedArticleId ? { ...a, ...updates } : a));
-      setSavedCount(prev => prev + 1);
-      setCropItems(prev => { prev.forEach(i => URL.revokeObjectURL(i.previewUrl)); return []; });
+      await attachCropsToArticle(article);
       setSelectedArticleId(null);
-      onSaved();
     } catch (error: any) {
       console.error('画像保存エラー:', error);
       showError('画像を保存できませんでした。時間をおいてもう一度お試しください。');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  /**
+   * 画像モード: 定番記事（4コマ漫画）として1回で保存。
+   * この号に同じ題名の記事があればそれに画像を足し、無ければ題名固定・本文なしの記事を作って付ける
+   */
+  const handleSaveComic = async () => {
+    if (cropItems.length === 0) return;
+    setIsSaving(true);
+    try {
+      let article = articles.find(a => a.title.trim() === COMIC_PRESET.title);
+      let created = false;
+      if (!article) {
+        const result = await addArticlesToNewsletter(newsletterId, [blankArticle(COMIC_PRESET.title, articles.length, COMIC_PRESET.category)]);
+        if (result.length === 0) throw new Error('記事を作成できませんでした');
+        article = result[0];
+        setArticles(prev => [...prev, result[0]]);
+        created = true;
+      }
+      await attachCropsToArticle(article);
+      setSelectedArticleId(null);
+      showToast(created ? `「${COMIC_PRESET.title}」の記事を作って画像を付けました` : `この号の「${COMIC_PRESET.title}」に画像を足しました`);
+    } catch (error: any) {
+      console.error('定番記事の保存エラー:', error);
+      showError('記事を保存できませんでした。時間をおいてもう一度お試しください。');
     } finally {
       setIsSaving(false);
     }
@@ -485,7 +551,19 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <h3 className="text-sm font-bold text-slate-700">紐づけ先の記事を選択</h3>
+                    {/* 定番記事（4コマ漫画）: 題名固定・本文なしの記事を1回で作って画像を付ける */}
+                    <div className="p-3 rounded-lg border-2 border-amber-300 bg-amber-50">
+                      <button onClick={handleSaveComic} disabled={isSaving}
+                        className="w-full px-4 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                        {isSaving ? <><Loader2 size={16} className="animate-spin" /> 保存中…</> : <><ImageIcon size={16} /> {COMIC_PRESET.label}の記事として保存（{cropItems.length}枚）</>}
+                      </button>
+                      <p className="text-[11px] text-amber-800 mt-1.5">
+                        題名「{COMIC_PRESET.title}」で本文なしの記事を作り、この画像を付けます。
+                        {articles.some(a => a.title.trim() === COMIC_PRESET.title) ? 'この号にはもうあるので、その記事に画像を足します。' : ''}
+                      </p>
+                    </div>
+
+                    <h3 className="text-sm font-bold text-slate-700">または、紐づけ先の記事を選択</h3>
 
                     {/* 新規記事作成 */}
                     {!showNewArticleForm ? (
