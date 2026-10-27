@@ -1111,8 +1111,9 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
         {/* 記事一覧の見出し（「畳む」で一覧を隠し、下の「登録済みPDF」にすぐ行けるようにする） */}
         {(() => {
           const count = viewingPublished ? publishedArticles.length : articles.length;
+          // 「今後の予定」「登録済みPDF」と同じ白いカードに入れる（見出しだけ地の上にあると、そこだけ凹んで見えた。2026-10-27）
           return (
-            <div className="flex items-center justify-between gap-2">
+            <div className="bg-white p-6 rounded-xl shadow border border-slate-200 flex items-center justify-between gap-2">
               {collapsibleHeading('articles', count > 0, '記事一覧', <><FileText size={20} />記事一覧（{count}件）</>)}
             </div>
           );
