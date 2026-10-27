@@ -25,14 +25,13 @@ import {
   type AdminEventCard,
   type EventCard,
   type Venue,
-  type Organizer,
-} from '@cc-saas/shared';
+  type Organizer, locateEventOnPageWithGemini } from '@cc-saas/shared';
 import { Loader2, X, Trash2, Sparkles, Calendar } from 'lucide-react';
 import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 import { OrganizerSelect, CATEGORY_KEYS, CATEGORY_META, KIND_KEYS, KIND_META } from './EventCandidateDialog';
 import { ArticleLinkPicker } from './ArticleLinkPicker';
 import { CropEditor } from './CropEditor';
-import { type HeroCrop, DEFAULT_CROP, normalizeCrop, resolveCrop, loadImageCanvas, renderPdfFirstPage } from './heroCrop';
+import { type HeroCrop, DEFAULT_CROP, normalizeCrop, resolveCrop, loadImageCanvas, renderPdfFirstPage, cropFromBox, canvasToJpegBase64 } from './heroCrop';
 import { inspectPdf, type PdfInfo } from './pdfInspect';
 import { PdfPagePeek } from './PdfPagePeek';
 import { topicImageSource, topicImageKind, availableImageKinds, IMAGE_KINDS, IMAGE_KIND_LABEL, type ImageKind } from './weeklyDigestCore';
@@ -132,6 +131,33 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
   /** 画像の切り出し: 元画像（押したときだけ読み込む。PDFの描画は重いので開いた瞬間には読まない） */
   const [cropSource, setCropSource] = useState<HTMLCanvasElement | null>(null);
   const [cropState, setCropState] = useState<'idle' | 'loading' | 'error'>('idle');
+  /** AI で紙面の中の記事の場所を探している最中か */
+  const [locating, setLocating] = useState(false);
+  const locateOnPage = async () => {
+    if (!cropSource || !card) return;
+    setLocating(true);
+    try {
+      const box = await locateEventOnPageWithGemini({
+        imageBase64: canvasToJpegBase64(cropSource),
+        title: form?.title ?? card.title,
+        eventDate: form?.event_date || card.event_date,
+        location: form?.event_location || card.event_location,
+        organizer: form?.organizer ?? card.organizer,
+      });
+      if (!box) {
+        showError('この紙面の中に、この予定の記事を見つけられませんでした。手で位置を合わせてください。');
+        return;
+      }
+      setCrop(cropFromBox(cropSource.width, cropSource.height, box));
+      showToast('記事の場所に合わせました。確かめて、必要なら直してから保存してください');
+    } catch (e) {
+      console.error('記事の場所の探索エラー:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(/429|RESOURCE_EXHAUSTED|quota/i.test(msg) ? 'AIの無料枠の回数制限にかかりました。1分ほど待ってからもう一度押してください。' : `探せませんでした。${msg}`);
+    } finally {
+      setLocating(false);
+    }
+  };
   const [crop, setCrop] = useState<HeroCrop | null>(null);
   /** 由来PDFの中身（スキャン画像なら「元のページと見比べる」を出す） */
   const [pdfInfo, setPdfInfo] = useState<PdfInfo | null>(null);
@@ -632,7 +658,20 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
               {!imgSrc ? (
                 <p className="text-xs text-slate-400">チラシPDFも記事の写真も無いので、カードは文字だけになります。</p>
               ) : cropSource && crop ? (
-                <CropEditor source={cropSource} value={crop} onChange={setCrop} />
+                <>
+                  <CropEditor source={cropSource} value={crop} onChange={setCrop} />
+                  {hasGeminiEventAccess() && (
+                    <button
+                      type="button"
+                      onClick={locateOnPage}
+                      disabled={locating}
+                      className="mt-1.5 px-2 py-1 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 disabled:opacity-40"
+                      title="AIが紙面の中からこの予定の記事を探し、切り抜きの位置と大きさをそこに合わせます（提案なので、確かめてから保存）"
+                    >
+                      {locating ? '探しています…' : '✨ AIで記事の場所を探す'}
+                    </button>
+                  )}
+                </>
               ) : (
                 <div className="text-xs text-slate-500">
                   <button

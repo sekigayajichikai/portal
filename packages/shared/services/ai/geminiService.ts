@@ -654,6 +654,78 @@ ${hints.length > 0 ? `## 手がかり\n${hints.join('\n\n')}\n` : '## 手がか�
 }
 
 // =====================================================
+// 紙面の中から「この予定の記事」の場所を探す（週次配信カードの切り抜きの初期位置の提案。2026-10-27）
+//
+// チラシ／回覧板のページ画像（JPEG）と予定の題名を渡し、その記事が載っている範囲を 0〜1 の矩形で返させる。
+// 精度は紙面次第なので、結果は「提案」。人がプレビューで微調整してから保存する。
+// =====================================================
+
+export interface LocateEventInput {
+  /** ページ画像（JPEG の base64。長辺 1000px 程度に縮めてから渡す） */
+  imageBase64: string;
+  title: string;
+  eventDate?: string | null;
+  location?: string | null;
+  organizer?: string | null;
+}
+/** 見つかった範囲（画像の幅・高さに対する割合 0〜1。y は上から） */
+export interface LocatedBox {
+  xmin: number;
+  ymin: number;
+  xmax: number;
+  ymax: number;
+}
+
+const LOCATE_SCHEMA = {
+  type: 'object',
+  properties: {
+    found: { type: 'boolean', description: 'この予定の記事が紙面にあれば true' },
+    // Gemini の矩形の慣例: [ymin, xmin, ymax, xmax] を 0〜1000 で
+    box_2d: { type: 'array', items: { type: 'integer' }, description: '[ymin, xmin, ymax, xmax] 0〜1000' },
+    note: { type: 'string' },
+  },
+  required: ['found'],
+} as const;
+
+export async function locateEventOnPageWithGemini(input: LocateEventInput): Promise<LocatedBox | null> {
+  if (!hasGeminiEventAccess()) throw new Error('Gemini が利用できません（APIキー/プロキシ未設定）');
+  const meta = [
+    `題名: ${input.title}`,
+    input.eventDate ? `開催日: ${input.eventDate}` : null,
+    input.location ? `場所: ${input.location}` : null,
+    input.organizer ? `主催: ${input.organizer}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const prompt = `この画像は自治会の回覧板（広報紙・チラシ）の1ページです。次の予定について書かれている記事（見出しと本文、あれば写真やイラストを含む）が、画像のどの範囲にあるかを探してください。
+## 予定
+${meta}
+## 返し方
+- 見つかったら found=true と、その範囲を box_2d=[ymin, xmin, ymax, xmax]（画像の上端・左端を 0、下端・右端を 1000 とした整数）で返す。
+- 範囲は記事ひとまとまり（見出しから本文の終わりまで）。ページ全体や、別の記事を含めない。
+- 紙面にその予定の記事が無い、または自信がなければ found=false。`;
+  const body = {
+    contents: [{ role: 'user', parts: [{ inlineData: { mimeType: 'image/jpeg', data: input.imageBase64 } }, { text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', responseSchema: LOCATE_SCHEMA, temperature: 0 },
+  };
+  const res = await callGeminiWithRetry(body);
+  const text = extractGeminiText(res);
+  let parsed: { found?: boolean; box_2d?: number[] };
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('AI の返事を読み取れませんでした');
+  }
+  const b = parsed.box_2d;
+  if (!parsed.found || !Array.isArray(b) || b.length !== 4) return null;
+  const n = (v: number) => Math.min(1, Math.max(0, Number(v) / 1000));
+  const box = { ymin: n(b[0]), xmin: n(b[1]), ymax: n(b[2]), xmax: n(b[3]) };
+  // 向きが逆・幅ゼロなどは無効
+  if (box.xmax - box.xmin < 0.03 || box.ymax - box.ymin < 0.03) return null;
+  return box;
+}
+
+// =====================================================
 // 予定の点検（カレンダーに載せる前に人が確認したほうがよいものを挙げる）
 //
 // PDF（特にスキャン画像）からの抽出は、題名に紙面の見出しがそのまま入ったり、

@@ -37,6 +37,7 @@ import {
   getArticleById,
   convertPdfUrlToBase64,
   generateEventDescriptionWithGemini,
+  locateEventOnPageWithGemini,
   hasGeminiEventAccess,
   listWeeklyDigestDrafts,
   saveWeeklyDigestDraft,
@@ -80,7 +81,7 @@ import { buildGreetingText, buildWeeklyMessages } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
 import { CropEditor } from './CropEditor';
 import { EventCardEditDialog } from './EventCardEditDialog';
-import { type HeroCrop, type CropAspect, normalizeCrop, resolveCrop, drawCropped, loadImageCanvas, renderPdfFirstPage } from './heroCrop';
+import { type HeroCrop, type CropAspect, normalizeCrop, resolveCrop, drawCropped, loadImageCanvas, renderPdfFirstPage, cropFromBox, canvasToJpegBase64 } from './heroCrop';
 
 const REPORT_NEWSLETTER_TITLE = '関ヶ谷レポート';
 // ---------------------------------------------------------------------------
@@ -170,6 +171,38 @@ export const WeeklyDigest: React.FC = () => {
    */
   const [imageKinds, setImageKinds] = useState<Record<string, ImageKind | null>>({});
   const [savingCrop, setSavingCrop] = useState<string | null>(null);
+  /** AI で紙面の中の記事の場所を探している予定ID */
+  const [locating, setLocating] = useState<string | null>(null);
+  /**
+   * AI（Gemini・無料枠）に紙面の画像と題名を渡し、その記事の範囲を探して切り抜きの初期位置にする。
+   * 結果は提案なので保存はしない（人がプレビューで直してから「切り抜きを保存」）
+   */
+  const locateOnPage = async (topic: PublicEventCard) => {
+    const flyer = flyers[topic.id];
+    if (!flyer) return;
+    setLocating(topic.id);
+    try {
+      const box = await locateEventOnPageWithGemini({
+        imageBase64: canvasToJpegBase64(flyer),
+        title: topic.title,
+        eventDate: topic.event_date,
+        location: topic.event_location,
+        organizer: topic.organizer,
+      });
+      if (!box) {
+        showError('この紙面の中に、この予定の記事を見つけられませんでした。手で位置を合わせてください。');
+        return;
+      }
+      setCrops((prev) => ({ ...prev, [topic.id]: cropFromBox(flyer.width, flyer.height, box) }));
+      showToast('記事の場所に合わせました。プレビューで確かめて、必要なら直してから「切り抜きを保存」を押してください');
+    } catch (e) {
+      console.error('記事の場所の探索エラー:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(/429|RESOURCE_EXHAUSTED|quota/i.test(msg) ? 'AIの無料枠の回数制限にかかりました。1分ほど待ってからもう一度押してください。' : `探せませんでした。${msg}`);
+    } finally {
+      setLocating(null);
+    }
+  };
   /** 編集ダイアログで開いている予定（予定タブ・号の画面と同じダイアログ） */
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   /** LINE 送信（Flex）: テキスト吹き出しの文、送信中のモード、直近の結果、履歴 */
@@ -1347,6 +1380,16 @@ export const WeeklyDigest: React.FC = () => {
                       ) : (
                         <div>
                           <CropEditor source={flyer} value={curCrop} onChange={(c) => setCrops((prev) => ({ ...prev, [t.id]: c }))} />
+                          {hasGeminiEventAccess() && (
+                            <button
+                              onClick={() => locateOnPage(t)}
+                              disabled={locating !== null}
+                              className="mt-1.5 mr-2 px-2 py-1 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 disabled:opacity-40"
+                              title="AIが紙面の中からこの予定の記事を探し、切り抜きの位置と大きさをそこに合わせます（提案なので、確かめてから保存）"
+                            >
+                              {locating === t.id ? '探しています…' : '✨ AIで記事の場所を探す'}
+                            </button>
+                          )}
                           <button
                             onClick={() => saveCrop(t)}
                             disabled={savingCrop === t.id || !cropDirty}
