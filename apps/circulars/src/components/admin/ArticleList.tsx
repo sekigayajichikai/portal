@@ -188,6 +188,7 @@ const SortableArticleItem: React.FC<SortableArticleItemProps> = ({
             <GripVertical size={20} />
           </div>
 
+          <ArticleThumb article={article} />
           <div className="flex-1" onClick={onToggleExpand}>
             <div className="flex items-center gap-2 mb-2 flex-wrap cursor-pointer">
               {/* ピン留めバッジ */}
@@ -315,6 +316,36 @@ const SortableArticleItem: React.FC<SortableArticleItemProps> = ({
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+};
+
+
+/**
+ * 記事の画像の有無をひと目で（2026-10-27）。
+ * サムネイル（thumbnail_url）か添付画像の1枚目を小さく出し、無ければ「画像なし」の枠を出す。
+ * 号の編集画面で「どの記事に画像を入れたか」が一覧のまま分かるようにするため
+ */
+const ArticleThumb: React.FC<{ article: Article }> = ({ article }) => {
+  const images = (article.attachments ?? []).filter((a) => a.type === 'image');
+  const src = article.thumbnail_url || images[0]?.url || null;
+  if (!src) {
+    return (
+      <div
+        className="w-16 h-16 shrink-0 rounded-lg border-2 border-dashed border-slate-300 bg-white/60 flex flex-col items-center justify-center text-slate-400"
+        title="この記事には画像がありません（「PDFの切り抜き」→「画像追加」で付けられます）"
+      >
+        <ImageIcon size={18} />
+        <span className="text-[10px] font-bold leading-tight mt-0.5">画像なし</span>
+      </div>
+    );
+  }
+  return (
+    <div className="relative shrink-0" title={images.length > 1 ? `画像 ${images.length} 枚` : '画像あり'}>
+      <img src={src} alt="" className="w-16 h-16 rounded-lg object-cover border border-slate-300 bg-white" loading="lazy" />
+      {images.length > 1 && (
+        <span className="absolute -bottom-1 -right-1 px-1 rounded bg-slate-700 text-white text-[10px] font-bold leading-4">{images.length}</span>
       )}
     </div>
   );
@@ -709,6 +740,7 @@ export const ArticleList: React.FC<ArticleListProps> = ({
                   onClick={() => toggleExpand(article.id)}
                 >
                   <div className="flex items-start justify-between gap-4">
+                    <ArticleThumb article={article} />
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
                         {/* ピン留めバッジ */}
