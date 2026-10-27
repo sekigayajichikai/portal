@@ -15,7 +15,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { X, ChevronLeft, ChevronRight, Scissors, ZoomIn, ZoomOut, Loader2, Save, Plus, Trash2, FileText, Image as ImageIcon, Check } from 'lucide-react';
 import type { Article } from '@cc-saas/shared';
-import { addArticlesToNewsletter, updateArticle } from '@cc-saas/shared';
+import { addArticlesToNewsletter, updateArticle, hasGeminiEventAccess, locateEventOnPageWithGemini } from '@cc-saas/shared';
 import { extractArticleFromImage } from '@cc-saas/shared/services/ai/claudeService';
 import { uploadImage } from '@cc-saas/shared/services/data/storageService';
 import { MOCK_CATEGORIES } from '@cc-saas/shared/constants';
@@ -124,6 +124,46 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
+
+  /**
+   * ✨ AIで記事の場所を探す（画像追加モード。2026-10-27）
+   * 週次配信の切り抜きと同じ仕組み: 表示中のページ画像（長辺 1000px の JPEG）と選んだ記事の題名を Gemini（無料枠）に渡し、
+   * その記事の範囲を返させて切り抜きの枠をそこに合わせる。提案なので、人が枠を確かめて「追加」を押す
+   */
+  const [isLocating, setIsLocating] = useState(false);
+  const locateSelectedArticle = async () => {
+    const article = articles.find(a => a.id === selectedArticleId);
+    const img = imgRef.current;
+    if (!article || !img || !img.naturalWidth) return;
+    setIsLocating(true);
+    try {
+      const k = Math.min(1, 1000 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.naturalWidth * k));
+      c.height = Math.max(1, Math.round(img.naturalHeight * k));
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+      const box = await locateEventOnPageWithGemini({ imageBase64: c.toDataURL('image/jpeg', 0.8).split(',')[1], title: article.title });
+      if (!box) {
+        showError('このページの中に、この記事を見つけられませんでした。別のページか、手で枠を合わせてください。');
+        return;
+      }
+      // 少し余白を足して 0〜1 に収める
+      const pad = 0.01;
+      const x0 = Math.max(0, box.xmin - pad), y0 = Math.max(0, box.ymin - pad);
+      const x1 = Math.min(1, box.xmax + pad), y1 = Math.min(1, box.ymax + pad);
+      setCropAspect(undefined);
+      setCrop({ unit: '%', x: x0 * 100, y: y0 * 100, width: (x1 - x0) * 100, height: (y1 - y0) * 100 });
+      // 「追加」は表示サイズの px の枠（completedCrop）を使う。枠をプログラムで置いたときは onComplete が来ないので自分で入れる
+      setCompletedCrop({ unit: 'px', x: x0 * img.width, y: y0 * img.height, width: (x1 - x0) * img.width, height: (y1 - y0) * img.height });
+      showToast('記事の場所に枠を合わせました。確かめて、必要なら直してから「追加」を押してください');
+    } catch (e) {
+      console.error('記事の場所の探索エラー:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(/429|RESOURCE_EXHAUSTED|quota/i.test(msg) ? 'AIの無料枠の回数制限にかかりました。1分ほど待ってからもう一度押してください。' : `探せませんでした。${msg}`);
+    } finally {
+      setIsLocating(false);
+    }
+  };
 
   useEffect(() => { loadPdf(pdfUrls[0]); }, []);
   useEffect(() => { if (pdfUrls[currentPdfIndex]) loadPdf(pdfUrls[currentPdfIndex]); }, [currentPdfIndex]);
@@ -399,6 +439,13 @@ export const ArticleCropPage: React.FC<ArticleCropPageProps> = ({
                     className="text-xs font-medium text-slate-600 w-10 text-center hover:bg-slate-200 rounded py-0.5">{zoom}%</button>
                   <button onClick={() => setZoom(z => Math.min(1000, z + 25))} disabled={zoom >= 1000}
                     className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 transition"><ZoomIn size={16} /></button>
+                  {mode === 'image' && hasGeminiEventAccess() && (
+                    <button onClick={locateSelectedArticle} disabled={isLocating || !selectedArticleId || !pageDataUrl}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200 transition disabled:opacity-50"
+                      title={selectedArticleId ? 'AIがこのページの中から、右で選んだ記事を探して枠を合わせます（提案なので、確かめてから「追加」）' : '先に右の一覧で記事を選んでください'}>
+                      {isLocating ? <><Loader2 size={14} className="animate-spin" /> 探しています…</> : '✨ AIで記事の場所を探す'}
+                    </button>
+                  )}
                   <button onClick={handleAddCrop} disabled={!completedCrop || completedCrop.width === 0}
                     className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition font-medium disabled:opacity-50">
                     <Plus size={14} /> 追加

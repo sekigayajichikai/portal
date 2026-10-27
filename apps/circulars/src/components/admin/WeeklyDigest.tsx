@@ -494,20 +494,27 @@ export const WeeklyDigest: React.FC = () => {
   const topicKey = digest.topics.map((t) => t.id).join(',');
 
   // 一押しが変わったら、紹介文の下書きと切り出し位置を予定カードの値で初期化する（未設定のものだけ）
+  // 何も足すものが無いときは同じオブジェクトを返す（新しいオブジェクトを返すと、切り抜き画像を作り直してプレビューがチカチカする。2026-10-27）
   useEffect(() => {
     setDescDrafts((prev) => {
+      const missing = digest.topics.filter((t) => !(t.id in prev));
+      if (missing.length === 0) return prev;
       const n = { ...prev };
-      for (const t of digest.topics) if (!(t.id in n)) n[t.id] = t.description ?? '';
+      for (const t of missing) n[t.id] = t.description ?? '';
       return n;
     });
     setCrops((prev) => {
+      const missing = digest.topics.filter((t) => !(t.id in prev));
+      if (missing.length === 0) return prev;
       const n = { ...prev };
-      for (const t of digest.topics) if (!(t.id in n)) n[t.id] = normalizeCrop(t.hero_crop, t.hero_crop_y);
+      for (const t of missing) n[t.id] = normalizeCrop(t.hero_crop, t.hero_crop_y);
       return n;
     });
     setImageKinds((prev) => {
+      const missing = digest.topics.filter((t) => !(t.id in prev));
+      if (missing.length === 0) return prev;
       const n = { ...prev };
-      for (const t of digest.topics) if (!(t.id in n)) n[t.id] = t.hero_source ?? null;
+      for (const t of missing) n[t.id] = t.hero_source ?? null;
       return n;
     });
     // cards: 編集ダイアログで保存したあと（下書きを消して読み直したとき）も、新しい値で埋め直す
@@ -703,12 +710,35 @@ export const WeeklyDigest: React.FC = () => {
    * 縦長のチラシをそのまま載せるとカードが高くなりすぎるため。切り出し位置（0=上端〜1=下端）は人が決められる。
    * チラシ全体は「詳しく見る」（PDF）で開ける。
    */
+  /**
+   * 切り抜き画像とそのデータURLの控え（予定ID → 元画像・切り抜きの値・結果）。
+   * 元画像と切り抜きの値が同じなら作り直さず同じものを返す。作り直すとプレビューの <img> の src が変わって
+   * 画像が一瞬消える（保存や読み直しのたびにチカチカしていた。2026-10-27）
+   */
+  const flyerRenderCache = useRef(new Map<string, { flyer: HTMLCanvasElement; cropKey: string; canvas: HTMLCanvasElement; src: string }>());
   const flyerCards = useMemo(() => {
     const out: Record<string, HTMLCanvasElement | null> = {};
+    const cache = flyerRenderCache.current;
+    const live = new Set<string>();
     for (const t of digest.topics) {
       const flyer = flyers[t.id];
-      out[t.id] = flyer ? drawCropped(flyer, resolveCrop(normalizeCrop(crops[t.id]), flyer.width, flyer.height), Math.min(flyer.width, 1040)) : null;
+      if (!flyer) {
+        out[t.id] = null;
+        continue;
+      }
+      live.add(t.id);
+      const crop = resolveCrop(normalizeCrop(crops[t.id]), flyer.width, flyer.height);
+      const cropKey = JSON.stringify(crop);
+      const hit = cache.get(t.id);
+      if (hit && hit.flyer === flyer && hit.cropKey === cropKey) {
+        out[t.id] = hit.canvas;
+        continue;
+      }
+      const canvas = drawCropped(flyer, crop, Math.min(flyer.width, 1040));
+      cache.set(t.id, { flyer, cropKey, canvas, src: canvas.toDataURL('image/jpeg', 0.8) });
+      out[t.id] = canvas;
     }
+    for (const id of Array.from(cache.keys())) if (!live.has(id)) cache.delete(id);
     return out;
   }, [digest.topics, flyers, crops]);
   /** 一押しごとの画像枠の形（Flex の aspectRatio とプレビューに使う） */
@@ -723,7 +753,10 @@ export const WeeklyDigest: React.FC = () => {
   /** プレビュー用の data URL（予定ID → dataURL） */
   const flyerSrcs = useMemo(() => {
     const out: Record<string, string | null> = {};
-    for (const [id, c] of Object.entries(flyerCards)) out[id] = c ? c.toDataURL('image/jpeg', 0.8) : null;
+    for (const [id, c] of Object.entries(flyerCards)) {
+      const hit = flyerRenderCache.current.get(id);
+      out[id] = c ? (hit && hit.canvas === c ? hit.src : c.toDataURL('image/jpeg', 0.8)) : null;
+    }
     return out;
   }, [flyerCards]);
 
