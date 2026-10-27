@@ -925,22 +925,23 @@ export const WeeklyDigest: React.FC = () => {
         />
       )}
       <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-              <Send size={20} className="text-emerald-600" />
-              週次配信（今週のお知らせ）
-            </h2>
-            <p className="text-sm text-slate-600 mt-1">
-              公開中の予定とレポートから、公式LINEで流すカードを自動で組み立てます。下の「LINE に送る」からテスト送信で確かめてから配信してください。
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-sm text-slate-600">配信の曜日</label>
+        <div>
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <Send size={20} className="text-emerald-600" />
+            週次配信（今週のお知らせ）
+          </h2>
+          <p className="text-sm text-slate-600 mt-1">
+            公開中の予定とレポートから、公式LINEで流すカードを自動で組み立てます。下の「LINE に送る」からテスト送信で確かめてから配信してください。
+          </p>
+        </div>
+        {/* 配信の曜日・配信日（題名の右に置いていたが、画面幅によって説明文の下に回り込んで見つけにくかったので独立した行に。2026-10-27） */}
+        <div className="mt-3 flex items-center gap-x-3 gap-y-2 flex-wrap px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+          <label className="text-base font-bold text-slate-800 flex items-center gap-2">
+            配信の曜日
             <select
               value={weekday ?? toDate(baseDate).getDay()}
               onChange={(e) => changeWeekday(Number(e.target.value))}
-              className="text-sm border border-slate-300 rounded-lg px-2 py-1.5 bg-white"
+              className="text-base font-bold border-2 border-slate-400 rounded-lg px-2 py-1.5 bg-white"
               title="毎週この曜日に配信する。選ぶと配信日が直近のその曜日になり、下の配信予定の表もこの曜日で並びます（次回も覚えます）"
             >
               {WEEK.map((w, i) => (
@@ -949,22 +950,24 @@ export const WeeklyDigest: React.FC = () => {
                 </option>
               ))}
             </select>
-            <label className="text-sm text-slate-600">配信日</label>
+          </label>
+          <label className="text-base font-bold text-slate-800 flex items-center gap-2">
+            配信日
             <input
               type="date"
               value={baseDate}
               onChange={(e) => setBaseDate(e.target.value)}
-              className="text-sm border border-slate-300 rounded-lg px-2 py-1.5"
+              className="text-base border-2 border-slate-400 rounded-lg px-2 py-1.5 bg-white"
               title="曜日と違う日に送るときはここで日付を選ぶ"
             />
-            <button
-              onClick={() => load()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition"
-              title="予定データを読み直す"
-            >
-              <RefreshCw size={14} /> 読み直す
-            </button>
-          </div>
+          </label>
+          <button
+            onClick={() => load()}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg transition ml-auto"
+            title="予定データを読み直す"
+          >
+            <RefreshCw size={14} /> 読み直す
+          </button>
         </div>
         {/* 配信予定の表（配信日1つにつき下書き1つ。下書きは一押しの選択・外した予定・リンク先・手で直した吹き出しを自動保存） */}
         <div className="mt-4">

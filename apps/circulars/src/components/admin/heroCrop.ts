@@ -3,14 +3,18 @@
  *
  * crop = { x, y, scale, aspect }
  *   aspect … 枠の形。'1:1'（正方形）/ '4:3' / '16:9'（横長）/ '210:297'・'297:210'（縦長・横長 A4。チラシ1ページを全面で）。未指定なら元画像の向きから決める（横長の写真は 4:3、それ以外は 1:1）
- *   scale  … 拡大率（1 = 枠が元画像に収まる最大、3 = その1/3 を拡大）
+ *            「自由」（2026-10-27）: 上の5つ以外の '幅:高さ'（整数。例 '1000:623'）。紙面の上で枠をなぞって決めた形。
+ *            LINE の Flex の aspectRatio がそのまま受け付ける書き方（1〜100000 の整数、高さは幅の3倍まで）に合わせている
+ *   scale  … 拡大率（1 = 枠が元画像に収まる最大、3 = その1/3 を拡大。自由な形のときは 6 まで）
  *   x, y   … 枠の位置（0 = 左端/上端、1 = 右端/下端。動かせる範囲に対する割合）
  */
 
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 
-export type CropAspect = '1:1' | '4:3' | '16:9' | '210:297' | '297:210';
-export const ASPECTS: Array<{ key: CropAspect; label: string; ratio: number }> = [
+export type PresetAspect = '1:1' | '4:3' | '16:9' | '210:297' | '297:210';
+/** 自由な形は '幅:高さ'（整数）の文字列。Flex の aspectRatio と同じ書き方 */
+export type CropAspect = PresetAspect | `${number}:${number}`;
+export const ASPECTS: Array<{ key: PresetAspect; label: string; ratio: number }> = [
   { key: '1:1', label: '正方形', ratio: 1 },
   { key: '4:3', label: '横長 4:3', ratio: 4 / 3 },
   { key: '16:9', label: '横長 16:9', ratio: 16 / 9 },
@@ -29,14 +33,49 @@ export interface HeroCrop {
 export const DEFAULT_CROP: HeroCrop = { x: 0, y: 0, scale: 1 };
 export const MIN_SCALE = 1;
 export const MAX_SCALE = 3;
+/** 自由な形のときの拡大の上限。紙面の小さな記事（幅の1/6）までなぞれるように。元の描画が最大1400pxなので、これ以上は粗くなる */
+export const MAX_SCALE_FREE = 6;
+/** 自由な形の縦横比の範囲（これより細長い枠はカードが読みにくいので止める。LINE の上限「高さは幅の3倍まで」にも収まる） */
+const FREE_RATIO_MIN = 1 / 3;
+const FREE_RATIO_MAX = 3;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
-const isAspect = (a: unknown): a is CropAspect => ASPECTS.some((x) => x.key === a);
+export const isPresetAspect = (a: unknown): a is PresetAspect => ASPECTS.some((x) => x.key === a);
+/** 自由な形（'幅:高さ' の整数。5つの決まった形は含まない） */
+export const isFreeAspect = (a: unknown): a is CropAspect => {
+  if (typeof a !== 'string' || isPresetAspect(a)) return false;
+  const m = /^(\d{1,6}):(\d{1,6})$/.exec(a);
+  if (!m) return false;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  return w >= 1 && h >= 1 && w <= 100000 && h <= 100000 && w / h >= FREE_RATIO_MIN && w / h <= FREE_RATIO_MAX;
+};
+const isAspect = (a: unknown): a is CropAspect => isPresetAspect(a) || isFreeAspect(a);
+/** この形のときの拡大の上限 */
+export const maxScaleFor = (aspect?: CropAspect | null) => (isFreeAspect(aspect) ? MAX_SCALE_FREE : MAX_SCALE);
+
+/**
+ * 枠の大きさ（px）から自由な形の文字列を作る（例 537×312 → 縦横比 1.72 → '172:100' を約分して '43:25'）。
+ * 縦横比は FREE_RATIO_MIN〜MAX に収め、短い方を 100 にして 1% 刻みに丸める（LINE の aspectRatio に渡すので桁を小さく）
+ */
+export function freeAspectFromSize(w: number, h: number): CropAspect {
+  const ratio = Math.min(FREE_RATIO_MAX, Math.max(FREE_RATIO_MIN, w / Math.max(1, h)));
+  let a = ratio >= 1 ? Math.round(ratio * 100) : 100;
+  let b = ratio >= 1 ? 100 : Math.round(100 / ratio);
+  const gcd = (x: number, y: number): number => (y === 0 ? x : gcd(y, x % y));
+  const g = gcd(a, b);
+  a /= g;
+  b /= g;
+  // 約分の結果が決まった形（'4:3' など）と同じ文字になると「自由」と見分けられなくなるので、そのときは約分しない形で返す（'8:6'。LINE はこれも受け付ける）
+  if (isPresetAspect(`${a}:${b}`)) return `${a * 2}:${b * 2}` as CropAspect;
+  return `${a}:${b}` as CropAspect;
+}
 
 export function normalizeCrop(c?: Partial<HeroCrop> | null, legacyY?: number | null): HeroCrop {
   if (c && typeof c === 'object') {
-    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(c.scale) || 1));
-    return { x: clamp01(Number(c.x)), y: clamp01(Number(c.y)), scale, ...(isAspect(c.aspect) ? { aspect: c.aspect } : {}) };
+    const aspect = isAspect(c.aspect) ? c.aspect : undefined;
+    const scale = Math.min(maxScaleFor(aspect), Math.max(MIN_SCALE, Number(c.scale) || 1));
+    return { x: clamp01(Number(c.x)), y: clamp01(Number(c.y)), scale, ...(aspect ? { aspect } : {}) };
   }
   // 旧データ（位置だけ）
   if (typeof legacyY === 'number') return { x: 0, y: clamp01(legacyY), scale: 1 };
@@ -53,7 +92,12 @@ export function resolveCrop(crop: HeroCrop, w: number, h: number): HeroCrop & { 
   return { ...crop, aspect: crop.aspect ?? defaultAspectFor(w, h) };
 }
 
-export const aspectRatioOf = (a: CropAspect) => ASPECTS.find((x) => x.key === a)!.ratio;
+export const aspectRatioOf = (a: CropAspect): number => {
+  const preset = ASPECTS.find((x) => x.key === a);
+  if (preset) return preset.ratio;
+  const m = /^(\d+):(\d+)$/.exec(a);
+  return m ? Number(m[1]) / Math.max(1, Number(m[2])) : 1;
+};
 
 /** 元画像に対する切り出し矩形 */
 export function cropRect(w: number, h: number, crop: HeroCrop): { sx: number; sy: number; sw: number; sh: number } {
@@ -78,25 +122,33 @@ export function cropFromBox(w: number, h: number, box: { xmin: number; ymin: num
   const by = Math.max(0, (box.ymin - pad) * h);
   const bw = Math.min(w, (box.xmax + pad) * w) - bx;
   const bh = Math.min(h, (box.ymax + pad) * h) - by;
-  const boxRatio = bw / Math.max(1, bh);
-  const candidates: CropAspect[] = ['1:1', '4:3', '16:9'];
-  const aspect = candidates.reduce((best, a) =>
-    Math.abs(Math.log(aspectRatioOf(a) / boxRatio)) < Math.abs(Math.log(aspectRatioOf(best) / boxRatio)) ? a : best
-  );
+  // 2026-10-27: 決まった形に寄せると縦長の記事の上下が切れていたので、矩形の形そのまま（自由な形）にする
+  return cropFromRect(w, h, { sx: bx, sy: by, sw: bw, sh: bh });
+}
+
+/**
+ * 元画像の上の矩形（px）を、その形そのままの切り抜き（自由な形）にする。
+ * 「自由」で枠をなぞったときと、AI が見つけた範囲から使う（2026-10-27）。
+ * 枠の形は矩形の縦横比（FREE_RATIO_MIN〜MAX に収める）、拡大は矩形がちょうど収まる大きさ（上限 MAX_SCALE_FREE）、位置は矩形の中心
+ */
+export function cropFromRect(w: number, h: number, rect: { sx: number; sy: number; sw: number; sh: number }): HeroCrop {
+  const bw = Math.max(1, rect.sw);
+  const bh = Math.max(1, rect.sh);
+  const aspect = freeAspectFromSize(bw, bh);
   const r = aspectRatioOf(aspect);
   const baseW = Math.min(w, h * r); // 枠が元画像に収まる最大の幅（scale=1）
-  const needW = Math.max(bw, bh * r); // 矩形を含むのに必要な枠の幅
-  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, baseW / needW));
+  const needW = Math.max(bw, bh * r); // 矩形を含むのに必要な枠の幅（比率を丸めた分のずれも含める）
+  const scale = Math.min(MAX_SCALE_FREE, Math.max(MIN_SCALE, baseW / needW));
   const sw = baseW / scale;
   const sh = sw / r;
-  const cx = bx + bw / 2;
-  const cy = by + bh / 2;
+  const cx = rect.sx + bw / 2;
+  const cy = rect.sy + bh / 2;
   const sx = Math.min(Math.max(0, cx - sw / 2), w - sw);
   const sy = Math.min(Math.max(0, cy - sh / 2), h - sh);
   return {
     x: w - sw > 1 ? clamp01(sx / (w - sw)) : 0,
     y: h - sh > 1 ? clamp01(sy / (h - sh)) : 0,
-    scale: Math.round(scale * 100) / 100,
+    scale: Math.round(scale * 1000) / 1000,
     aspect,
   };
 }
