@@ -14,6 +14,8 @@ import { EventCandidateDialog } from './EventCandidateDialog';
 import { EventCardEditDialog } from './EventCardEditDialog';
 import { ImageCropPage } from './ImageCropPage';
 import { ArticleCropPage } from './ArticleCropPage';
+import { ImageAssignmentDialog } from './ImageAssignmentDialog';
+import { getPendingImagesByNewsletterId } from '@cc-saas/shared/services/image/pendingImageService';
 import CircularsView from '../public/CircularsView';
 import { MOCK_CATEGORIES } from '@cc-saas/shared/constants';
 import { showToast, showError, appConfirm, appPrompt, ProcessingIndicator } from '@/components/ui/feedback';
@@ -106,6 +108,21 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   /** 編集ダイアログで開いている予定カード（予定タブ・週次配信と同じダイアログ） */
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [showArticleCrop, setShowArticleCrop] = useState(false);
+  /** Drive の pic フォルダから自動で入った写真（保留画像）の件数と、記事に付ける画面の表示（2026-10-27） */
+  const [pendingImageCount, setPendingImageCount] = useState(0);
+  const [showImageAssign, setShowImageAssign] = useState(false);
+  const reloadPendingImageCount = async (newsletterId: string) => {
+    try {
+      const list = await getPendingImagesByNewsletterId(newsletterId, true);
+      setPendingImageCount(list.length);
+    } catch {
+      setPendingImageCount(0);
+    }
+  };
+  useEffect(() => {
+    if (selectedNewsletter?.id) reloadPendingImageCount(selectedNewsletter.id);
+    else setPendingImageCount(0);
+  }, [selectedNewsletter?.id]);
   /** 記事の手動追加中（二重送信防止＋ボタン内スピナー表示） */
   const [isAddingArticle, setIsAddingArticle] = useState(false);
   /** 公開版から編集用コピーを作成中 */
@@ -234,17 +251,35 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
       }
       return { ...prev, [key]: next };
     });
-  /** 「◯◯を畳む／開く」ボタン（高齢の方も押しやすいよう大きめ・濃いめ。畳んでいる間は青で目立たせる） */
-  const collapseButton = (key: CollapsibleSection, label: string) => (
-    <button
-      onClick={() => toggleCollapsed(key)}
-      className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold rounded-lg border-2 transition shrink-0 ${
-        collapsed[key] ? 'text-white bg-primary-600 border-primary-600 hover:bg-primary-700' : 'text-slate-800 bg-white border-slate-400 hover:bg-slate-100'
-      }`}
-      title={collapsed[key] ? `${label}を開く` : `${label}を畳んで、下の欄をすぐ見られるようにする`}
-    >
-      {collapsed[key] ? <><ChevronDown size={18} /> {label}を開く</> : <><ChevronUp size={18} /> {label}を畳む</>}
-    </button>
+  /**
+   * 畳める欄の見出し。左端の「＞／∨」マーク付きで、見出しごと押すと畳む／開く（2026-10-27）。
+   * 畳んでいる間はマークを青にし、「畳んでいます（押すと開く）」を見出しと同じ濃さ・大きさで出す。
+   * canCollapse が false のとき（中身が0件）はマーク無しのただの見出し。
+   */
+  const collapsibleHeading = (key: CollapsibleSection, canCollapse: boolean, label: string, content: React.ReactNode) => (
+    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2 min-w-0">
+      {canCollapse ? (
+        <button
+          type="button"
+          onClick={() => toggleCollapsed(key)}
+          aria-expanded={!collapsed[key]}
+          title={collapsed[key] ? `${label}を開く` : `${label}を畳んで、下の欄をすぐ見られるようにする`}
+          className="flex items-center gap-2 -ml-2 px-2 py-1 rounded-lg hover:bg-slate-100 text-left"
+        >
+          <span
+            className={`inline-flex items-center justify-center w-9 h-9 rounded-lg border-2 shrink-0 ${
+              collapsed[key] ? 'bg-primary-600 border-primary-600 text-white' : 'bg-white border-slate-500 text-slate-800'
+            }`}
+          >
+            {collapsed[key] ? <ChevronRight size={24} strokeWidth={3} /> : <ChevronDown size={24} strokeWidth={3} />}
+          </span>
+          {content}
+          {collapsed[key] && <span className="text-base font-bold text-primary-700">畳んでいます（押すと開く）</span>}
+        </button>
+      ) : (
+        content
+      )}
+    </h3>
   );
 
   /**
@@ -675,6 +710,15 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                 PDFの切り抜き
               </button>
             )}
+            {pendingImageCount > 0 && canEdit && (
+              <button
+                onClick={() => setShowImageAssign(true)}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-amber-900 bg-amber-100 border-2 border-amber-300 rounded-lg hover:bg-amber-200 transition"
+                title="Google Drive の pic フォルダから自動で入った写真を、この号の記事に付けます（切り抜きもできます）"
+              >
+                📷 Drive の写真を記事に付ける（{pendingImageCount}枚）
+              </button>
+            )}
             {isPublished && liveEditId !== nl.id && (
               <button onClick={handleStartLiveEdit} className={btnSecondary} title="公開中のまま、記事やPDFを追加・手直しする">
                 <Pencil size={16} />
@@ -874,10 +918,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
         {/* イベントカード管理 */}
         <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              🗓️ 今後の予定 ({eventCards.length}件)
-              {collapsed.events && eventCards.length > 0 && <span className="text-sm font-normal text-slate-600">（畳んでいます）</span>}
-            </h3>
+            {collapsibleHeading('events', eventCards.length > 0, '予定', <>🗓️ 今後の予定 ({eventCards.length}件)</>)}
             {/* イベントカードは予定情報のメンテナンスなので公開後も編集可能 */}
             <div className="flex items-center gap-3 flex-wrap justify-end">
               <button
@@ -919,7 +960,6 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               >
                 <Plus size={16} /> 追加
               </button>
-              {eventCards.length > 0 && collapseButton('events', '予定')}
             </div>
           </div>
           {/* AIで予定を取り込んだ直後の注意: 別の号との重複・日時の間違いは予定タブで確かめる */}
@@ -1073,12 +1113,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           const count = viewingPublished ? publishedArticles.length : articles.length;
           return (
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <FileText size={20} />
-                記事一覧（{count}件）
-                {collapsed.articles && count > 0 && <span className="text-sm font-normal text-slate-600">（畳んでいます）</span>}
-              </h3>
-              {count > 0 && collapseButton('articles', '記事一覧')}
+              {collapsibleHeading('articles', count > 0, '記事一覧', <><FileText size={20} />記事一覧（{count}件）</>)}
             </div>
           );
         })()}
@@ -1126,13 +1161,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           return (
             <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <FileText size={20} />
-                  登録済みPDF ({pdfEntries.length}件)
-                  {collapsed.pdfs && <span className="text-sm font-normal text-slate-600">（畳んでいます）</span>}
-                </h3>
+                {collapsibleHeading('pdfs', true, 'PDF一覧', <><FileText size={20} />登録済みPDF ({pdfEntries.length}件)</>)}
                 <div className="flex items-center gap-2 flex-wrap justify-end">
-                {collapseButton('pdfs', 'PDF一覧')}
                 {pdfEntries.length > 0 && (
                   <button
                     onClick={async () => {
@@ -1437,6 +1467,23 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
           );
         })()}
 
+        {/* Drive の pic フォルダから入った写真（保留画像）を記事に付ける */}
+        {selectedNewsletter && (
+          <ImageAssignmentDialog
+            isOpen={showImageAssign}
+            newsletterId={selectedNewsletter.id}
+            articles={articles}
+            onClose={() => {
+              setShowImageAssign(false);
+              reloadPendingImageCount(selectedNewsletter.id);
+            }}
+            onAssigned={async () => {
+              const articleData = await getArticlesByNewsletterId(selectedNewsletter.id);
+              setArticles(articleData);
+              reloadPendingImageCount(selectedNewsletter.id);
+            }}
+          />
+        )}
         {/* 画像切り抜きページ（フルスクリーン） */}
         {showImageCrop && (selectedNewsletter?.source_pdf_urls?.length || selectedNewsletter?.source_pdf_url) && (
           <ImageCropPage

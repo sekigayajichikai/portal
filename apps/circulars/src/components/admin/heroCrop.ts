@@ -65,6 +65,52 @@ export function cropRect(w: number, h: number, crop: HeroCrop): { sx: number; sy
   return { sx: (w - sw) * clamp01(crop.x), sy: (h - sh) * clamp01(crop.y), sw, sh };
 }
 
+/**
+ * 紙面の中の矩形（割合 0〜1）を、それを含む切り抜き（枠の形・位置・拡大）にする。
+ * AI が見つけた記事の範囲から、切り抜きの初期値を作るのに使う（2026-10-27）。
+ * - 枠の形は、矩形の縦横比に近いもの（正方形／横長 4:3／横長 16:9）
+ * - 拡大は矩形がちょうど収まる大きさ（少し余白を足す）。上限 MAX_SCALE
+ * - 位置は矩形の中心に合わせる
+ */
+export function cropFromBox(w: number, h: number, box: { xmin: number; ymin: number; xmax: number; ymax: number }, padding = 0.04): HeroCrop {
+  const pad = padding;
+  const bx = Math.max(0, (box.xmin - pad) * w);
+  const by = Math.max(0, (box.ymin - pad) * h);
+  const bw = Math.min(w, (box.xmax + pad) * w) - bx;
+  const bh = Math.min(h, (box.ymax + pad) * h) - by;
+  const boxRatio = bw / Math.max(1, bh);
+  const candidates: CropAspect[] = ['1:1', '4:3', '16:9'];
+  const aspect = candidates.reduce((best, a) =>
+    Math.abs(Math.log(aspectRatioOf(a) / boxRatio)) < Math.abs(Math.log(aspectRatioOf(best) / boxRatio)) ? a : best
+  );
+  const r = aspectRatioOf(aspect);
+  const baseW = Math.min(w, h * r); // 枠が元画像に収まる最大の幅（scale=1）
+  const needW = Math.max(bw, bh * r); // 矩形を含むのに必要な枠の幅
+  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, baseW / needW));
+  const sw = baseW / scale;
+  const sh = sw / r;
+  const cx = bx + bw / 2;
+  const cy = by + bh / 2;
+  const sx = Math.min(Math.max(0, cx - sw / 2), w - sw);
+  const sy = Math.min(Math.max(0, cy - sh / 2), h - sh);
+  return {
+    x: w - sw > 1 ? clamp01(sx / (w - sw)) : 0,
+    y: h - sh > 1 ? clamp01(sy / (h - sh)) : 0,
+    scale: Math.round(scale * 100) / 100,
+    aspect,
+  };
+}
+
+/** canvas を長辺 maxSide px の JPEG（base64 本体）にする。AI に渡す用 */
+export function canvasToJpegBase64(src: HTMLCanvasElement, maxSide = 1000, quality = 0.8): string {
+  const scale = Math.min(1, maxSide / Math.max(src.width, src.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(src.width * scale));
+  c.height = Math.max(1, Math.round(src.height * scale));
+  c.getContext('2d')!.drawImage(src, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', quality).split(',')[1];
+}
+
 /** 切り出して width × (width/比率) の canvas にする */
 export function drawCropped(src: HTMLCanvasElement | HTMLImageElement, crop: HeroCrop, width = 1040): HTMLCanvasElement {
   const w = src instanceof HTMLImageElement ? src.naturalWidth : src.width;
