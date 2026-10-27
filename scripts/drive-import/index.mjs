@@ -84,7 +84,11 @@ async function recordSkip(supabase, file, month, media, reason) {
 }
 
 // ---- 結果のまとめ（メール本文・ログ） ----
-const report = { months: {}, failed: 0, imported: 0, updated: 0, skipped: 0, quiet: 0 };
+const report = { months: {}, failed: 0, imported: 0, updated: 0, skipped: 0, quiet: 0, images: 0 };
+/** pic フォルダの画像として扱う種類 */
+const isImage = (f) => /^image\/(jpeg|png|webp)$/.test(f.mimeType ?? '') || /\.(jpe?g|png|webp)$/i.test(f.name ?? '');
+const extOf = (f) => (/\.(jpe?g|png|webp)$/i.exec(f.name ?? '')?.[1] ?? 'jpg').toLowerCase().replace('jpeg', 'jpg');
+const mimeOfExt = (ext) => (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
 const note = (month, line) => {
   (report.months[month] ??= []).push(line);
   console.log(`[${month}] ${line}`);
@@ -136,7 +140,6 @@ async function main() {
     const candidates = files.filter((f) => isPdf(f) && mediaOf(f.name));
     if (candidates.length === 0) {
       note(month, `関ヶ谷だより・会報ふれあいの PDF はまだありません（フォルダ内 ${files.length} 件）`);
-      continue;
     }
 
     for (const file of candidates) {
@@ -284,13 +287,79 @@ async function main() {
         }
       }
     }
+
+    // ---- pic フォルダの写真 → その号の「保留画像」（管理画面の「Drive の写真を記事に付ける」で記事に付ける） ----
+    const picFolder = files.find((f) => isFolder(f) && f.name.toLowerCase() === 'pic');
+    if (picFolder) {
+      const pics = (await listChildren(token, picFolder.id)).filter(isImage);
+      for (const file of pics) {
+        const prev = imports.find((r) => r.drive_file_id === file.id);
+        if (prev && prev.status !== 'failed') {
+          quiet(month, `写真は処理済み: ${file.name}`);
+          continue;
+        }
+        try {
+          newsletters ??= await shared.getNewsletters();
+          const title = monthTitle(month);
+          const sameTitle = newsletters.filter((n) => n.status !== 'archived' && n.title.replace(/\s/g, '') === title);
+          const newsletter = sameTitle.find((n) => n.status === 'draft');
+          if (!newsletter) {
+            note(month, `写真はあとで: ${file.name} → 号「${title}」の下書きがまだ無い${sameTitle.length > 0 ? '（公開済みの号には自動では入れません）' : ''}ので、下書きができてから入れます`);
+            continue;
+          }
+          note(month, `写真を取り込み: ${file.name}（${Math.round((Number(file.size) || 0) / 1024)} KB）→ 号「${newsletter.title}」の保留画像`);
+          if (DRY_RUN) {
+            report.images++;
+            continue;
+          }
+          const buf = await downloadFile(token, file.id);
+          const ext = extOf(file);
+          const path = `drive/${month}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+          const { error: upErr } = await supabase.storage.from('newsletter-images').upload(path, buf, { contentType: mimeOfExt(ext), cacheControl: '3600', upsert: false });
+          if (upErr) throw new Error(`画像の保存に失敗: ${upErr.message}`);
+          const { data: pub } = supabase.storage.from('newsletter-images').getPublicUrl(path);
+          const { error: insErr } = await supabase.from('pending_images').insert({
+            newsletter_id: newsletter.id,
+            organization_id: null,
+            image_url: pub.publicUrl,
+            storage_path: path,
+            caption: file.name.replace(/\.[^.]+$/, ''),
+            page_number: 0,
+            position_info: null,
+            detected_context: 'Google Drive の pic フォルダから自動取り込み',
+            suggested_article_ids: [],
+            confidence_score: 0,
+            status: 'pending',
+            assigned_to_article_id: null,
+          });
+          if (insErr) throw new Error(`保留画像の登録に失敗: ${insErr.message}`);
+          await supabase.from('drive_imports').upsert(
+            { drive_file_id: file.id, drive_name: file.name, drive_md5: file.md5Checksum ?? null, drive_modified_at: file.modifiedTime, month_folder: month, media: null, kind: 'image', newsletter_id: newsletter.id, pdf_url: pub.publicUrl, pdf_label: file.name, status: 'imported' },
+            { onConflict: 'drive_file_id' }
+          );
+          report.images++;
+          note(month, `  ✅ 保留画像に入れました。管理画面の号の画面「Drive の写真を記事に付ける」から記事に付けられます`);
+        } catch (e) {
+          report.failed++;
+          const msg = e?.message ?? String(e);
+          note(month, `❌ 写真の取り込みに失敗: ${file.name}: ${msg}`);
+          if (!DRY_RUN) {
+            await supabase.from('drive_imports').upsert(
+              { drive_file_id: file.id, drive_name: file.name, drive_md5: file.md5Checksum ?? null, drive_modified_at: file.modifiedTime, month_folder: month, media: null, kind: 'image', status: 'failed', error: msg.slice(0, 1000) },
+              { onConflict: 'drive_file_id' }
+            ).then(({ error }) => error && console.warn('失敗の記録に失敗:', error.message));
+          }
+        }
+      }
+    }
   }
 
   // ---- まとめ ----
   const lines = [];
-  const anyChange = report.imported + report.updated + report.skipped + report.failed > 0;
+  const anyChange = report.imported + report.images + report.updated + report.skipped + report.failed > 0;
+  const head = [report.imported > 0 ? `PDF ${report.imported} 本` : null, report.images > 0 ? `写真 ${report.images} 枚` : null].filter(Boolean).join('・');
   lines.push(
-    report.failed > 0 ? `❌ 失敗 ${report.failed} 件があります` : report.imported > 0 ? `✅ 取り込み ${report.imported} 件` : anyChange ? '取り込みはありません（お知らせがあります）' : '新着はありませんでした'
+    report.failed > 0 ? `❌ 失敗 ${report.failed} 件があります` : head ? `✅ 取り込み: ${head}` : anyChange ? '取り込みはありません（お知らせがあります）' : '新着はありませんでした'
   );
   if (report.quiet > 0) lines.push(`（処理済みで飛ばしたもの ${report.quiet} 件）`);
   for (const [month, ls] of Object.entries(report.months)) {
