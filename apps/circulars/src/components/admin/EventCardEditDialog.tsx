@@ -10,6 +10,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   getAdminEventCardById,
+  getNewsletterPdfChoices,
+  type NewsletterPdfChoice,
   updateEventCard,
   deleteEventCard,
   removeCalendarEventByCard,
@@ -161,6 +163,38 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
   const [crop, setCrop] = useState<HeroCrop | null>(null);
   /** 由来PDFの中身（スキャン画像なら「元のページと見比べる」を出す） */
   const [pdfInfo, setPdfInfo] = useState<PdfInfo | null>(null);
+  /**
+   * 由来PDFの選択肢: 下書きと公開中のすべての号のPDF（2026-10-27）。
+   * 前の号の予定に次の号のチラシが付く（10月号の予定、チラシは11月号）のは毎月起きるので、予定の号以外のPDFも名前で選べるようにする
+   */
+  const [pdfChoices, setPdfChoices] = useState<NewsletterPdfChoice[]>([]);
+  useEffect(() => {
+    getNewsletterPdfChoices()
+      .then(setPdfChoices)
+      .catch(() => setPdfChoices([])); // 読めなくてもこの予定の号のPDFだけで動く
+  }, []);
+  /** 選択肢を「この予定の号」→ 他の号（発行日の新しい順）に並べる。同じPDFが公開版と下書きの両方にあるときは先に出た方だけ */
+  const pdfGroups = useMemo(() => {
+    if (!card) return [] as Array<{ key: string; label: string; pdfs: Array<{ url: string; label: string }> }>;
+    const seen = new Set<string>();
+    const groups: Array<{ key: string; label: string; pdfs: Array<{ url: string; label: string }> }> = [];
+    const push = (key: string, label: string, pdfs: Array<{ url: string; label: string }>) => {
+      const fresh = pdfs.filter((p) => !seen.has(p.url));
+      fresh.forEach((p) => seen.add(p.url));
+      if (fresh.length > 0) groups.push({ key, label, pdfs: fresh });
+    };
+    push(card.newsletter_id, `この予定の号（${card.newsletter_title ?? ''}）`, card.newsletter_pdfs);
+    for (const c of pdfChoices) {
+      if (c.newsletter_id === card.newsletter_id) continue;
+      push(c.newsletter_id, `${c.title}${c.status === 'draft' ? '（下書き）' : ''}`, c.pdfs);
+    }
+    return groups;
+  }, [card, pdfChoices]);
+  /** 今の由来PDFの名前（どの号のものでも） */
+  const currentPdfLabel = useMemo(
+    () => (form.source_pdf_url ? pdfGroups.flatMap((g) => g.pdfs).find((p) => p.url === form.source_pdf_url)?.label ?? card?.source_pdf_label ?? null : null),
+    [form.source_pdf_url, pdfGroups, card?.source_pdf_label]
+  );
 
   useEffect(() => {
     getAdminEventCardById(cardId)
@@ -579,23 +613,36 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
 
             {/* 由来PDF（号のPDFから選ぶ） */}
             <div>
-              <label className={labelCls}>由来PDF（チラシ。週次配信の画像とリンク先に使います）</label>
+              <label className={labelCls}>由来PDF（チラシ。週次配信の画像とリンク先に使います。他の号のPDFも選べます）</label>
               <select
                 value={form.source_pdf_url ?? ''}
                 onChange={(e) => set({ source_pdf_url: e.target.value || null })}
                 className={inputCls}
-                disabled={card.newsletter_pdfs.length === 0 && !form.source_pdf_url}
+                disabled={pdfGroups.length === 0 && !form.source_pdf_url}
               >
                 <option value="">（なし）</option>
-                {card.newsletter_pdfs.map((p) => (
-                  <option key={p.url} value={p.url}>
-                    {p.label}
-                  </option>
+                {pdfGroups.map((g) => (
+                  <optgroup key={g.key} label={g.label}>
+                    {g.pdfs.map((p) => (
+                      <option key={p.url} value={p.url}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
-                {form.source_pdf_url && !card.newsletter_pdfs.some((p) => p.url === form.source_pdf_url) && (
+                {form.source_pdf_url && !pdfGroups.some((g) => g.pdfs.some((p) => p.url === form.source_pdf_url)) && (
                   <option value={form.source_pdf_url}>（回覧板の一覧に無いPDF）</option>
                 )}
               </select>
+              {/* 他の号のPDFが付いているときは、どの号のものかを見出しの下に出す */}
+              {form.source_pdf_url && !card.newsletter_pdfs.some((p) => p.url === form.source_pdf_url) && (
+                <p className="text-[11px] text-slate-600 mt-1">
+                  {(() => {
+                    const g = pdfGroups.find((x) => x.pdfs.some((p) => p.url === form.source_pdf_url));
+                    return g ? `この予定の号とは別の号「${g.label}」のPDFです。` : 'この予定の号のPDF一覧には無いPDFです（直接URLで付いています）。';
+                  })()}
+                </p>
+              )}
               {/* スキャン画像のPDFは日付を読み違えていることがあるので、元のページを開いて見比べられるようにする */}
               {form.source_pdf_url && pdfInfo?.isScan && (
                 <div className="mt-1.5">
@@ -604,7 +651,7 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
                   </p>
                   <PdfPagePeek
                     url={form.source_pdf_url}
-                    label={card.newsletter_pdfs.find((p) => p.url === form.source_pdf_url)?.label ?? '由来PDF'}
+                    label={currentPdfLabel ?? '由来PDF'}
                     pages={pdfInfo.pages}
                   />
                 </div>

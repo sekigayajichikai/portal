@@ -142,7 +142,7 @@ export async function getAdminEventCards(opts: { newsletterId?: string; fromDate
     .order('event_date', { ascending: true, nullsFirst: false })
     .order('display_order');
   if (error) throw error;
-  return (data || []).map(toAdminEventCard);
+  return fillPdfLabelsAcross((data || []).map(toAdminEventCard), data || []);
 }
 
 /** 管理画面用に予定カードを1件取得する（編集ダイアログ用。無ければ null） */
@@ -151,25 +151,80 @@ export async function getAdminEventCardById(id: string): Promise<AdminEventCard 
   if (!supabase) throw new Error('Supabase未接続');
   const { data, error } = await supabase.from('event_cards').select(ADMIN_CARD_SELECT).eq('id', id).maybeSingle();
   if (error) throw error;
-  return data ? toAdminEventCard(data) : null;
+  if (!data) return null;
+  const card = toAdminEventCard(data);
+  if (card.source_pdf_url && !card.source_pdf_label) {
+    // 由来PDFが他の号のものなら、その号の一覧から名前を補う
+    const choices = await getNewsletterPdfChoices().catch(() => [] as NewsletterPdfChoice[]);
+    const label = choices.flatMap((c) => c.pdfs).find((p) => p.url === card.source_pdf_url)?.label;
+    if (label) card.source_pdf_label = label;
+  }
+  return card;
 }
 
 const ADMIN_CARD_SELECT =
   '*, newsletters(title,status,issue_date,source_pdf_url,source_pdf_urls), linked_article:articles!linked_article_id(id,title,source,thumbnail_url,attachments,newsletter_id,newsletters(title))';
 
-function toAdminEventCard(row: any): AdminEventCard {
-  const nl = row.newsletters;
-  const entries: any[] = Array.isArray(nl?.source_pdf_urls) ? nl.source_pdf_urls : [];
+/** 号の元PDF一覧（source_pdf_urls。古いデータは文字列の配列）を { url, label } の配列にする */
+type PdfSourceRow = { source_pdf_urls?: unknown; source_pdf_url?: string | null } | null | undefined;
+function parsePdfEntries(nl: PdfSourceRow): Array<{ url: string; label: string }> {
+  const entries: unknown[] = Array.isArray(nl?.source_pdf_urls) ? nl.source_pdf_urls : [];
   const pdfs = entries
-    .map((e: any, i: number) =>
-      typeof e === 'string'
-        ? { url: e, label: `PDF ${i + 1}` }
-        : e?.url
-          ? { url: e.url as string, label: (e.label || e.publisher || `PDF ${i + 1}`) as string }
-          : null
-    )
+    .map((raw, i) => {
+      if (typeof raw === 'string') return { url: raw, label: `PDF ${i + 1}` };
+      const e = raw as { url?: string; label?: string; publisher?: string } | null;
+      return e?.url ? { url: e.url, label: e.label || e.publisher || `PDF ${i + 1}` } : null;
+    })
     .filter((p): p is { url: string; label: string } => !!p);
   if (pdfs.length === 0 && nl?.source_pdf_url) pdfs.push({ url: nl.source_pdf_url, label: 'PDF 1' });
+  return pdfs;
+}
+
+/** 由来PDFの選択肢に使う、号ごとのPDF一覧 */
+export interface NewsletterPdfChoice {
+  newsletter_id: string;
+  title: string;
+  status: string;
+  issue_date: string | null;
+  pdfs: Array<{ url: string; label: string }>;
+}
+
+/**
+ * 下書きと公開中のすべての号のPDF一覧（発行日の新しい順。旧版は含めない）。
+ * 予定の編集ダイアログの「由来PDF」で、予定の号と違う号のチラシも名前で選べるようにする（2026-10-27）。
+ * 前の号の予定に次の号のチラシが付く（10月号の予定、チラシは11月号）のは毎月起きるため
+ */
+export async function getNewsletterPdfChoices(): Promise<NewsletterPdfChoice[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続');
+  const { data, error } = await supabase
+    .from('newsletters')
+    .select('id,title,status,issue_date,source_pdf_url,source_pdf_urls')
+    .in('status', ['draft', 'published'])
+    .order('issue_date', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((nl) => ({
+    newsletter_id: nl.id,
+    title: nl.title ?? '',
+    status: nl.status ?? '',
+    issue_date: nl.issue_date ?? null,
+    pdfs: parsePdfEntries(nl),
+  }));
+}
+
+/**
+ * 由来PDFの名前が自分の号のPDF一覧に無いカードに、他の号のPDF一覧から名前を補う（同じ一覧の中で見つかる分だけ。追加の問い合わせはしない）。
+ * 予定の号と違う号のチラシが付いているカード（10月号の予定に11月号のチラシ）で「出典」や📎の名前が空になっていた
+ */
+function fillPdfLabelsAcross<T extends { source_pdf_url?: string | null; source_pdf_label?: string | null }>(cards: T[], rows: any[]): T[] {
+  const byUrl = new Map<string, string>();
+  for (const row of rows) for (const p of parsePdfEntries(row.newsletters)) if (!byUrl.has(p.url)) byUrl.set(p.url, p.label);
+  return cards.map((c) => (c.source_pdf_url && !c.source_pdf_label && byUrl.has(c.source_pdf_url) ? { ...c, source_pdf_label: byUrl.get(c.source_pdf_url)! } : c));
+}
+
+function toAdminEventCard(row: any): AdminEventCard {
+  const nl = row.newsletters;
+  const pdfs = parsePdfEntries(nl);
   const { newsletters: _n, linked_article, ...card } = row;
   const { newsletters: articleNl, ...article } = linked_article ?? {};
   return {
@@ -239,7 +294,7 @@ export async function getPublishedEventCards(
         )
       : data || [];
 
-  return rows.map((row: any): PublicEventCard => {
+  const cards = rows.map((row: any): PublicEventCard => {
     const nl = row.newsletters;
     // source_pdf_urls は { url, label, publisher, ... } のオブジェクト配列（古いデータは文字列）
     const entries: any[] = Array.isArray(nl?.source_pdf_urls) ? nl.source_pdf_urls : [];
@@ -269,6 +324,8 @@ export async function getPublishedEventCards(
       newsletter_title: nl?.title ?? null,
     };
   });
+  // 由来PDFが他の号のもの（前の号の予定に次の号のチラシ）でも、同じ一覧にその号があれば名前を補う
+  return fillPdfLabelsAcross(cards, data || []);
 }
 
 /**
