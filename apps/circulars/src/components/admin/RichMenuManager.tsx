@@ -157,6 +157,11 @@ export const RichMenuManager: React.FC = () => {
   }, [preview, customImage, savedImageUrl, savedLoaded]);
 
   const update = (patch: Partial<RichMenuDef>) => setDef((d) => ({ ...d, ...patch }));
+  /** タブを変えると上の帯が変わるので、保存した画像（Storage）ではなく定義からの自動生成に切り替える（古い画像のまま LINE に送らないため） */
+  const updateTabs = (tabs: RichMenuDef['tabs']) => {
+    update({ tabs });
+    setUseSavedImage(false);
+  };
   const updateTile = (i: number, patch: Partial<Tile>) => setDef((d) => ({ ...d, tiles: d.tiles.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
 
   /** 役割ごとの保存行（同じ役割が複数あれば updated_at が新しいもの。saved は新しい順） */
@@ -382,7 +387,7 @@ export const RichMenuManager: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={!!def.tabs}
-                  onChange={(e) => update({ tabs: e.target.checked ? defaultTabsFor(role) : null })}
+                  onChange={(e) => updateTabs(e.target.checked ? defaultTabsFor(role) : null)}
                 />
                 上にタブを付ける（2つのメニューを切り替える）
               </label>
@@ -391,7 +396,7 @@ export const RichMenuManager: React.FC = () => {
                   {[0, 1].map((i) => (
                     <div key={i} className={`rounded border px-2 py-1.5 ${tabPreview.position === i ? 'border-teal-400 bg-white' : 'border-slate-200'}`}>
                       <label className="flex items-center gap-1 text-slate-600">
-                        <input type="radio" name="tabpos" checked={tabPreview.position === i} onChange={() => update({ tabs: { ...tabPreview, position: i as 0 | 1 } })} />
+                        <input type="radio" name="tabpos" checked={tabPreview.position === i} onChange={() => updateTabs({ ...tabPreview, position: i as 0 | 1 })} />
                         このメニューはタブ{i + 1}
                       </label>
                       <input
@@ -399,7 +404,7 @@ export const RichMenuManager: React.FC = () => {
                         onChange={(e) => {
                           const labels = [...tabPreview.labels] as [string, string];
                           labels[i] = e.target.value;
-                          update({ tabs: { ...tabPreview, labels } });
+                          updateTabs({ ...tabPreview, labels });
                         }}
                         placeholder="タブの文言"
                         className="mt-1 w-full border border-slate-300 rounded px-1.5 py-1"
@@ -409,7 +414,7 @@ export const RichMenuManager: React.FC = () => {
                         onChange={(e) => {
                           const aliases = [...tabPreview.aliases] as [string, string];
                           aliases[i] = e.target.value.replace(/[^a-z0-9_-]/g, '');
-                          update({ tabs: { ...tabPreview, aliases } });
+                          updateTabs({ ...tabPreview, aliases });
                         }}
                         placeholder="メニューの識別名（半角英数）"
                         className="mt-1 w-full border border-slate-300 rounded px-1.5 py-1 font-mono"
