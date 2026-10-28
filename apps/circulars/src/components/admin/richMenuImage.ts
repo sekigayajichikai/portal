@@ -204,7 +204,7 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
       {
         icon: 'icon:file-pen-line',
         label: 'まだ登録がお済みでない方へ',
-        sub: '利用登録（1分）をすると\n回覧板・予定・防災情報が届きます',
+        sub: '登録すると（1分）\n・いつものバス停の時刻表がすぐ出ます\n・災害のとき、支援の連絡を受けられます\n・役員・事務局に LINE で連絡できます',
         button: '利用登録フォームへ ›',
         action: { type: 'uri', uri: 'https://liff.line.me/2009265243-QfQURcn1' },
       },
