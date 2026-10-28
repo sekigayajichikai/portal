@@ -146,7 +146,7 @@ export const TEMPLATES: Array<{ key: RichMenuDef['template']; label: string; til
 function normalTiles(): Tile[] {
   return [
     { icon: 'icon:radio', label: '街角ラジオ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-    { icon: 'icon:book-open', label: '回覧板', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+    { icon: 'icon:clipboard-list', label: '回覧板', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
     { icon: 'icon:calendar-days', label: '自治会\nカレンダー', action: { type: 'uri', uri: 'https://sekigaya-calendar.vercel.app/' } },
     { icon: 'icon:bus', label: 'バス時刻表', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
     { icon: 'icon:trash-2', label: 'ゴミ出し', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
@@ -189,7 +189,7 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
         button: '利用登録フォームへ ›',
         action: { type: 'uri', uri: 'https://liff.line.me/2009265243-QfQURcn1' },
       },
-      { icon: 'icon:book-open', label: '回覧板を\n見てみる', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+      { icon: 'icon:clipboard-list', label: '回覧板を\n見てみる', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
       // 送る文「お問い合わせ」で、名簿GAS（Inquiry.js）が種類のボタンを返す
       { icon: 'icon:circle-question-mark', label: 'お問い合わせ', action: { type: 'message', text: 'お問い合わせ' } },
     ],

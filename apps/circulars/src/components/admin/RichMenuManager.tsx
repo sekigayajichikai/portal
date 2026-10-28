@@ -163,7 +163,11 @@ export const RichMenuManager: React.FC = () => {
     update({ tabs });
     setUseSavedImage(false);
   };
-  const updateTile = (i: number, patch: Partial<Tile>) => setDef((d) => ({ ...d, tiles: d.tiles.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
+  /** タイルを直したら見た目が変わるので、保存した画像ではなく自動生成に切り替える（「保存した画像に戻す」で戻せる） */
+  const updateTile = (i: number, patch: Partial<Tile>) => {
+    setDef((d) => ({ ...d, tiles: d.tiles.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
+    setUseSavedImage(false);
+  };
 
   /** 役割ごとの保存行（同じ役割が複数あれば updated_at が新しいもの。saved は新しい順） */
   const savedFor = (r: MenuRole) => saved.find((m) => roleOf(m) === r) ?? null;
@@ -368,7 +372,10 @@ export const RichMenuManager: React.FC = () => {
                   value={COLOR_PRESETS.find((p) => p.colors === def.colors)?.key ?? 'custom'}
                   onChange={(e) => {
                     const p = COLOR_PRESETS.find((x) => x.key === e.target.value);
-                    if (p) update({ colors: p.colors });
+                    if (p) {
+                      update({ colors: p.colors });
+                      setUseSavedImage(false);
+                    }
                   }}
                   className="mt-0.5 w-full text-sm border border-slate-300 rounded-lg px-2 py-1.5"
                 >
