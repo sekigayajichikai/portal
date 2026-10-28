@@ -18,6 +18,11 @@
  *     holidays: [{date, name}], settings?: [{userId, patternName, direction, stopName}] }
  *   settings があれば各人のバス設定を全部入れ替える（切り替えのときに一度だけ）。日付は 'yyyy-mm-dd'。
  *
+ * 1人のバス設定の登録: POST ?op=user_setting（ヘッダー x-sync-secret: BUS_SYNC_SECRET）
+ *   { userId, direction, stopName, patternName? }。利用登録フォームの「いつも使うバス停」を名簿GAS が送ってくる。
+ *   その人の設定の先頭（「バス」で最初に出るもの）に入れる。同じ名前の設定があれば置き換える。
+ *   stopName に '' を送ると、その名前の設定を消すだけ。{ userId, read: true } なら読むだけ（先頭の設定を返す）。
+ *
  * 公式時刻表の取得: POST ?op=navitime&dep=バス停ID&arr=バス停ID&date=yyyy-mm-dd（ヘッダー x-sync-secret）
  *   京急バスの NAVITIME の発着時刻表の HTML をそのまま返す。名簿GAS から直接読むと 403 で断られるため代わりに読む。
  *
@@ -454,6 +459,43 @@ async function sync(body: SyncBody) {
   return { timetable: body.timetable.length, specialDays: body.specialDays.length, holidays: body.holidays.length, settings: settingsCount };
 }
 
+/** フォームから来た「いつも使うバス停」の設定の名前（マイバス設定の一覧にこの名前で並ぶ） */
+const FORM_PATTERN_NAME = 'いつものバス停';
+
+/**
+ * 1人のバス設定を先頭に入れる（「バス」と送ったとき最初に出るのは id がいちばん小さい設定なので、
+ * その人の設定をいったん消して、新しいものを先頭にして入れ直す）
+ * @returns 入れ直したあとの設定の数と、変えたかどうか
+ */
+async function setUserSettingFirst(body: { userId?: string; direction?: string; stopName?: string; patternName?: string; read?: boolean }) {
+  const userId = String(body.userId ?? '');
+  const direction = String(body.direction ?? '');
+  const stopName = String(body.stopName ?? '');
+  const patternName = String(body.patternName ?? '') || FORM_PATTERN_NAME;
+  if (!/^U[0-9a-f]{32}$/.test(userId)) throw new Error('userId が正しくありません');
+  if (stopName && !['往路', '復路'].includes(direction)) throw new Error('direction は 往路 か 復路');
+  if (stopName) {
+    const data = await loadBusData();
+    if (!getStopNames(data.rows).includes(stopName)) throw new Error('知らない停留所: ' + stopName);
+  }
+
+  const current = await getSettings(userId);
+  if (body.read) return { settings: current.length, first: current[0] ?? null };
+  // 同じ名前の設定は置き換える。同じ行き方が別の名前で入っていれば、それも先頭へ寄せる（二重に持たない）
+  const rest = current.filter((s) => s.patternName !== patternName && !(stopName && s.direction === direction && s.stopName === stopName));
+  const next: BusSetting[] = stopName ? [{ patternName, direction, stopName }, ...rest] : rest;
+  if (JSON.stringify(next) === JSON.stringify(current)) return { settings: current.length, changed: false };
+
+  await db(`bus_user_settings?${eqUser(userId)}`, { method: 'DELETE' });
+  if (next.length > 0) {
+    await db('bus_user_settings', {
+      method: 'POST',
+      body: JSON.stringify(next.map((s) => ({ user_id: userId, pattern_name: s.patternName, direction: s.direction, stop_name: s.stopName }))),
+    });
+  }
+  return { settings: next.length, changed: true };
+}
+
 // ============================================================
 // 入口
 // ============================================================
@@ -474,6 +516,18 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, ...(await sync(JSON.parse(raw))) });
     } catch (e) {
       console.error('sync', e);
+      return json({ ok: false, error: String(e) }, 500);
+    }
+  }
+
+  // 利用登録フォームの「いつも使うバス停」を、その人の設定の先頭に入れる
+  if (url.searchParams.get('op') === 'user_setting') {
+    const secret = env('BUS_SYNC_SECRET');
+    if (!secret || !safeEqual(req.headers.get('x-sync-secret') ?? '', secret)) return json({ error: 'forbidden' }, 403);
+    try {
+      return json({ ok: true, ...(await setUserSettingFirst(JSON.parse(raw))) });
+    } catch (e) {
+      console.error('user_setting', e);
       return json({ ok: false, error: String(e) }, 500);
     }
   }
