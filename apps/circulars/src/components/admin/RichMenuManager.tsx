@@ -27,6 +27,7 @@ import {
   type MenuRole,
   ROLES,
   ROLE_ALIASES,
+  defaultTabsFor,
   menuSignature,
   DEFAULT_COLORS,
   BOSAI_COLORS,
@@ -58,8 +59,9 @@ function defForTemplate(template: RichMenuDef['template'], base?: RichMenuDef): 
 /** 保存行の役割（definition.role。無い旧データは名前から推定） */
 function roleOf(m: SavedRichMenu): MenuRole | null {
   const r = (m.definition as RichMenuDef | null)?.role;
-  if (r === 'normal' || r === 'promo' || r === 'bosai') return r;
+  if (r === 'normal' || r === 'promo' || r === 'normal_pre' || r === 'bosai') return r;
   if (/登録促進/.test(m.name)) return 'promo';
+  if (/登録前/.test(m.name)) return 'normal_pre';
   if (/防災/.test(m.name)) return 'bosai';
   if (/通常/.test(m.name)) return 'normal';
   return null;
@@ -380,7 +382,7 @@ export const RichMenuManager: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={!!def.tabs}
-                  onChange={(e) => update({ tabs: e.target.checked ? { position: 0, labels: ['🏠 通常メニュー', '🚨 防災訓練'], aliases: ['menu-normal', 'menu-bosai'] } : null })}
+                  onChange={(e) => update({ tabs: e.target.checked ? defaultTabsFor(role) : null })}
                 />
                 上にタブを付ける（2つのメニューを切り替える）
               </label>
@@ -618,7 +620,7 @@ export const RichMenuManager: React.FC = () => {
                 <button
                   onClick={async () => {
                     if (!lineId) return;
-                    const promoWarn = role === 'promo' ? '\n\n登録促進メニューは、未入力の人にだけ GAS が紐づけます。全員の既定にすると、登録済みの人にも登録促進が出ます。' : '';
+                    const promoWarn = role === 'promo' || role === 'normal_pre' ? '\n\n登録促進と「通常メニュー（登録前）」は、未入力の人にだけ名簿GASが紐づけます。全員の既定にすると、登録済みの人にも出ます。' : '';
                     if (!(await appConfirm({ title: '友だち全員の既定メニューにしますか？', message: `「${def.name}」が、個別に紐づけていない全員に表示されます。${promoWarn}`, confirmLabel: '全員の既定にする' }))) return;
                     await withLine('default', async () => { await richMenuApi('set_default', { richMenuId: lineId }); showToast('全員の既定メニューにしました'); });
                   }}
@@ -627,7 +629,7 @@ export const RichMenuManager: React.FC = () => {
                 >
                   {busy === 'default' ? <Loader2 size={14} className="animate-spin" /> : <Star size={14} />} 全員の既定にする
                 </button>
-                {role === 'promo' && <span className="text-[11px] text-red-700">登録促進メニューでは押さないでください（未入力の人にだけ GAS が紐づけます）</span>}
+                {(role === 'promo' || role === 'normal_pre') && <span className="text-[11px] text-red-700">このメニューでは押さないでください（未入力の人にだけ名簿GASが紐づけます）</span>}
               </div>
             </div>
           </div>
