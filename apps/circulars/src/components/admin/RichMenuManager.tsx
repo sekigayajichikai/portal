@@ -60,9 +60,10 @@ function defForTemplate(template: RichMenuDef['template'], base?: RichMenuDef): 
 /** 保存行の役割（definition.role。無い旧データは名前から推定） */
 function roleOf(m: SavedRichMenu): MenuRole | null {
   const r = (m.definition as RichMenuDef | null)?.role;
-  if (r === 'normal' || r === 'promo' || r === 'normal_pre' || r === 'bosai') return r;
+  if (r === 'normal' || r === 'normal_2' || r === 'promo' || r === 'normal_pre' || r === 'bosai') return r;
   if (/登録促進/.test(m.name)) return 'promo';
   if (/登録前/.test(m.name)) return 'normal_pre';
+  if (/2枚目/.test(m.name)) return 'normal_2';
   if (/防災/.test(m.name)) return 'bosai';
   if (/通常/.test(m.name)) return 'normal';
   return null;

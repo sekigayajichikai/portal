@@ -5,7 +5,8 @@
  *   grid3x2 … 3列×2行の6タイル（いまの公式LINEのメニューと同じ）
  *   promo   … 大きな1枠（左2列ぶん）＋小さな2枠（登録促進メニュー用）
  * タブ … 上部15%に2つのタブ。押すと別のメニュー（エイリアス）に切り替わる（richmenuswitch）
- *   ペアは2組（TAB_PAIRS）: 通常／防災訓練（地区長・班長向け）、利用登録／通常メニュー（登録前）（未登録の人向け）
+ *   ペアは3組（TAB_PAIRS）: いつもの／問い合わせ（全員の通常メニュー）、利用登録／通常メニュー（登録前）（未登録の人向け）、
+ *   地区長・班長向け／防災訓練（後回し）
  *
  * 仕様: docs/リッチメニュー.md
  */
@@ -34,12 +35,13 @@ export interface TabsDef {
 }
 
 /** メニューの役割（管理画面のタブ。役割ごとに保存メニューは1つ） */
-export type MenuRole = 'normal' | 'promo' | 'normal_pre' | 'bosai';
+export type MenuRole = 'normal' | 'normal_2' | 'promo' | 'normal_pre' | 'bosai';
 export const ROLES: Array<{ key: MenuRole; label: string; hint: string }> = [
-  { key: 'normal', label: '通常メニュー', hint: '登録済みの人に出す。いまの6タイル' },
+  { key: 'normal', label: '通常メニュー', hint: '全員の既定。1枚目「いつもの」。上のタブで2枚目「問い合わせ」に切り替えられる' },
+  { key: 'normal_2', label: '通常メニュー 2枚目', hint: '全員向けの2枚目（マイページ・お問い合わせ）。通常メニューとタブで切り替え' },
   { key: 'promo', label: '登録促進', hint: '未登録の人にだけ紐づけて出す（名簿GASが毎晩同期）。1枚目。上のタブで「通常メニュー（登録前）」に切り替えられる' },
   { key: 'normal_pre', label: '通常メニュー（登録前）', hint: '登録促進の2枚目。未登録の人がタブで切り替えて見る。中身は通常メニューと同じにする' },
-  { key: 'bosai', label: '防災訓練タブ', hint: '地区長・班長にだけ、通常メニューとタブで切り替え' },
+  { key: 'bosai', label: '防災訓練タブ', hint: '地区長・班長にだけ出す2枚目（後回し。エイリアス menu-leader / menu-bosai を登録するまで名簿GASは何もしない）' },
 ];
 
 /**
@@ -47,9 +49,11 @@ export const ROLES: Array<{ key: MenuRole; label: string; hint: string }> = [
  * ラベルとエイリアスはペアの両方で同じにし、「何枚目か（position）」だけ変える。
  * エイリアス名は名簿スプレッドシートの GAS（Jichikai_Line の gas/RichMenuSync.js の RICHMENU_ALIASES）と合わせること。
  */
-export const TAB_PAIRS: Record<'bosai' | 'touroku', { labels: [string, string]; aliases: [string, string] }> = {
-  /** 通常メニュー ⇄ 防災訓練（地区長・班長に紐づける） */
-  bosai: { labels: ['通常メニュー', '防災訓練'], aliases: ['menu-normal', 'menu-bosai'] },
+export const TAB_PAIRS: Record<'normal' | 'bosai' | 'touroku', { labels: [string, string]; aliases: [string, string] }> = {
+  /** いつもの ⇄ 問い合わせ（全員の通常メニュー。1枚目を「全員の既定にする」） */
+  normal: { labels: ['いつもの', '問い合わせ'], aliases: ['menu-normal', 'menu-normal-2'] },
+  /** 地区長・班長向け ⇄ 防災訓練（地区長・班長に紐づける。後回し） */
+  bosai: { labels: ['いつもの', '防災訓練'], aliases: ['menu-leader', 'menu-bosai'] },
   /** 利用登録 ⇄ 通常メニュー（登録前）（未登録の人に紐づける） */
   touroku: { labels: ['利用登録', '通常メニュー'], aliases: ['menu-touroku', 'menu-normal-pre'] },
 };
@@ -68,8 +72,10 @@ export function defaultTabsFor(role: MenuRole): TabsDef {
       return tabsOf(TAB_PAIRS.touroku, 1);
     case 'bosai':
       return tabsOf(TAB_PAIRS.bosai, 1);
+    case 'normal_2':
+      return tabsOf(TAB_PAIRS.normal, 1);
     default:
-      return tabsOf(TAB_PAIRS.bosai, 0);
+      return tabsOf(TAB_PAIRS.normal, 0);
   }
 }
 
@@ -162,8 +168,21 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
     chatBarText: 'メニューを開く',
     template: 'grid3x2',
     colors: DEFAULT_COLORS,
-    tabs: null,
+    tabs: tabsOf(TAB_PAIRS.normal, 0),
     tiles: normalTiles(),
+  },
+  normal_2: {
+    role: 'normal_2',
+    name: '通常メニュー 2枚目',
+    chatBarText: 'メニューを開く',
+    template: 'grid3x2',
+    colors: DEFAULT_COLORS,
+    tabs: tabsOf(TAB_PAIRS.normal, 1),
+    tiles: [
+      { icon: 'icon:user', label: 'マイページ', action: { type: 'uri', uri: 'https://liff.line.me/2009265243-QfQURcn1' } },
+      // 送る文「お問い合わせ」で、名簿GAS（Inquiry.js）が種類のボタンを返す
+      { icon: 'icon:circle-question-mark', label: 'お問い合わせ', action: { type: 'message', text: 'お問い合わせ' } },
+    ],
   },
   normal_pre: {
     role: 'normal_pre',
@@ -418,6 +437,7 @@ export function renderRichMenu(def: RichMenuDef): HTMLCanvasElement {
   tileRects(def).forEach((r, i) => {
     const t = def.tiles[i];
     if (!t) return;
+    if (!t.icon && !t.label.trim() && t.action.type === 'none') return; // 使わない枠は描かない
     const isBig = def.template === 'promo' && i === 0;
     ctx.fillStyle = isBig ? '#fff7dc' : col.tile;
     roundRect(ctx, r.x, r.y, r.w, r.h, 28);
