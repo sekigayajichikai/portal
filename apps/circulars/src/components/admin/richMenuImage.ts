@@ -5,6 +5,7 @@
  *   grid3x2 … 3列×2行の6タイル（いまの公式LINEのメニューと同じ）
  *   promo   … 大きな1枠（左2列ぶん）＋小さな2枠（登録促進メニュー用）
  * タブ … 上部15%に2つのタブ。押すと別のメニュー（エイリアス）に切り替わる（richmenuswitch）
+ *   ペアは2組（TAB_PAIRS）: 通常／防災訓練（地区長・班長向け）、会員登録／通常メニュー（登録前）（未登録の人向け）
  *
  * 仕様: docs/リッチメニュー.md
  */
@@ -31,12 +32,44 @@ export interface TabsDef {
 }
 
 /** メニューの役割（管理画面のタブ。役割ごとに保存メニューは1つ） */
-export type MenuRole = 'normal' | 'promo' | 'bosai';
+export type MenuRole = 'normal' | 'promo' | 'normal_pre' | 'bosai';
 export const ROLES: Array<{ key: MenuRole; label: string; hint: string }> = [
   { key: 'normal', label: '通常メニュー', hint: '登録済みの人に出す。いまの6タイル' },
-  { key: 'promo', label: '登録促進', hint: '未登録の人にだけ紐づけて出す（GASが毎日同期）' },
-  { key: 'bosai', label: '防災訓練タブ', hint: '対象者にだけ、通常メニューとタブで切り替え' },
+  { key: 'promo', label: '登録促進', hint: '未登録の人にだけ紐づけて出す（名簿GASが毎晩同期）。1枚目。上のタブで「通常メニュー（登録前）」に切り替えられる' },
+  { key: 'normal_pre', label: '通常メニュー（登録前）', hint: '登録促進の2枚目。未登録の人がタブで切り替えて見る。中身は通常メニューと同じにする' },
+  { key: 'bosai', label: '防災訓練タブ', hint: '地区長・班長にだけ、通常メニューとタブで切り替え' },
 ];
+
+/**
+ * タブのペア（2つのメニューがお互いに切り替わる）。
+ * ラベルとエイリアスはペアの両方で同じにし、「何枚目か（position）」だけ変える。
+ * エイリアス名は名簿スプレッドシートの GAS（Jichikai_Line の gas/RichMenuSync.js の RICHMENU_ALIASES）と合わせること。
+ */
+export const TAB_PAIRS: Record<'bosai' | 'touroku', { labels: [string, string]; aliases: [string, string] }> = {
+  /** 通常メニュー ⇄ 防災訓練（地区長・班長に紐づける） */
+  bosai: { labels: ['🏠 通常メニュー', '🚨 防災訓練'], aliases: ['menu-normal', 'menu-bosai'] },
+  /** 会員登録 ⇄ 通常メニュー（登録前）（未登録の人に紐づける） */
+  touroku: { labels: ['📝 会員登録', '🏠 通常メニュー'], aliases: ['menu-touroku', 'menu-normal-pre'] },
+};
+
+/** ペアから TabsDef を作る（配列は毎回コピーして、定義どうしで共有しない） */
+function tabsOf(pair: { labels: [string, string]; aliases: [string, string] }, position: 0 | 1): TabsDef {
+  return { position, labels: [pair.labels[0], pair.labels[1]], aliases: [pair.aliases[0], pair.aliases[1]] };
+}
+
+/** 役割ごとの、「上にタブを付ける」をオンにしたときの既定（どのペアの何枚目か） */
+export function defaultTabsFor(role: MenuRole): TabsDef {
+  switch (role) {
+    case 'promo':
+      return tabsOf(TAB_PAIRS.touroku, 0);
+    case 'normal_pre':
+      return tabsOf(TAB_PAIRS.touroku, 1);
+    case 'bosai':
+      return tabsOf(TAB_PAIRS.bosai, 1);
+    default:
+      return tabsOf(TAB_PAIRS.bosai, 0);
+  }
+}
 
 /**
  * 役割ごとの決まったエイリアス（タブ付きでないメニュー用）。
@@ -107,6 +140,18 @@ export const TEMPLATES: Array<{ key: RichMenuDef['template']; label: string; til
   { key: 'promo', label: '登録促進（大1＋小2）', tiles: 3 },
 ];
 
+/** 通常メニューの6タイル（「通常メニュー」と「通常メニュー（登録前）」で同じ中身にする） */
+function normalTiles(): Tile[] {
+  return [
+    { icon: '📻', label: '街角ラジオ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+    { icon: '📖', label: '回覧板', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+    { icon: '🏫', label: '自治会\nカレンダー', action: { type: 'uri', uri: 'https://sekigaya-calendar.vercel.app/' } },
+    { icon: '🚌', label: 'バス時刻表', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+    { icon: '🗑️', label: 'ゴミ出し', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+    { icon: '📣', label: 'お知らせ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+  ];
+}
+
 /** サンプル定義 */
 export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
   normal: {
@@ -116,14 +161,16 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
     template: 'grid3x2',
     colors: DEFAULT_COLORS,
     tabs: null,
-    tiles: [
-      { icon: '📻', label: '街角ラジオ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-      { icon: '📖', label: '回覧板', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-      { icon: '🏫', label: '自治会\nカレンダー', action: { type: 'uri', uri: 'https://sekigaya-calendar.vercel.app/' } },
-      { icon: '🚌', label: 'バス時刻表', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-      { icon: '🗑️', label: 'ゴミ出し', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-      { icon: '📣', label: 'お知らせ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-    ],
+    tiles: normalTiles(),
+  },
+  normal_pre: {
+    role: 'normal_pre',
+    name: '通常メニュー（登録前）',
+    chatBarText: 'メニューを開く',
+    template: 'grid3x2',
+    colors: DEFAULT_COLORS,
+    tabs: tabsOf(TAB_PAIRS.touroku, 1),
+    tiles: normalTiles(),
   },
   promo: {
     role: 'promo',
@@ -131,7 +178,7 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
     chatBarText: '会員登録はこちら',
     template: 'promo',
     colors: PROMO_COLORS,
-    tabs: null,
+    tabs: tabsOf(TAB_PAIRS.touroku, 0),
     tiles: [
       {
         icon: '📝',
@@ -151,7 +198,7 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
     chatBarText: 'メニューを開く',
     template: 'grid3x2',
     colors: BOSAI_COLORS,
-    tabs: { position: 1, labels: ['🏠 通常メニュー', '🚨 防災訓練'], aliases: ['menu-normal', 'menu-bosai'] },
+    tabs: tabsOf(TAB_PAIRS.bosai, 1),
     tiles: [
       { icon: '📅', label: '訓練の案内\n日時・集合場所', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
       { icon: '🗺️', label: '避難場所\nマップ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
