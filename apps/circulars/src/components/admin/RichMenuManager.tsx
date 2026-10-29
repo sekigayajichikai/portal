@@ -122,10 +122,12 @@ export const RichMenuManager: React.FC = () => {
   /**
    * 表示・登録に使う画像の元:
    *   手持ちの画像（選んだ直後） ＞ Storage に保存した画像（useSavedImage） ＞ 定義から自動生成
-   * 保存済みメニューを開いたときは Storage の画像を使う（保存したのに自動生成に戻ってしまわないように）。
-   * タイルや色を直したら「自動生成に切り替え」で作り直せる。
+   * 保存済みメニューを開いたとき、Storage の画像を使うのは手でアップロードした画像（imageSource が 'upload'）だけ。
+   * 自動生成で保存したものは開くたびに定義から作り直す（アイコンや文字の描き方を新しくしても古い画像が残らないように）。
    */
   const [useSavedImage, setUseSavedImage] = useState(false);
+  /** 保存行の画像が手でアップロードしたものか（未設定は自動生成とみなす） */
+  const isUploadedImage = (row: SavedRichMenu | null) => !!row?.image_url && (row.definition as RichMenuDef).imageSource === 'upload';
   const savedImageUrl = useSavedImage && current?.image_url ? current.image_url : null;
   const preview = useMemo(() => renderRichMenu(def), [def]);
   useEffect(() => {
@@ -182,8 +184,8 @@ export const RichMenuManager: React.FC = () => {
     setDef(d);
     setBaseline(JSON.stringify(d));
     setCustomImage(null);
-    // 保存済みなら Storage の画像をそのまま表示・使用する
-    setUseSavedImage(!!row?.image_url);
+    // 手でアップロードした画像だけ Storage のものを表示・使用する（自動生成は作り直す）
+    setUseSavedImage(isUploadedImage(row));
   };
   const dirty = JSON.stringify(def) !== baseline || !!customImage;
   const switchRole = async (r: MenuRole) => {
@@ -231,14 +233,16 @@ export const RichMenuManager: React.FC = () => {
       const blob = await imageBlob();
       const key = (current?.id ?? `new-${Date.now()}`).toString();
       const image_url = await uploadRichMenuImage(blob, key);
-      const definition: RichMenuDef = { ...def, role };
+      // 画像の元を記録する: 手持ちの画像 or 保存画像（手持ちだったもの）を使ったなら 'upload'、自動生成なら 'generated'
+      const imageSource: RichMenuDef['imageSource'] = customImage || savedImageUrl ? 'upload' : 'generated';
+      const definition: RichMenuDef = { ...def, role, imageSource };
       const row = await saveRichMenu({ ...(current ? { id: current.id, line_rich_menu_id: current.line_rich_menu_id, alias_id: current.alias_id } : {}), name: def.name, definition, image_url });
       setCurrent(row);
       setDef(definition);
       setBaseline(JSON.stringify(definition));
       setCustomImage(null);
-      // 以後は Storage に保存した画像を表示・使用する
-      setUseSavedImage(!!row.image_url);
+      // 手でアップロードした画像なら、以後は Storage に保存した画像を表示・使用する
+      setUseSavedImage(isUploadedImage(row));
       await loadSaved();
       showToast('保存しました');
       return row;
@@ -534,7 +538,7 @@ export const RichMenuManager: React.FC = () => {
                   </button>
                   （次の「保存」で画像も置き換わります）。
                 </p>
-              ) : current?.image_url ? (
+              ) : isUploadedImage(current) ? (
                 <p className="text-[11px] text-slate-500 mt-1">
                   定義から自動生成した画像を表示しています。{' '}
                   <button onClick={() => setUseSavedImage(true)} className="text-blue-600 hover:underline">
