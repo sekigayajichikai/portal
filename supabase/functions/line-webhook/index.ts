@@ -19,7 +19,7 @@
  *   settings があれば各人のバス設定を全部入れ替える（切り替えのときに一度だけ）。日付は 'yyyy-mm-dd'。
  *
  * 1人のバス設定の登録: POST ?op=user_setting（ヘッダー x-sync-secret: BUS_SYNC_SECRET）
- *   { userId, direction, stopName, patternName? }。利用登録フォームの「いつも使うバス停」を名簿GAS が送ってくる。
+ *   { userId, stopName }。利用登録フォームの「お住まいに近いバス停」を名簿GAS が送ってくる（行き・帰りの2件を先頭に入れる）。
  *   その人の設定の先頭（「バス」で最初に出るもの）に入れる。同じ名前の設定があれば置き換える。
  *   stopName に '' を送ると、その名前の設定を消すだけ。{ userId, read: true } なら読むだけ（先頭の設定を返す）。
  *
@@ -459,41 +459,50 @@ async function sync(body: SyncBody) {
   return { timetable: body.timetable.length, specialDays: body.specialDays.length, holidays: body.holidays.length, settings: settingsCount };
 }
 
-/** フォームから来た「いつも使うバス停」の設定の名前（マイバス設定の一覧にこの名前で並ぶ） */
-const FORM_PATTERN_NAME = 'いつものバス停';
+/** 利用登録フォームから入れる設定の名前。行き＝近いバス停→金沢文庫駅、帰り＝金沢文庫駅西口→近いバス停 */
+const FORM_PATTERN_GO = '行き';
+const FORM_PATTERN_BACK = '帰り';
+/** 帰りの乗り場（全員共通） */
+const STATION_STOP = '金沢文庫駅西口';
 
 /**
- * 1人のバス設定を先頭に入れる（「バス」と送ったとき最初に出るのは id がいちばん小さい設定なので、
- * その人の設定をいったん消して、新しいものを先頭にして入れ直す）
- * @returns 入れ直したあとの設定の数と、変えたかどうか
+ * 利用登録フォームの「お住まいに近いバス停」（名簿GAS の saveFormBusStop_ から届く）。
+ * 行き（往路・そのバス停）と帰り（復路・金沢文庫駅西口）の2件を、その人の設定の先頭に入れる（「バス」で行きが最初に出て、帰りはボタン1つ）。
+ * 同じ名前・同じ行き方が入っていれば置き換える。3件を超える分は後ろから落とす。
+ * { userId, read: true } なら今の設定（先頭と、近いバス停）を返すだけ（マイページの表示用）。
  */
-async function setUserSettingFirst(body: { userId?: string; direction?: string; stopName?: string; patternName?: string; read?: boolean }) {
+async function setUserSettingFirst(body: { userId?: string; stopName?: string; read?: boolean }) {
   const userId = String(body.userId ?? '');
-  const direction = String(body.direction ?? '');
   const stopName = String(body.stopName ?? '');
-  const patternName = String(body.patternName ?? '') || FORM_PATTERN_NAME;
   if (!/^U[0-9a-f]{32}$/.test(userId)) throw new Error('userId が正しくありません');
-  if (stopName && !['往路', '復路'].includes(direction)) throw new Error('direction は 往路 か 復路');
   if (stopName) {
     const data = await loadBusData();
-    if (!getStopNames(data.rows).includes(stopName)) throw new Error('知らない停留所: ' + stopName);
+    if (stopName === STATION_STOP || !getStopNames(data.rows).includes(stopName)) throw new Error('知らない停留所: ' + stopName);
   }
 
   const current = await getSettings(userId);
-  if (body.read) return { settings: current.length, first: current[0] ?? null };
-  // 同じ名前の設定は置き換える。同じ行き方が別の名前で入っていれば、それも先頭へ寄せる（二重に持たない）
-  const rest = current.filter((s) => s.patternName !== patternName && !(stopName && s.direction === direction && s.stopName === stopName));
-  const next: BusSetting[] = stopName ? [{ patternName, direction, stopName }, ...rest] : rest;
+  if (body.read) return { settings: current.length, first: current[0] ?? null, homeStop: homeStopOf(current) };
+  if (!stopName) return { settings: current.length, changed: false };
+
+  const go: BusSetting = { patternName: FORM_PATTERN_GO, direction: '往路', stopName };
+  const back: BusSetting = { patternName: FORM_PATTERN_BACK, direction: '復路', stopName: STATION_STOP };
+  const sameAs = (a: BusSetting, b: BusSetting) => a.direction === b.direction && a.stopName === b.stopName;
+  const rest = current.filter((s) => s.patternName !== FORM_PATTERN_GO && s.patternName !== FORM_PATTERN_BACK && !sameAs(s, go) && !sameAs(s, back));
+  const next: BusSetting[] = [go, back, ...rest].slice(0, BUS_MAX_PATTERNS);
   if (JSON.stringify(next) === JSON.stringify(current)) return { settings: current.length, changed: false };
 
   await db(`bus_user_settings?${eqUser(userId)}`, { method: 'DELETE' });
-  if (next.length > 0) {
-    await db('bus_user_settings', {
-      method: 'POST',
-      body: JSON.stringify(next.map((s) => ({ user_id: userId, pattern_name: s.patternName, direction: s.direction, stop_name: s.stopName }))),
-    });
-  }
+  await db('bus_user_settings', {
+    method: 'POST',
+    body: JSON.stringify(next.map((s) => ({ user_id: userId, pattern_name: s.patternName, direction: s.direction, stop_name: s.stopName }))),
+  });
   return { settings: next.length, changed: true };
+}
+
+/** 「お住まいに近いバス停」＝「行き」の設定の停留所（無ければ最初の往路の設定。それも無ければ null） */
+function homeStopOf(settings: BusSetting[]): string | null {
+  const go = settings.find((s) => s.patternName === FORM_PATTERN_GO && s.direction === '往路') ?? settings.find((s) => s.direction === '往路');
+  return go ? go.stopName : null;
 }
 
 // ============================================================
@@ -520,7 +529,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // 利用登録フォームの「いつも使うバス停」を、その人の設定の先頭に入れる
+  // 利用登録フォームの「お住まいに近いバス停」を、その人の設定の先頭に入れる（行き・帰り）
   if (url.searchParams.get('op') === 'user_setting') {
     const secret = env('BUS_SYNC_SECRET');
     if (!secret || !safeEqual(req.headers.get('x-sync-secret') ?? '', secret)) return json({ error: 'forbidden' }, 403);
