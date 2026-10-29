@@ -18,6 +18,11 @@
  *     holidays: [{date, name}], settings?: [{userId, patternName, direction, stopName}] }
  *   settings があれば各人のバス設定を全部入れ替える（切り替えのときに一度だけ）。日付は 'yyyy-mm-dd'。
  *
+ * 1人のバス設定の登録: POST ?op=user_setting（ヘッダー x-sync-secret: BUS_SYNC_SECRET）
+ *   { userId, stopName }。利用登録フォームの「お住まいに近いバス停」を名簿GAS が送ってくる（行き・帰りの2件を先頭に入れる）。
+ *   その人の設定の先頭（「バス」で最初に出るもの）に入れる。同じ名前の設定があれば置き換える。
+ *   stopName に '' を送ると、その名前の設定を消すだけ。{ userId, read: true } なら読むだけ（先頭の設定を返す）。
+ *
  * 公式時刻表の取得: POST ?op=navitime&dep=バス停ID&arr=バス停ID&date=yyyy-mm-dd（ヘッダー x-sync-secret）
  *   京急バスの NAVITIME の発着時刻表の HTML をそのまま返す。名簿GAS から直接読むと 403 で断られるため代わりに読む。
  *
@@ -454,6 +459,52 @@ async function sync(body: SyncBody) {
   return { timetable: body.timetable.length, specialDays: body.specialDays.length, holidays: body.holidays.length, settings: settingsCount };
 }
 
+/** 利用登録フォームから入れる設定の名前。行き＝近いバス停→金沢文庫駅、帰り＝金沢文庫駅西口→近いバス停 */
+const FORM_PATTERN_GO = '行き';
+const FORM_PATTERN_BACK = '帰り';
+/** 帰りの乗り場（全員共通） */
+const STATION_STOP = '金沢文庫駅西口';
+
+/**
+ * 利用登録フォームの「お住まいに近いバス停」（名簿GAS の saveFormBusStop_ から届く）。
+ * 行き（往路・そのバス停）と帰り（復路・金沢文庫駅西口）の2件を、その人の設定の先頭に入れる（「バス」で行きが最初に出て、帰りはボタン1つ）。
+ * 同じ名前・同じ行き方が入っていれば置き換える。3件を超える分は後ろから落とす。
+ * { userId, read: true } なら今の設定（先頭と、近いバス停）を返すだけ（マイページの表示用）。
+ */
+async function setUserSettingFirst(body: { userId?: string; stopName?: string; read?: boolean }) {
+  const userId = String(body.userId ?? '');
+  const stopName = String(body.stopName ?? '');
+  if (!/^U[0-9a-f]{32}$/.test(userId)) throw new Error('userId が正しくありません');
+  if (stopName) {
+    const data = await loadBusData();
+    if (stopName === STATION_STOP || !getStopNames(data.rows).includes(stopName)) throw new Error('知らない停留所: ' + stopName);
+  }
+
+  const current = await getSettings(userId);
+  if (body.read) return { settings: current.length, first: current[0] ?? null, homeStop: homeStopOf(current) };
+  if (!stopName) return { settings: current.length, changed: false };
+
+  const go: BusSetting = { patternName: FORM_PATTERN_GO, direction: '往路', stopName };
+  const back: BusSetting = { patternName: FORM_PATTERN_BACK, direction: '復路', stopName: STATION_STOP };
+  const sameAs = (a: BusSetting, b: BusSetting) => a.direction === b.direction && a.stopName === b.stopName;
+  const rest = current.filter((s) => s.patternName !== FORM_PATTERN_GO && s.patternName !== FORM_PATTERN_BACK && !sameAs(s, go) && !sameAs(s, back));
+  const next: BusSetting[] = [go, back, ...rest].slice(0, BUS_MAX_PATTERNS);
+  if (JSON.stringify(next) === JSON.stringify(current)) return { settings: current.length, changed: false };
+
+  await db(`bus_user_settings?${eqUser(userId)}`, { method: 'DELETE' });
+  await db('bus_user_settings', {
+    method: 'POST',
+    body: JSON.stringify(next.map((s) => ({ user_id: userId, pattern_name: s.patternName, direction: s.direction, stop_name: s.stopName }))),
+  });
+  return { settings: next.length, changed: true };
+}
+
+/** 「お住まいに近いバス停」＝「行き」の設定の停留所（無ければ最初の往路の設定。それも無ければ null） */
+function homeStopOf(settings: BusSetting[]): string | null {
+  const go = settings.find((s) => s.patternName === FORM_PATTERN_GO && s.direction === '往路') ?? settings.find((s) => s.direction === '往路');
+  return go ? go.stopName : null;
+}
+
 // ============================================================
 // 入口
 // ============================================================
@@ -474,6 +525,18 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, ...(await sync(JSON.parse(raw))) });
     } catch (e) {
       console.error('sync', e);
+      return json({ ok: false, error: String(e) }, 500);
+    }
+  }
+
+  // 利用登録フォームの「お住まいに近いバス停」を、その人の設定の先頭に入れる（行き・帰り）
+  if (url.searchParams.get('op') === 'user_setting') {
+    const secret = env('BUS_SYNC_SECRET');
+    if (!secret || !safeEqual(req.headers.get('x-sync-secret') ?? '', secret)) return json({ error: 'forbidden' }, 403);
+    try {
+      return json({ ok: true, ...(await setUserSettingFirst(JSON.parse(raw))) });
+    } catch (e) {
+      console.error('user_setting', e);
       return json({ ok: false, error: String(e) }, 500);
     }
   }
