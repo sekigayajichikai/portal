@@ -12,6 +12,7 @@ import { FileText, Calendar, ChevronRight, ChevronUp, ChevronDown, GripVertical,
 import { ArticleList } from './ArticleList';
 import { EventCandidateDialog } from './EventCandidateDialog';
 import { EventCardEditDialog } from './EventCardEditDialog';
+import { PdfCheckDialog } from './PdfCheckDialog';
 import { ImageCropPage } from './ImageCropPage';
 import { ArticleCropPage } from './ArticleCropPage';
 import { ImageAssignmentDialog } from './ImageAssignmentDialog';
@@ -107,6 +108,8 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   const [showEventExtract, setShowEventExtract] = useState(false);
   /** 編集ダイアログで開いている予定カード（予定タブ・週次配信と同じダイアログ） */
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  /** 「PDFの点検」ダイアログ（開けるか・使われているか・同封物一覧との突き合わせ） */
+  const [showPdfCheck, setShowPdfCheck] = useState(false);
   const [showArticleCrop, setShowArticleCrop] = useState(false);
   /** Drive の pic フォルダから自動で入った写真（保留画像）の件数と、記事に付ける画面の表示（2026-10-27） */
   const [pendingImageCount, setPendingImageCount] = useState(0);
@@ -1164,6 +1167,21 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               <div className="flex items-center justify-between mb-3">
                 {collapsibleHeading('pdfs', true, 'PDF一覧', <><FileText size={20} />登録済みPDF ({pdfEntries.length}件)</>)}
                 <div className="flex items-center gap-2 flex-wrap justify-end">
+                {showPdfCheck && (
+                  <PdfCheckDialog
+                    newsletterId={selectedNewsletter.id}
+                    newsletterTitle={selectedNewsletter.title}
+                    pdfs={pdfEntries.map((p) => ({ url: p.url, label: p.label || p.filename }))}
+                    onClose={() => setShowPdfCheck(false)}
+                  />
+                )}
+                <button
+                  onClick={() => setShowPdfCheck(true)}
+                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-slate-300 rounded bg-white hover:bg-slate-50 text-slate-700"
+                  title="各PDFが開けるか・記事や予定で使われているかと、関ヶ谷だよりの回覧物一覧との突き合わせ（入れ忘れ）"
+                >
+                  <ClipboardCheck size={14} /> PDFの点検
+                </button>
                 {pdfEntries.length > 0 && (
                   <button
                     onClick={async () => {
