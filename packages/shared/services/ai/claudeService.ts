@@ -49,6 +49,8 @@ type ClaudeMessageBody = {
  */
 type ClaudeResponse = {
   content: Array<{ type: string; text?: string }>;
+  /** 'max_tokens' なら出力上限で途中で切れている */
+  stop_reason?: string;
 };
 
 /**
@@ -1056,6 +1058,19 @@ function mockExtractBusSchedule(): BusScheduleExtractionResult {
  * @param referenceDate - 年の補完に使う基準日（回覧板の発行日など） YYYY-MM-DD
  * @returns イベント候補のリスト
  */
+/**
+ * 予定抽出の出力上限。4000 だと予定の多いPDF（関ヶ谷だより・にしかぜ など）で JSON が途中で切れて
+ * 「Expected ',' or ']' after array element」になった（2026-10-29）。1件およそ 150〜250 トークン × 数十件に余裕を持たせる
+ */
+const EVENT_EXTRACTION_MAX_TOKENS = 16000;
+
+/** 出力上限で切れていたらログに残す（読めた分は parseEventCandidatesFromResponse が救う） */
+function warnIfTruncated(response: ClaudeResponse, label: string): void {
+  if (response.stop_reason === 'max_tokens') {
+    console.warn(`${label}: Claude の返事が出力上限（${EVENT_EXTRACTION_MAX_TOKENS} トークン）で途中で切れました。予定が抜けている可能性があります`);
+  }
+}
+
 export async function extractEventCandidatesWithClaude(
   articles: EventPromptArticle[],
   referenceDate: string,
@@ -1072,9 +1087,10 @@ export async function extractEventCandidatesWithClaude(
 
   const response = await callClaudeAPI({
     model: CLAUDE_MODEL,
-    max_tokens: 4000,
+    max_tokens: EVENT_EXTRACTION_MAX_TOKENS,
     messages: [{ role: 'user', content: prompt }],
   });
+  warnIfTruncated(response, '記事からの予定抽出');
 
   const textContent = response.content.find((c) => c.type === 'text');
   if (!textContent?.text) {
@@ -1202,7 +1218,7 @@ export async function extractEventCandidatesFromPDFWithClaude(
 
   const response = await callClaudeAPI({
     model: CLAUDE_MODEL,
-    max_tokens: 4000,
+    max_tokens: EVENT_EXTRACTION_MAX_TOKENS,
     messages: [
       {
         role: 'user',
@@ -1223,6 +1239,7 @@ export async function extractEventCandidatesFromPDFWithClaude(
       },
     ],
   });
+  warnIfTruncated(response, 'PDFからの予定抽出');
 
   const textContent = response.content.find((c) => c.type === 'text');
   if (!textContent || textContent.type !== 'text' || !textContent.text) {

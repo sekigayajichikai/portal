@@ -68,3 +68,46 @@ export function repairJsonString(jsonStr: string): string {
 
   return result.join('');
 }
+
+/**
+ * 途中で切れた（出力上限に当たった）イベント抽出の JSON から、完全に書き終わっている要素だけを取り出す。
+ * 例: {"events":[{...},{...},{"title":"途中で切れ  →  {"events":[{...},{...}]}
+ * 使うのは JSON.parse と repairJsonString の両方が失敗したときだけ。取り出せなければ null。
+ * @param jsonText - AI の返事（JSON 部分）
+ * @returns 完全な要素だけの JSON 文字列。events 配列が見つからない・1件も完全でないときは null
+ */
+export function salvageTruncatedEventsJson(jsonText: string): string | null {
+  const key = jsonText.indexOf('"events"');
+  if (key < 0) return null;
+  const start = jsonText.indexOf('[', key);
+  if (start < 0) return null;
+
+  const items: string[] = [];
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let itemStart = -1;
+  for (let i = start + 1; i < jsonText.length; i++) {
+    const ch = jsonText[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === '{') {
+      if (depth === 0) itemStart = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && itemStart >= 0) {
+        items.push(jsonText.slice(itemStart, i + 1));
+        itemStart = -1;
+      }
+    } else if (ch === ']' && depth === 0) {
+      break; // 配列が閉じている＝切れていない（別の原因）
+    }
+  }
+  return items.length > 0 ? `{"events":[${items.join(',')}]}` : null;
+}
