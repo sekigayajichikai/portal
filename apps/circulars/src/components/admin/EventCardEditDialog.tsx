@@ -190,10 +190,10 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
     }
     return groups;
   }, [card, pdfChoices]);
-  /** 今の由来PDFの名前（どの号のものでも） */
+  /** 今の由来PDFの名前（どの号のものでも）。form は読み込みが終わるまで null なので ?. で触る（null のまま触ると開いた瞬間に真っ白になる） */
   const currentPdfLabel = useMemo(
-    () => (form.source_pdf_url ? pdfGroups.flatMap((g) => g.pdfs).find((p) => p.url === form.source_pdf_url)?.label ?? card?.source_pdf_label ?? null : null),
-    [form.source_pdf_url, pdfGroups, card?.source_pdf_label]
+    () => (form?.source_pdf_url ? pdfGroups.flatMap((g) => g.pdfs).find((p) => p.url === form.source_pdf_url)?.label ?? card?.source_pdf_label ?? null : null),
+    [form?.source_pdf_url, pdfGroups, card?.source_pdf_label]
   );
 
   useEffect(() => {
