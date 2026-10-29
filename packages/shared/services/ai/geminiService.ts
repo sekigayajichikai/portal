@@ -461,6 +461,9 @@ const EVENT_RESPONSE_SCHEMA = {
  */
 export const GEMINI_FALLBACK_MODEL = 'gemini-3.5-flash-lite';
 
+/** 予定抽出の出力上限（既定の 8192 だと予定の多いPDFで JSON が途中で切れる）。切れたときは parseEventCandidatesFromResponse が読めた分を救う */
+const EVENT_MAX_OUTPUT_TOKENS = 32768;
+
 const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -535,6 +538,7 @@ export async function extractEventCandidatesFromPDFWithGemini(
       responseMimeType: 'application/json',
       responseSchema: EVENT_RESPONSE_SCHEMA,
       temperature: 0,
+      maxOutputTokens: EVENT_MAX_OUTPUT_TOKENS, // 予定の多いPDFで JSON が途中で切れないように（2026-10-29）
     },
   });
   // PDF由来のため記事は0件（article_indexは常にnullになる）
@@ -564,6 +568,7 @@ export async function extractEventCandidatesWithGemini(
       responseMimeType: 'application/json',
       responseSchema: EVENT_RESPONSE_SCHEMA,
       temperature: 0,
+      maxOutputTokens: EVENT_MAX_OUTPUT_TOKENS, // 予定の多いPDFで JSON が途中で切れないように（2026-10-29）
     },
   });
   return parseEventCandidatesFromResponse(extractGeminiText(res), articles.length);

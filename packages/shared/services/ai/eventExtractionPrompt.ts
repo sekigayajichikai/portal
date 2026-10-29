@@ -12,7 +12,7 @@
  */
 
 import type { Article } from '../../types/index.js';
-import { repairJsonString } from './jsonRepair.js';
+import { repairJsonString, salvageTruncatedEventsJson } from './jsonRepair.js';
 
 /** イベントの性質（配信・表示での扱いを分けるための区分） */
 export type EventKind = 'community' | 'support' | 'class';
@@ -333,7 +333,17 @@ export function parseEventCandidatesFromResponse(
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    parsed = JSON.parse(repairJsonString(jsonText).replace(/,\s*([}\]])/g, '$1'));
+    try {
+      parsed = JSON.parse(repairJsonString(jsonText).replace(/,\s*([}\]])/g, '$1'));
+    } catch (e) {
+      // 出力上限に当たって途中で切れたとき: 書き終わっている予定だけでも返す（1件も無ければ分かる言葉で止める）
+      const salvaged = salvageTruncatedEventsJson(jsonText) ?? salvageTruncatedEventsJson(repairJsonString(jsonText));
+      if (!salvaged) {
+        throw new Error(`AIの返事を読めませんでした（途中で切れた可能性があります）: ${(e as Error).message}`);
+      }
+      parsed = JSON.parse(salvaged.replace(/,\s*([}\]])/g, '$1'));
+      console.warn(`AIの返事が途中で切れていたため、書き終わっていた ${parsed.events?.length ?? 0} 件だけを使います（残りは抜けている可能性があります）`);
+    }
   }
 
   if (!Array.isArray(parsed?.events)) {
