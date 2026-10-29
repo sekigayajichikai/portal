@@ -41,6 +41,7 @@ import {
   RM_W,
   RM_H,
 } from './richMenuImage';
+import { ICON_PREFIX, LINE_ICONS } from './richMenuIcons';
 
 const COLOR_PRESETS: Array<{ key: string; label: string; colors: RichMenuDef['colors'] }> = [
   { key: 'teal', label: '青緑（いまのメニュー）', colors: DEFAULT_COLORS },
@@ -48,7 +49,7 @@ const COLOR_PRESETS: Array<{ key: string; label: string; colors: RichMenuDef['co
   { key: 'bosai', label: '橙（防災訓練）', colors: BOSAI_COLORS },
 ];
 
-const blankTile = (): Tile => ({ icon: '📌', label: '', action: { type: 'uri', uri: '' } });
+const blankTile = (): Tile => ({ icon: 'icon:pin', label: '', action: { type: 'uri', uri: '' } });
 
 function defForTemplate(template: RichMenuDef['template'], base?: RichMenuDef): RichMenuDef {
   const n = TEMPLATES.find((t) => t.key === template)!.tiles;
@@ -162,7 +163,11 @@ export const RichMenuManager: React.FC = () => {
     update({ tabs });
     setUseSavedImage(false);
   };
-  const updateTile = (i: number, patch: Partial<Tile>) => setDef((d) => ({ ...d, tiles: d.tiles.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
+  /** タイルを直したら見た目が変わるので、保存した画像ではなく自動生成に切り替える（「保存した画像に戻す」で戻せる） */
+  const updateTile = (i: number, patch: Partial<Tile>) => {
+    setDef((d) => ({ ...d, tiles: d.tiles.map((t, j) => (j === i ? { ...t, ...patch } : t)) }));
+    setUseSavedImage(false);
+  };
 
   /** 役割ごとの保存行（同じ役割が複数あれば updated_at が新しいもの。saved は新しい順） */
   const savedFor = (r: MenuRole) => saved.find((m) => roleOf(m) === r) ?? null;
@@ -367,7 +372,10 @@ export const RichMenuManager: React.FC = () => {
                   value={COLOR_PRESETS.find((p) => p.colors === def.colors)?.key ?? 'custom'}
                   onChange={(e) => {
                     const p = COLOR_PRESETS.find((x) => x.key === e.target.value);
-                    if (p) update({ colors: p.colors });
+                    if (p) {
+                      update({ colors: p.colors });
+                      setUseSavedImage(false);
+                    }
                   }}
                   className="mt-0.5 w-full text-sm border border-slate-300 rounded-lg px-2 py-1.5"
                 >
@@ -432,8 +440,26 @@ export const RichMenuManager: React.FC = () => {
             {/* タイル */}
             <div className="space-y-2">
               {def.tiles.map((t, i) => (
-                <div key={i} className="rounded-lg border border-slate-200 px-3 py-2 text-xs grid grid-cols-[3rem_1fr] gap-2 items-start">
-                  <input value={t.icon} onChange={(e) => updateTile(i, { icon: e.target.value })} className="text-center text-lg border border-slate-300 rounded px-1 py-1" title="絵文字" />
+                <div key={i} className="rounded-lg border border-slate-200 px-3 py-2 text-xs grid grid-cols-[8rem_1fr] gap-2 items-start">
+                  {/* アイコン: 線画（richMenuIcons.ts）から選ぶ。「絵文字」を選ぶと文字で入れられる */}
+                  <div className="space-y-1">
+                    <select
+                      value={t.icon.startsWith(ICON_PREFIX) ? t.icon : ''}
+                      onChange={(e) => updateTile(i, { icon: e.target.value || '📌' })}
+                      className="w-full border border-slate-300 rounded px-1 py-1"
+                      title="アイコン"
+                    >
+                      <option value="">絵文字を入れる</option>
+                      {LINE_ICONS.map((ic) => (
+                        <option key={ic.key} value={ICON_PREFIX + ic.key}>
+                          {ic.label}
+                        </option>
+                      ))}
+                    </select>
+                    {!t.icon.startsWith(ICON_PREFIX) && (
+                      <input value={t.icon} onChange={(e) => updateTile(i, { icon: e.target.value })} className="w-full text-center text-lg border border-slate-300 rounded px-1 py-1" title="絵文字" />
+                    )}
+                  </div>
                   <div className="space-y-1">
                     <input value={t.label} onChange={(e) => updateTile(i, { label: e.target.value })} placeholder={`タイル${i + 1}の文言（改行で2行）`} className="w-full border border-slate-300 rounded px-2 py-1" />
                     {def.template === 'promo' && i === 0 && (

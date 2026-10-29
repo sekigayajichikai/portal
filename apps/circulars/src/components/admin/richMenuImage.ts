@@ -5,10 +5,12 @@
  *   grid3x2 … 3列×2行の6タイル（いまの公式LINEのメニューと同じ）
  *   promo   … 大きな1枠（左2列ぶん）＋小さな2枠（登録促進メニュー用）
  * タブ … 上部15%に2つのタブ。押すと別のメニュー（エイリアス）に切り替わる（richmenuswitch）
- *   ペアは2組（TAB_PAIRS）: 通常／防災訓練（地区長・班長向け）、会員登録／通常メニュー（登録前）（未登録の人向け）
+ *   ペアは2組（TAB_PAIRS）: 通常／防災訓練（地区長・班長向け）、利用登録／通常メニュー（登録前）（未登録の人向け）
  *
  * 仕様: docs/リッチメニュー.md
  */
+
+import { ICON_PREFIX, LINE_ICONS } from './richMenuIcons';
 
 export const RM_W = 2500;
 export const RM_H = 1686;
@@ -16,7 +18,7 @@ export const RM_H = 1686;
 export type TileAction = { type: 'uri'; uri: string } | { type: 'message'; text: string } | { type: 'none' };
 
 export interface Tile {
-  icon: string; // 絵文字1つ（線画に差し替える場合は画像アップロードを使う）
+  icon: string; // 線画アイコン（'icon:radio' のように richMenuIcons.ts の key）か、絵文字1つ
   label: string; // 2行までは改行で
   sub?: string; // promo の大枠だけ: 説明文
   button?: string; // promo の大枠だけ: ボタン風の文言
@@ -47,9 +49,9 @@ export const ROLES: Array<{ key: MenuRole; label: string; hint: string }> = [
  */
 export const TAB_PAIRS: Record<'bosai' | 'touroku', { labels: [string, string]; aliases: [string, string] }> = {
   /** 通常メニュー ⇄ 防災訓練（地区長・班長に紐づける） */
-  bosai: { labels: ['🏠 通常メニュー', '🚨 防災訓練'], aliases: ['menu-normal', 'menu-bosai'] },
-  /** 会員登録 ⇄ 通常メニュー（登録前）（未登録の人に紐づける） */
-  touroku: { labels: ['📝 会員登録', '🏠 通常メニュー'], aliases: ['menu-touroku', 'menu-normal-pre'] },
+  bosai: { labels: ['通常メニュー', '防災訓練'], aliases: ['menu-normal', 'menu-bosai'] },
+  /** 利用登録 ⇄ 通常メニュー（登録前）（未登録の人に紐づける） */
+  touroku: { labels: ['利用登録', '通常メニュー'], aliases: ['menu-touroku', 'menu-normal-pre'] },
 };
 
 /** ペアから TabsDef を作る（配列は毎回コピーして、定義どうしで共有しない） */
@@ -143,12 +145,12 @@ export const TEMPLATES: Array<{ key: RichMenuDef['template']; label: string; til
 /** 通常メニューの6タイル（「通常メニュー」と「通常メニュー（登録前）」で同じ中身にする） */
 function normalTiles(): Tile[] {
   return [
-    { icon: '📻', label: '街角ラジオ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-    { icon: '📖', label: '回覧板', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-    { icon: '🏫', label: '自治会\nカレンダー', action: { type: 'uri', uri: 'https://sekigaya-calendar.vercel.app/' } },
-    { icon: '🚌', label: 'バス時刻表', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-    { icon: '🗑️', label: 'ゴミ出し', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-    { icon: '📣', label: 'お知らせ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+    { icon: 'icon:radio', label: '街角ラジオ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+    { icon: 'icon:clipboard-list', label: '回覧板', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+    { icon: 'icon:calendar-days', label: '自治会\nカレンダー', action: { type: 'uri', uri: 'https://sekigaya-calendar.vercel.app/' } },
+    { icon: 'icon:bus', label: 'バス時刻表', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+    { icon: 'icon:trash-2', label: 'ゴミ出し', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+    { icon: 'icon:megaphone', label: 'お知らせ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
   ];
 }
 
@@ -175,21 +177,21 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
   promo: {
     role: 'promo',
     name: '登録促進メニュー',
-    chatBarText: '会員登録はこちら',
+    chatBarText: '利用登録はこちら',
     template: 'promo',
     colors: PROMO_COLORS,
     tabs: tabsOf(TAB_PAIRS.touroku, 0),
     tiles: [
       {
-        icon: '📝',
+        icon: 'icon:file-pen-line',
         label: 'まだ登録がお済みでない方へ',
-        sub: '会員登録（1分）をすると\n回覧板・予定・防災情報が届きます',
-        button: '会員登録フォームへ ›',
+        sub: '利用登録（1分）をすると\n回覧板・予定・防災情報が届きます',
+        button: '利用登録フォームへ ›',
         action: { type: 'uri', uri: 'https://liff.line.me/2009265243-QfQURcn1' },
       },
-      { icon: '📖', label: '回覧板を\n見てみる', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+      { icon: 'icon:clipboard-list', label: '回覧板を\n見てみる', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
       // 送る文「お問い合わせ」で、名簿GAS（Inquiry.js）が種類のボタンを返す
-      { icon: '❓', label: 'お問い合わせ', action: { type: 'message', text: 'お問い合わせ' } },
+      { icon: 'icon:circle-question-mark', label: 'お問い合わせ', action: { type: 'message', text: 'お問い合わせ' } },
     ],
   },
   bosai: {
@@ -200,12 +202,12 @@ export const SAMPLE_DEFS: Record<string, RichMenuDef> = {
     colors: BOSAI_COLORS,
     tabs: tabsOf(TAB_PAIRS.bosai, 1),
     tiles: [
-      { icon: '📅', label: '訓練の案内\n日時・集合場所', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-      { icon: '🗺️', label: '避難場所\nマップ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-      { icon: '✅', label: '参加を\n申し込む', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-      { icon: '🎒', label: '持ち物\nリスト', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
-      { icon: '📢', label: '安否確認\n（訓練）', action: { type: 'message', text: '安否確認（訓練）: 無事です' } },
-      { icon: '☎️', label: '問い合わせ', action: { type: 'message', text: '防災訓練について問い合わせ' } },
+      { icon: 'icon:calendar-days', label: '訓練の案内\n日時・集合場所', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+      { icon: 'icon:map', label: '避難場所\nマップ', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+      { icon: 'icon:square-check', label: '参加を\n申し込む', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+      { icon: 'icon:backpack', label: '持ち物\nリスト', action: { type: 'uri', uri: 'https://sekigayajichikai.vercel.app/' } },
+      { icon: 'icon:siren', label: '安否確認\n（訓練）', action: { type: 'message', text: '安否確認（訓練）: 無事です' } },
+      { icon: 'icon:phone', label: '問い合わせ', action: { type: 'message', text: '防災訓練について問い合わせ' } },
     ],
   },
 };
@@ -284,9 +286,102 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-function lines(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, lineH: number, align: CanvasTextAlign = 'center') {
+/** 行の先頭に来てほしくない記号（簡単な禁則） */
+const NO_HEAD = '）」』、。・,.!?！？';
+
+/**
+ * 文字を幅に収まるように折り返す（\n はそのまま改行）。日本語なので1文字ずつ詰める。
+ * ctx.font を設定してから呼ぶこと。
+ */
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const out: string[] = [];
+  text.split('\n').forEach((para) => {
+    let cur = '';
+    for (const ch of para) {
+      if (cur && !NO_HEAD.includes(ch) && ctx.measureText(cur + ch).width > maxW) {
+        out.push(cur);
+        cur = ch;
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+  });
+  return out;
+}
+
+/** 1行で幅に収まる文字サイズにする（min まで 4px ずつ小さくする）。決めた font を ctx に設定して返す */
+function fitFont(ctx: CanvasRenderingContext2D, text: string, maxW: number, size: number, min: number, weight = 'bold '): number {
+  let s = size;
+  ctx.font = `${weight}${s}px ${FONT}`;
+  while (s > min && ctx.measureText(text).width > maxW) {
+    s -= 4;
+    ctx.font = `${weight}${s}px ${FONT}`;
+  }
+  return s;
+}
+
+/** 複数行を y（1行目の中心）から下へ描く */
+function lines(ctx: CanvasRenderingContext2D, rows: string[], x: number, y: number, lineH: number, align: CanvasTextAlign = 'center') {
   ctx.textAlign = align;
-  text.split('\n').forEach((l, i) => ctx.fillText(l, x, y + i * lineH));
+  rows.forEach((l, i) => ctx.fillText(l, x, y + i * lineH));
+}
+
+/**
+ * アイコンを (cx, cy) を中心に size px の大きさで描く。
+ * 'icon:〜' なら richMenuIcons.ts の線画（24×24 の座標を拡大して線で描く）、それ以外は絵文字として文字で描く。
+ */
+function drawIcon(ctx: CanvasRenderingContext2D, icon: string, cx: number, cy: number, size: number, color: string) {
+  const node = icon.startsWith(ICON_PREFIX) ? LINE_ICONS.find((i) => i.key === icon.slice(ICON_PREFIX.length))?.node : undefined;
+  if (!node) {
+    ctx.fillStyle = color;
+    ctx.font = `${size}px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(icon, cx, cy);
+    return;
+  }
+  ctx.save();
+  ctx.translate(cx - size / 2, cy - size / 2);
+  ctx.scale(size / 24, size / 24);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  node.forEach(([tag, a]) => {
+    ctx.beginPath();
+    switch (tag) {
+      case 'path':
+        ctx.stroke(new Path2D(String(a.d)));
+        return;
+      case 'circle':
+        ctx.arc(Number(a.cx), Number(a.cy), Number(a.r), 0, Math.PI * 2);
+        break;
+      case 'rect': {
+        const rx = Number(a.rx ?? 0);
+        if (rx) roundRect(ctx, Number(a.x), Number(a.y), Number(a.width), Number(a.height), rx);
+        else ctx.rect(Number(a.x), Number(a.y), Number(a.width), Number(a.height));
+        break;
+      }
+      case 'line':
+        ctx.moveTo(Number(a.x1), Number(a.y1));
+        ctx.lineTo(Number(a.x2), Number(a.y2));
+        break;
+      case 'polyline':
+      case 'polygon': {
+        const p = String(a.points).trim().split(/[\s,]+/).map(Number);
+        for (let i = 0; i + 1 < p.length; i += 2) {
+          if (i === 0) ctx.moveTo(p[0], p[1]);
+          else ctx.lineTo(p[i], p[i + 1]);
+        }
+        if (tag === 'polygon') ctx.closePath();
+        break;
+      }
+      default:
+        return;
+    }
+    ctx.stroke();
+  });
+  ctx.restore();
 }
 
 /** 定義から 2500×1686 の画像を描く */
@@ -313,7 +408,7 @@ export function renderRichMenu(def: RichMenuDef): HTMLCanvasElement {
         ctx.fillRect(i * half, 0, half, TAB_H);
       }
       ctx.fillStyle = on ? col.tabOnText : col.tabOffText;
-      ctx.font = `bold 76px ${FONT}`;
+      fitFont(ctx, label, half - 120, 96, 56);
       ctx.textAlign = 'center';
       ctx.fillText(label, i * half + half / 2, TAB_H / 2);
     });
@@ -330,49 +425,59 @@ export function renderRichMenu(def: RichMenuDef): HTMLCanvasElement {
     ctx.lineWidth = 8;
     ctx.strokeStyle = isBig ? '#f7d774' : col.tileBorder;
     ctx.stroke();
-    // 右下の三角（押せる印）
-    if (!isBig) {
-      ctx.fillStyle = col.accent;
-      ctx.beginPath();
-      ctx.moveTo(r.x + r.w, r.y + r.h - 110);
-      ctx.lineTo(r.x + r.w, r.y + r.h);
-      ctx.lineTo(r.x + r.w - 110, r.y + r.h);
-      ctx.closePath();
-      ctx.fill();
-    }
     const cx = r.x + r.w / 2;
+    const innerW = r.w - 120; // 左右の余白を除いた、文字を置ける幅
     if (isBig) {
+      // 上から順に、アイコン → 見出し → 説明 → ボタン。見出し・説明は幅で折り返す
+      drawIcon(ctx, t.icon, cx, r.y + r.h * 0.22, 270, col.text);
       ctx.fillStyle = col.text;
-      ctx.font = `260px ${FONT}`;
-      ctx.textAlign = 'center';
-      ctx.fillText(t.icon, cx, r.y + r.h * 0.28);
-      ctx.font = `bold 96px ${FONT}`;
-      lines(ctx, t.label, cx, r.y + r.h * 0.5, 110);
+      ctx.font = `bold 108px ${FONT}`;
+      const labelRows = wrapText(ctx, t.label, innerW);
+      const labelY = r.y + r.h * 0.42;
+      lines(ctx, labelRows, cx, labelY, 124);
+      let y = labelY + labelRows.length * 124;
       if (t.sub) {
         ctx.fillStyle = '#6b5a1e';
-        ctx.font = `60px ${FONT}`;
-        lines(ctx, t.sub, cx, r.y + r.h * 0.64, 80);
+        ctx.font = `72px ${FONT}`;
+        const subRows = wrapText(ctx, t.sub, innerW);
+        lines(ctx, subRows, cx, y + 10, 90);
+        y += 10 + subRows.length * 90;
       }
       if (t.button) {
+        const bw = Math.min(1100, innerW);
+        const bh = 170;
+        // 説明が長いときはボタンを下にずらす（タイルの下端から 60px は空ける）
+        const by = Math.min(Math.max(r.y + r.h * 0.77, y + 20), r.y + r.h - bh - 60);
         ctx.fillStyle = '#e0a800';
-        const bw = 900;
-        const bh = 140;
-        roundRect(ctx, cx - bw / 2, r.y + r.h * 0.8, bw, bh, 70);
+        roundRect(ctx, cx - bw / 2, by, bw, bh, 85);
         ctx.fill();
         ctx.fillStyle = '#fff';
-        ctx.font = `bold 66px ${FONT}`;
+        fitFont(ctx, t.button, bw - 100, 84, 56);
         ctx.textAlign = 'center';
-        ctx.fillText(t.button, cx, r.y + r.h * 0.8 + bh / 2);
+        ctx.fillText(t.button, cx, by + bh / 2);
       }
       return;
     }
-    const nLines = t.label.split('\n').length;
+    // 小タイル: 文言は幅で折り返し、3行以上なら少し小さくする
+    ctx.font = `bold 100px ${FONT}`;
+    let rows = wrapText(ctx, t.label, innerW);
+    let fontPx = 100;
+    let lineH = 116;
+    if (rows.length > 2) {
+      fontPx = 80;
+      lineH = 94;
+      ctx.font = `bold ${fontPx}px ${FONT}`;
+      rows = wrapText(ctx, t.label, innerW);
+    }
+    const nLines = rows.length;
+    const iconSize = nLines > 2 ? 200 : 230;
+    const iconY = r.y + r.h * (nLines > 2 ? 0.26 : nLines > 1 ? 0.33 : 0.38);
+    drawIcon(ctx, t.icon, cx, iconY, iconSize, col.text);
     ctx.fillStyle = col.text;
-    ctx.font = `200px ${FONT}`;
-    ctx.textAlign = 'center';
-    ctx.fillText(t.icon, cx, r.y + r.h * (nLines > 1 ? 0.36 : 0.4));
-    ctx.font = `bold 78px ${FONT}`;
-    lines(ctx, t.label, cx, r.y + r.h * (nLines > 1 ? 0.68 : 0.74), 92);
+    ctx.font = `bold ${fontPx}px ${FONT}`;
+    // 文言は1行なら 0.72、2行なら 0.62 の高さから。3行は 0.5 から上から詰める
+    const firstY = r.y + r.h * (nLines > 2 ? 0.5 : nLines > 1 ? 0.62 : 0.72);
+    lines(ctx, rows, cx, firstY, lineH);
   });
   return c;
 }
