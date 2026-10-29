@@ -99,11 +99,16 @@ export interface RichMenuDef {
   tiles: Tile[];
   /** 最後に LINE に登録したときの内容（menuSignature）。今の内容と違えば LINE は古いまま */
   registeredSig?: string;
+  /**
+   * Storage に保存した画像の元。'upload' は手でアップロードした画像（開いたときもその画像を使う）。
+   * 'generated' か未設定（2026-10-29 より前の保存）は自動生成なので、開くたびに定義から作り直す（古い画像が残らないように）
+   */
+  imageSource?: 'upload' | 'generated';
 }
 
-/** LINE に出る内容の署名（役割と registeredSig は含めない）。登録済みの内容と比べるのに使う */
+/** LINE に出る内容の署名（役割・registeredSig・imageSource は含めない）。登録済みの内容と比べるのに使う */
 export function menuSignature(d: RichMenuDef): string {
-  const { role: _role, registeredSig: _sig, ...rest } = d;
+  const { role: _role, registeredSig: _sig, imageSource: _src, ...rest } = d;
   return JSON.stringify(rest);
 }
 
