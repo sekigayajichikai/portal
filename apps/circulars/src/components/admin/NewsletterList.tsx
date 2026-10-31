@@ -337,6 +337,10 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   const canEdit = !!selectedNewsletter &&
     (selectedNewsletter.status === 'draft' || (selectedNewsletter.status === 'published' && liveEditId === selectedNewsletter.id));
 
+  // PDFの発行元・サムネイルは記事本文ではない付帯情報なので、公開中でも「その場で直す」なしで直せる
+  // （サムネイル差替えは元から常時出ていたが、発行元だけ隠れて「欄がない」ように見えていた）
+  const canEditPdfMeta = !!selectedNewsletter;
+
   /**
    * 記事が更新された時の処理
    */
@@ -1329,10 +1333,10 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         </p>
                         <p
                           className={`text-xs truncate ${
-                            canEdit ? 'text-slate-400 cursor-pointer hover:text-blue-500' : 'text-slate-400'
+                            canEditPdfMeta ? 'text-slate-400 cursor-pointer hover:text-blue-500' : 'text-slate-400'
                           }`}
                           onClick={async () => {
-                            if (!canEdit) return;
+                            if (!canEditPdfMeta) return;
                             const newPublisher = await appPrompt({
                               title: '発行元を選択',
                               message: 'タップして選ぶか、下の欄に入力してください',
@@ -1346,9 +1350,9 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                               setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
                             }).catch((error) => { console.error('発行元更新エラー:', error); showError('発行元を更新できませんでした。時間をおいてもう一度お試しください。'); });
                           }}
-                          title={canEdit ? 'クリックして発行元を編集' : ''}
+                          title={canEditPdfMeta ? 'クリックして発行元を編集' : ''}
                         >
-                          {pdf.publisher ? `📍 ${pdf.publisher}` : (canEdit ? '＋ 発行元を設定' : '')}
+                          {pdf.publisher ? `📍 ${pdf.publisher}` : (canEditPdfMeta ? '＋ 発行元を設定' : '')}
                         </p>
                         {(
                           <label className="inline-flex items-center gap-1 mt-1 text-xs text-amber-600 cursor-pointer hover:text-amber-800">
