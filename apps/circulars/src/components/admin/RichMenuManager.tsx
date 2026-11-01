@@ -26,6 +26,7 @@ import {
   type Tile,
   type MenuRole,
   ROLES,
+  ROLE_GROUPS,
   ROLE_ALIASES,
   defaultTabsFor,
   menuSignature,
@@ -321,26 +322,42 @@ export const RichMenuManager: React.FC = () => {
               リッチメニュー
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              公式LINEの下に出るメニューを3つの役割（通常／登録促進／防災訓練タブ）ごとに1つ作ります。右の①「保存して LINE に反映」→ ②「自分だけに反映」で確かめる → ③ 出す相手を決める、の順に進めます。
+              公式LINEの下に出るメニューを「誰に出るか」の段ごとに作ります。上の段は利用登録済みの人、下の段はまだ登録していない人に出ます。右の①「保存して LINE に反映」→ ②「自分だけに反映」で確かめる → ③ 出す相手を決める、の順に進めます。
             </p>
           </div>
         </div>
 
-        {/* 役割タブ（通常／登録促進／防災訓練タブ）。役割ごとに保存メニューは1つ。バッジで状態が分かる */}
-        <div className="mt-4 border-b border-slate-200 flex gap-1">
-          {ROLES.map((r) => {
-            const badge = roleBadge(r.key);
-            const active = role === r.key;
+        {/* 役割タブを「誰に出るか」で2段に分ける（上: 利用登録済み / 下: 未登録）。役割ごとに保存メニューは1つ。バッジで状態が分かる */}
+        <div className="mt-4 space-y-2">
+          {ROLE_GROUPS.map((g) => {
+            const activeGroup = ROLES.find((r) => r.key === role)?.group === g.key;
             return (
-              <button
-                key={r.key}
-                onClick={() => switchRole(r.key)}
-                title={r.hint}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition ${active ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-              >
-                {r.label}
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${badge.cls}`}>{badge.label}</span>
-              </button>
+              <div key={g.key} className={`rounded-lg border px-3 py-2 ${activeGroup ? 'border-teal-300 bg-teal-50/40' : 'border-slate-200'}`}>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                  <span className={`text-sm font-bold ${activeGroup ? 'text-teal-800' : 'text-slate-700'}`}>
+                    <Users size={14} className="inline -mt-0.5 mr-1" />
+                    {g.label}
+                  </span>
+                  <span className="text-[11px] text-slate-500">{g.note}</span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {ROLES.filter((r) => r.group === g.key).map((r) => {
+                    const badge = roleBadge(r.key);
+                    const active = role === r.key;
+                    return (
+                      <button
+                        key={r.key}
+                        onClick={() => switchRole(r.key)}
+                        title={r.hint}
+                        className={`flex items-center gap-2 px-3 py-2 text-sm font-bold rounded-lg border transition ${active ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}
+                      >
+                        {r.label}
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${active ? 'bg-white/90 text-teal-800' : badge.cls}`}>{badge.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </div>
@@ -623,7 +640,7 @@ export const RichMenuManager: React.FC = () => {
                 <Users size={14} /> 特定の人にだけこのメニューを出す
               </p>
               <p className="text-slate-500">
-                LINE のユーザーID（Uで始まる33文字）を改行かカンマ区切りで貼り付けてください。名簿のスプレッドシートのID列をそのままコピーできます。登録済みの人には通常メニュー、班長には防災訓練タブ、のように使います。
+                LINE のユーザーID（Uで始まる33文字）を改行かカンマ区切りで貼り付けてください。名簿のスプレッドシートのID列をそのままコピーできます。班長・地区長に防災訓練タブを出す、特定の人に先に見てもらう、のように使います。
               </p>
               <textarea value={userIds} onChange={(e) => setUserIds(e.target.value)} rows={3} placeholder="Uxxxxxxxx…&#10;Uyyyyyyyy…" className="w-full border border-slate-300 rounded px-2 py-1 font-mono" />
               <div className="flex flex-wrap items-center gap-2">
@@ -652,20 +669,29 @@ export const RichMenuManager: React.FC = () => {
                 </button>
               </div>
             </div>
+              {/* 「全員の既定にする」は登録済み向けの1枚目「いつもの」だけ。他の役割では押せないようにし、代わりに届き方を書く（2026-11-01） */}
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <button
-                  onClick={async () => {
-                    if (!lineId) return;
-                    const promoWarn = role === 'promo' || role === 'normal_pre' ? '\n\n登録促進と「通常メニュー（登録前）」は、未入力の人にだけ名簿GASが紐づけます。全員の既定にすると、登録済みの人にも出ます。' : '';
-                    if (!(await appConfirm({ title: '友だち全員の既定メニューにしますか？', message: `「${def.name}」が、個別に紐づけていない全員に表示されます。${promoWarn}`, confirmLabel: '全員の既定にする' }))) return;
-                    await withLine('default', async () => { await richMenuApi('set_default', { richMenuId: lineId }); showToast('全員の既定メニューにしました'); });
-                  }}
-                  disabled={!!busy || !lineId}
-                  className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
-                >
-                  {busy === 'default' ? <Loader2 size={14} className="animate-spin" /> : <Star size={14} />} 全員の既定にする
-                </button>
-                {(role === 'promo' || role === 'normal_pre') && <span className="text-[11px] text-red-700">このメニューでは押さないでください（未入力の人にだけ名簿GASが紐づけます）</span>}
+                {role === 'normal' ? (
+                  <button
+                    onClick={async () => {
+                      if (!lineId) return;
+                      if (!(await appConfirm({ title: '友だち全員の既定メニューにしますか？', message: `「${def.name}」が、個別に紐づけていない全員に表示されます。`, confirmLabel: '全員の既定にする' }))) return;
+                      await withLine('default', async () => { await richMenuApi('set_default', { richMenuId: lineId }); showToast('全員の既定メニューにしました'); });
+                    }}
+                    disabled={!!busy || !lineId}
+                    className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {busy === 'default' ? <Loader2 size={14} className="animate-spin" /> : <Star size={14} />} 全員の既定にする
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-slate-600">
+                    {role === 'normal_2'
+                      ? '2枚目は「全員の既定」にしません。1枚目「いつもの」を既定にすると、タブで切り替えて見られます。'
+                      : role === 'bosai'
+                        ? '班長・地区長にだけ出すメニューです。「全員の既定」にはせず、上の欄にIDを貼って個別に紐づけます。'
+                        : 'まだ登録していない人にだけ出すメニューです。名簿GASが毎晩紐づけるので、「全員の既定」にはしません（登録済みの人にも出てしまいます）。'}
+                  </span>
+                )}
               </div>
             </div>
           </div>
