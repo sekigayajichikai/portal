@@ -223,11 +223,19 @@ export interface DigestOptions {
   topicIds?: string[] | null;
 }
 
+/**
+ * 配信日に対する「今週」の範囲。配信日を含めて7日（月曜配信なら月〜日）。
+ * 日曜配信のときだけ翌日の月曜〜次の日曜にする（2026-11-01 ユーザー指示。日曜は「来週の予定」として送るので、
+ * 配信日当日の日曜の予定を入れない）。+7 にすると同じ曜日まで8日間になるので +6
+ */
+export const digestWeek = (baseDate: string): { from: string; to: string } => {
+  const from = toDate(baseDate).getDay() === 0 ? addDays(baseDate, 1) : baseDate;
+  return { from, to: addDays(from, 6) };
+};
+
 export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDate: string, opts: DigestOptions = {}): Digest {
-  const from = baseDate;
-  // 「配信日から7日間」= 配信日を含めて7日（月曜配信なら日曜まで）。+7 にすると翌週の月曜まで8日間になるので +6
-  const to = addDays(baseDate, 6);
-  const applyUntil = addDays(baseDate, 14);
+  const { from, to } = digestWeek(baseDate);
+  const applyUntil = addDays(from, 14);
   // 締切間近 = 今週が締切（一押しの「⏰今週締切」と同じ範囲）。以前は3日以内だったが、週1回の配信では
   // 4〜6日後の締切が「申込受付中」に埋もれるため、配信の週いっぱいに広げた（2026-10-05）
   const urgentUntil = to;
@@ -304,11 +312,11 @@ export function topicChoices(
   cards: PublicEventCard[],
   baseDate: string
 ): { starred: PublicEventCard[]; dueThisWeek: PublicEventCard[]; others: PublicEventCard[] } {
-  const until = addDays(baseDate, 28);
-  const week = { from: baseDate, to: addDays(baseDate, 6) };
+  const week = digestWeek(baseDate);
+  const until = addDays(week.from, 28);
   const isDue = (c: PublicEventCard) => !!topicDeadline(c, week)?.thisWeek;
   const future = cards
-    .filter((c) => c.event_date && c.event_date >= baseDate && !c.digest_exclude && (c.event_date <= until || isDue(c)))
+    .filter((c) => c.event_date && c.event_date >= week.from && !c.digest_exclude && (c.event_date <= until || isDue(c)))
     .sort((a, b) => (a.event_date! < b.event_date! ? -1 : 1));
   return {
     starred: future.filter((c) => c.weekly_topic),
