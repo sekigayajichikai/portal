@@ -78,7 +78,7 @@ import {
   type LinkKind,
   type ImageKind,
 } from './weeklyDigestCore';
-import { buildGreetingText, buildWeeklyMessages } from './weeklyFlex';
+import { buildGreetingText, buildWeeklyMessages, markAsTestMessages } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
 import { CropEditor } from './CropEditor';
 import { EventCardEditDialog } from './EventCardEditDialog';
@@ -209,6 +209,23 @@ export const WeeklyDigest: React.FC = () => {
   /** LINE 送信（Flex）: テキスト吹き出しの文、送信中のモード、直近の結果、履歴 */
   const [greeting, setGreeting] = useState('');
   const [sending, setSending] = useState<LineSendMode | null>(null);
+  /** 「この人に送る」の送り先ユーザーID（Uで始まる33文字）。ブラウザごとに覚える */
+  const [testUserId, setTestUserId] = useState<string>(() => {
+    try {
+      return localStorage.getItem('weekly-digest-test-user-id') ?? '';
+    } catch {
+      return '';
+    }
+  });
+  const changeTestUserId = (v: string) => {
+    setTestUserId(v);
+    try {
+      localStorage.setItem('weekly-digest-test-user-id', v);
+    } catch {
+      /* 保存できなくても画面は動く */
+    }
+  };
+  const testUserIdValid = /^U[0-9a-f]{32}$/.test(testUserId.trim());
   const [sendNote, setSendNote] = useState<string | null>(null);
   const [history, setHistory] = useState<WeeklyDigestSend[]>([]);
   /** 予約配信: 一覧、日時の入力欄（datetime-local の値）、予約中かどうか */
@@ -779,8 +796,12 @@ export const WeeklyDigest: React.FC = () => {
     return buildWeeklyMessages(digest, greeting, { flyerImageUrls, flyerAspects, linkKinds });
   };
 
-  /** validate: 形式チェックのみ / test: 自分にだけ / broadcast: 全員 */
+  /** validate: 形式チェックのみ / test: 自分にだけ / user: 入れたIDの1人にだけ / admins: 管理者 / broadcast: 全員 */
   const send = async (mode: LineSendMode) => {
+    if (mode === 'user' && !testUserIdValid) {
+      showError('送り先のユーザーIDを入れてください（Uで始まる33文字）');
+      return;
+    }
     if (mode === 'broadcast' && localLinkError()) return;
     if (mode === 'broadcast') {
       const ok = await appConfirm({
@@ -793,9 +814,16 @@ export const WeeklyDigest: React.FC = () => {
     setSending(mode);
     setSendNote(null);
     try {
-      const messages = await buildMessages();
-      const result = await sendLineMessages(mode, messages);
-      const label = mode === 'validate' ? '形式チェックOK。LINE に送れる内容です' : mode === 'test' ? 'テスト送信しました。自分のLINEで見た目を確認してください' : mode === 'admins' ? '管理者に送りました。各自のLINEで見た目を確認してもらってください' : '友だち全員に配信しました';
+      // 全員配信以外は「＜テスト配信＞」の印を付ける（形式チェックも同じ内容で通す）
+      const isTest = mode !== 'broadcast';
+      const messages = isTest ? markAsTestMessages(await buildMessages()) : await buildMessages();
+      const result = await sendLineMessages(mode, messages, mode === 'user' ? { to: testUserId.trim() } : undefined);
+      const label =
+        mode === 'validate' ? '形式チェックOK。LINE に送れる内容です'
+        : mode === 'test' ? 'テスト送信しました。自分のLINEで見た目を確認してください'
+        : mode === 'user' ? '入れたIDの人に送りました（＜テスト配信＞付き）'
+        : mode === 'admins' ? '管理者に送りました。各自のLINEで見た目を確認してもらってください'
+        : '友だち全員に配信しました';
       setSendNote(`✅ ${label}（${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}）`);
       showToast(label);
       if (mode !== 'validate') {
@@ -1519,6 +1547,26 @@ export const WeeklyDigest: React.FC = () => {
                 >
                   {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（自分に）
                 </button>
+                {/* 特定の1人に送る（IDを直接入れる。全員配信以外は「＜テスト配信＞」付きで届く。2026-11-01） */}
+                <span className="inline-flex items-stretch">
+                  <input
+                    type="text"
+                    value={testUserId}
+                    onChange={(e) => changeTestUserId(e.target.value)}
+                    placeholder="LINEのユーザーID（Uから33文字）"
+                    spellCheck={false}
+                    className={`w-64 text-sm border rounded-l-lg px-2 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${testUserId && !testUserIdValid ? 'border-red-400' : 'border-slate-300'}`}
+                    title="この人にだけ送ります。IDは LINE Developers の「あなたのユーザーID」や、名簿のLINE IDの欄で確認できます"
+                  />
+                  <button
+                    onClick={() => send('user')}
+                    disabled={sending !== null || !testUserIdValid}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-white bg-emerald-600 rounded-r-lg border border-l-0 border-emerald-600 hover:bg-emerald-700 transition disabled:opacity-50"
+                    title="入れたユーザーIDの人にだけ送ります（1通消費）"
+                  >
+                    {sending === 'user' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} この人に送る
+                  </button>
+                </span>
                 <button
                   onClick={() => send('admins')}
                   disabled={sending !== null}
@@ -1623,7 +1671,7 @@ export const WeeklyDigest: React.FC = () => {
                       <li key={h.id}>
                         {new Date(h.sent_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{' '}
                         <span className={`px-1.5 py-0.5 rounded font-bold ${h.mode === 'broadcast' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {h.mode === 'broadcast' ? '全員配信' : h.mode === 'admins' ? '管理者' : 'テスト'}
+                          {h.mode === 'broadcast' ? '全員配信' : h.mode === 'admins' ? '管理者' : h.mode === 'user' ? '指定の1人' : 'テスト'}
                         </span>{' '}
                         配信日 {h.base_date}
                         {h.line_status && h.line_status >= 300 ? ` （LINE ${h.line_status}）` : ''}

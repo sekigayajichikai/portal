@@ -6,11 +6,12 @@
  * トークンをクライアントバンドルに含めないためのプロキシです。
  *
  * リクエスト形式:
- *   POST { mode: 'validate' | 'test' | 'broadcast', messages: LineMessage[] }
+ *   POST { mode: 'validate' | 'test' | 'user' | 'admins' | 'broadcast', messages: LineMessage[], to?: string }
  *   ヘッダー: x-app-token (app-login が発行したトークン)
  *
  *   validate  … 送らずに LINE 側で形式チェックだけ行う（Flex JSON の間違いを事前に検出）
  *   test      … LINE_TEST_USER_ID（管理者自身）にだけ push する
+ *   user      … body.to のユーザーID（Uで始まる33文字）1人にだけ push する（画面でIDを直接入れて送る。2026-11-01）
  *   admins    … LINE_ADMIN_USER_IDS（DX委員など。リッチメニューと共通）に multicast する（確認用。人数ぶん通数を使う）
  *   broadcast … 友だち全員に broadcast する
  *
@@ -37,8 +38,10 @@ import { computeAppToken, corsHeaders, jsonResponse } from './appToken.ts';
 const LINE_API = 'https://api.line.me/v2/bot/message';
 const MAX_MESSAGES = 5;
 
-type Mode = 'validate' | 'test' | 'admins' | 'broadcast';
-const MODES: Mode[] = ['validate', 'test', 'admins', 'broadcast'];
+type Mode = 'validate' | 'test' | 'user' | 'admins' | 'broadcast';
+const MODES: Mode[] = ['validate', 'test', 'user', 'admins', 'broadcast'];
+/** LINE のユーザーID（U + 16進32桁） */
+const USER_ID_RE = /^U[0-9a-f]{32}$/;
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -102,9 +105,17 @@ Deno.serve(async (req: Request) => {
     }
     url = `${LINE_API}/push`;
     body = { to, messages };
+  } else if (mode === 'user') {
+    // 画面で入れたユーザーID1人にだけ送る（特定の人に見てもらう確認用。1通消費）
+    const to = typeof parsed?.to === 'string' ? parsed.to.trim() : '';
+    if (!USER_ID_RE.test(to)) {
+      return jsonResponse({ error: '送り先のユーザーIDが正しくありません（Uで始まる33文字。LINE Developers や名簿で確認してください）' }, 400);
+    }
+    url = `${LINE_API}/push`;
+    body = { to, messages };
   } else if (mode === 'admins') {
     // 管理者（DX委員など）の確認用。ID はリッチメニューの「管理者だけに反映」と同じ Secret から読む
-    const to = [...new Set((Deno.env.get('LINE_ADMIN_USER_IDS') ?? '').split(/[\s,]+/).filter((id) => /^U[0-9a-f]{32}$/.test(id)))];
+    const to = [...new Set((Deno.env.get('LINE_ADMIN_USER_IDS') ?? '').split(/[\s,]+/).filter((id) => USER_ID_RE.test(id)))];
     if (to.length === 0) {
       return jsonResponse({ error: 'LINE_ADMIN_USER_IDS が設定されていません（管理者のユーザーIDをカンマ区切りで Supabase の Secrets に）' }, 500);
     }
