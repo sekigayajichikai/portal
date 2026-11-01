@@ -39,15 +39,15 @@ export type MenuRole = 'normal' | 'normal_2' | 'promo' | 'normal_pre' | 'bosai';
 /** 管理画面での段分け: 誰に出るメニューか（2026-11-01。役割名だけでは対象者が読めなかったため） */
 export type RoleGroup = 'registered' | 'unregistered';
 export const ROLE_GROUPS: Array<{ key: RoleGroup; label: string; note: string }> = [
-  { key: 'registered', label: '利用登録済みの人に出る', note: '「いつもの」を全員の既定にする。班長・地区長には防災訓練タブを③で個別に紐づける' },
+  { key: 'registered', label: '利用登録済みの人に出る', note: '「通常（1枚目）」を全員の既定にする。班長・地区長には防災訓練タブを③で個別に紐づける' },
   { key: 'unregistered', label: 'まだ登録していない人に出る', note: '名簿GASが毎晩、未登録の人にだけ紐づける。全員の既定にはしない' },
 ];
 export const ROLES: Array<{ key: MenuRole; group: RoleGroup; label: string; hint: string }> = [
-  { key: 'normal', group: 'registered', label: 'いつもの（1枚目）', hint: '全員の既定。上のタブで2枚目「問い合わせ」に切り替えられる' },
-  { key: 'normal_2', group: 'registered', label: '問い合わせ（2枚目）', hint: '全員向けの2枚目（マイページ・お問い合わせ）。「いつもの」とタブで切り替え' },
+  { key: 'normal', group: 'registered', label: '通常（1枚目）', hint: '全員の既定。上のタブで2枚目「問い合わせ」に切り替えられる' },
+  { key: 'normal_2', group: 'registered', label: '問い合わせ（2枚目）', hint: '全員向けの2枚目（マイページ・お問い合わせ）。「通常」とタブで切り替え' },
   { key: 'bosai', group: 'registered', label: '防災訓練タブ（班長・地区長）', hint: '地区長・班長にだけ出す2枚目（後回し。エイリアス menu-leader / menu-bosai を登録するまで名簿GASは何もしない）' },
-  { key: 'promo', group: 'unregistered', label: '登録のお願い（1枚目）', hint: '未登録の人にだけ紐づけて出す（名簿GASが毎晩同期）。上のタブで2枚目「いつもの（登録前）」に切り替えられる' },
-  { key: 'normal_pre', group: 'unregistered', label: 'いつもの（登録前・2枚目）', hint: '登録のお願いの2枚目。未登録の人がタブで切り替えて見る。中身は登録済み向けの「いつもの」と同じにする' },
+  { key: 'promo', group: 'unregistered', label: '登録のお願い（1枚目）', hint: '未登録の人にだけ紐づけて出す（名簿GASが毎晩同期）。上のタブで2枚目「通常（登録前）」に切り替えられる' },
+  { key: 'normal_pre', group: 'unregistered', label: '通常（登録前・2枚目）', hint: '登録のお願いの2枚目。未登録の人がタブで切り替えて見る。中身は登録済み向けの「通常」と同じにする' },
 ];
 
 /**
