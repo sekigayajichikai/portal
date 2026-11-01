@@ -306,6 +306,27 @@ export function buildRichMenuObject(def: RichMenuDef) {
 
 const FONT = '"Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif';
 
+/**
+ * 画像に描く文字ぶんの Web フォント（Noto Sans JP）を読み込んでから描けるようにする（2026-11-01）。
+ * Google Fonts は使う文字の分だけ後から読むので、読み込み前に canvas に描くと Yu Gothic 等の代替フォントになり、
+ * メニューごとに書体が違って見えていた（「利用登録｜通常メニュー」と「会員登録｜通常メニュー」で別の書体）。
+ * 読み込めない環境でも描けるよう、失敗しても例外にしない
+ */
+export async function ensureRichMenuFonts(def: RichMenuDef): Promise<void> {
+  if (typeof document === 'undefined' || !document.fonts?.load) return;
+  const texts = [
+    ...(def.tabs?.labels ?? []),
+    def.chatBarText,
+    ...def.tiles.flatMap((t) => [t.label, t.sub ?? '', t.button ?? '']),
+  ].join('');
+  if (!texts.trim()) return;
+  try {
+    await Promise.all([document.fonts.load(`bold 96px ${FONT}`, texts), document.fonts.load(`72px ${FONT}`, texts)]);
+  } catch {
+    /* 読めなくても代替フォントで描く */
+  }
+}
+
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -428,6 +449,8 @@ export function renderRichMenu(def: RichMenuDef): HTMLCanvasElement {
   // タブ帯
   if (def.tabs) {
     const half = RM_W / 2;
+    // 2つのタブは同じ文字サイズにする（長い方に合わせる）。別々に縮めると「利用登録」と「通常メニュー」で大きさが揃わない（2026-11-01）
+    const tabFontPx = Math.min(...def.tabs.labels.map((label) => fitFont(ctx, label, half - 120, 96, 56)));
     def.tabs.labels.forEach((label, i) => {
       const on = i === def.tabs!.position;
       ctx.fillStyle = on ? col.tabOn : col.tabOff;
@@ -438,7 +461,7 @@ export function renderRichMenu(def: RichMenuDef): HTMLCanvasElement {
         ctx.fillRect(i * half, 0, half, TAB_H);
       }
       ctx.fillStyle = on ? col.tabOnText : col.tabOffText;
-      fitFont(ctx, label, half - 120, 96, 56);
+      ctx.font = `bold ${tabFontPx}px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.fillText(label, i * half + half / 2, TAB_H / 2);
     });
