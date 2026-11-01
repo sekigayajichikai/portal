@@ -6,7 +6,7 @@
 
 import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 import React, { useEffect, useState } from 'react';
-import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, getAdminEventCards, addEventCard, updateEventCard, deleteEventCard, requestReview, cancelReview, type AdminEventCard } from '@cc-saas/shared';
+import { getNewsletters, getArticlesByNewsletterId, deleteNewsletter, deleteArticle, addArticlesToNewsletter, publishNewsletter, unpublishNewsletter, duplicateNewsletterAsDraft, removePdfUrlFromNewsletter, updatePdfLabel, getPublisherNames, addPublisher, getAdminEventCards, addEventCard, updateEventCard, deleteEventCard, requestReview, cancelReview, type AdminEventCard } from '@cc-saas/shared';
 import { Newsletter, Article } from '@cc-saas/shared/types';
 import { FileText, Calendar, ChevronRight, ChevronUp, ChevronDown, GripVertical, ArrowLeft, Loader2, AlertCircle, Edit, Trash2, Scissors, Globe, EyeOff, Copy, Eye, X, Smartphone, Plus, Sparkles, ClipboardCheck, CheckCircle2, MessageSquareWarning, Pencil, Send } from 'lucide-react';
 import { ArticleList } from './ArticleList';
@@ -18,7 +18,7 @@ import { ImageAssignmentDialog } from './ImageAssignmentDialog';
 import { getPendingImagesByNewsletterId } from '@cc-saas/shared/services/image/pendingImageService';
 import CircularsView from '../public/CircularsView';
 import { MOCK_CATEGORIES } from '@cc-saas/shared/constants';
-import { showToast, showError, appConfirm, appPrompt, ProcessingIndicator } from '@/components/ui/feedback';
+import { showToast, showError, appConfirm, appPrompt, appPromptEx, ProcessingIndicator } from '@/components/ui/feedback';
 import { publicSiteUrl } from '@/lib/siteUrl';
 
 /**
@@ -1337,14 +1337,27 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                           }`}
                           onClick={async () => {
                             if (!canEditPdfMeta) return;
-                            const newPublisher = await appPrompt({
+                            const result = await appPromptEx({
                               title: '発行元を選択',
                               message: 'タップして選ぶか、下の欄に入力してください',
                               choices: publisherPresets,
                               defaultValue: pdf.publisher,
                               confirmLabel: '保存する',
+                              // 選択肢に無い名前を入れたときだけ出す。チェックすると団体マスタに「発行元として使う」で登録され、次から選択肢とAIの候補に出る
+                              checkbox: { label: 'マスタにも追加（次から選択肢に出ます）', onlyForNewValue: true },
                             });
-                            if (newPublisher === null) return;
+                            if (result === null) return;
+                            const newPublisher = result.value.trim();
+                            if (result.checked && newPublisher) {
+                              try {
+                                await addPublisher(newPublisher);
+                                setPublisherPresets(await getPublisherNames());
+                                showToast(`「${newPublisher}」をマスタに登録しました`);
+                              } catch (error) {
+                                console.error('発行元マスタ登録エラー:', error);
+                                showError('マスタに登録できませんでした（発行元の設定は続けます）。マスタタブから登録してください。');
+                              }
+                            }
                             updatePdfLabel(selectedNewsletter.id, pdf.url, pdf.label, newPublisher).then((updated) => {
                               setSelectedNewsletter({ ...selectedNewsletter, ...updated } as any);
                               setNewsletters((prev) => prev.map((n) => n.id === updated.id ? { ...n, ...updated } : n));
