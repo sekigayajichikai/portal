@@ -17,6 +17,7 @@ export * from './services/ai/geminiService.js';
 export * from './services/ai/claudeService.js';
 export * from './services/ai/openRouterService.js';
 export * from './services/ai/aiService.js';
+export * from './services/ai/enclosureCheck.js';
 export * from './services/supabaseClient.js';
 export * from './services/data/newsletterService.js';
 export * from './services/data/reviewService.js';

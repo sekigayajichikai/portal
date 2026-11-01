@@ -1,3 +1,4 @@
+import { buildEnclosurePrompt, parseEnclosureResponse, type EnclosureCheckResult } from './enclosureCheck.js';
 /**
  * Claude AI サービス
  *
@@ -1248,4 +1249,27 @@ export async function extractEventCandidatesFromPDFWithClaude(
 
   // PDF由来のため記事は0件（article_indexは常にnullになる）
   return parseEventCandidatesFromResponse(textContent.text, 0);
+}
+
+/**
+ * 関ヶ谷だより（PDF）の回覧物一覧を読み、登録済みPDFの名前と突き合わせる（Claude 版。Gemini が使えないときの控え）
+ * プロンプト・出力の形は geminiService.checkEnclosuresWithGemini と同じ。
+ */
+export async function checkEnclosuresWithClaude(pdfBase64: string, labels: string[]): Promise<EnclosureCheckResult> {
+  if (!hasClaudeAccess()) throw new Error('AI機能が利用できません（APIキー/プロキシ未設定）');
+  const response = await callClaudeAPI({
+    model: CLAUDE_MODEL,
+    max_tokens: 8000,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+          { type: 'text', text: buildEnclosurePrompt(labels) },
+        ],
+      },
+    ],
+  });
+  const textContent = response.content.find((c) => c.type === 'text');
+  return parseEnclosureResponse(textContent?.text ?? '', labels);
 }

@@ -1,3 +1,4 @@
+import { buildEnclosurePrompt, parseEnclosureResponse, type EnclosureCheckResult } from './enclosureCheck.js';
 /**
  * Gemini AI 共通サービス
  *
@@ -854,4 +855,49 @@ function tidyDescription(raw: string): string {
     s = last >= 20 ? cut.slice(0, last + 1) : `${cut.replace(/[、,。]$/, '')}…`;
   }
   return s;
+}
+
+// =====================================================
+// 関ヶ谷だよりの「同封物一覧」と登録済みPDFの突き合わせ（号の画面「PDFの点検」）
+// =====================================================
+
+const ENCLOSURE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    found: { type: 'BOOLEAN' },
+    enclosures: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          name: { type: 'STRING' },
+          matched_label: { type: 'STRING', nullable: true },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  required: ['found', 'enclosures'],
+} as const;
+
+/**
+ * 関ヶ谷だより（PDF）の回覧物一覧を読み、登録済みPDFの名前と突き合わせる（Gemini）
+ * @param pdfBase64 - 関ヶ谷だよりの PDF（Base64、データURLの頭なし）
+ * @param labels - 登録済みPDFの名前
+ */
+export async function checkEnclosuresWithGemini(pdfBase64: string, labels: string[]): Promise<EnclosureCheckResult> {
+  if (!hasGeminiEventAccess()) throw new Error('Gemini が利用できません（APIキー/プロキシ未設定）');
+  const res = await callGeminiWithRetry({
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } },
+          { text: buildEnclosurePrompt(labels) },
+        ],
+      },
+    ],
+    generationConfig: { responseMimeType: 'application/json', responseSchema: ENCLOSURE_SCHEMA, temperature: 0, maxOutputTokens: 8192 },
+  });
+  return parseEnclosureResponse(extractGeminiText(res), labels);
 }

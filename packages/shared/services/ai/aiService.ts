@@ -1,3 +1,4 @@
+import type { EnclosureCheckResult } from './enclosureCheck.js';
 /**
  * AI統合サービス
  *
@@ -391,5 +392,16 @@ export async function extractEventCandidatesFromPDF(
       geminiService.extractEventCandidatesFromPDFWithGemini(pdfBase64, referenceDate, organizerNames, isJichikai, cutoffDate, venueNames),
     () =>
       claudeService.extractEventCandidatesFromPDFWithClaude(pdfBase64, referenceDate, organizerNames, isJichikai, cutoffDate, venueNames)
+  );
+}
+
+/**
+ * 関ヶ谷だよりの回覧物一覧と登録済みPDFの突き合わせ（プロバイダ自動切替）。号の画面「PDFの点検」から
+ */
+export async function checkEnclosures(pdfBase64: string, labels: string[]): Promise<EnclosureCheckResult> {
+  return withEventFallback(
+    '同封物一覧の突き合わせ',
+    () => geminiService.checkEnclosuresWithGemini(pdfBase64, labels),
+    () => claudeService.checkEnclosuresWithClaude(pdfBase64, labels)
   );
 }
