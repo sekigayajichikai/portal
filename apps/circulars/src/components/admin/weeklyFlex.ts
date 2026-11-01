@@ -309,3 +309,22 @@ export function buildWeeklyMessages(d: Digest, greeting: string, opts: FlexBuild
   if (rest) msgs.push(rest);
   return msgs;
 }
+
+/** テスト配信（全員配信以外）の印。見出し「【関ヶ谷自治会 今週のお知らせ】」の前に付ける */
+export const TEST_PREFIX = '＜テスト配信＞';
+const HEADING_MARK = '【関ヶ谷自治会 今週のお知らせ】';
+
+/**
+ * 全員配信以外（自分・指定した人・管理者）に送るとき、受け取った側がテストだと分かるように印を付ける（2026-11-01）。
+ * テキストは見出しの直前に「＜テスト配信＞」を入れ（見出しが無ければ先頭行に）、Flex は通知に出る altText の先頭に付ける
+ */
+export function markAsTestMessages(msgs: LineMessage[]): LineMessage[] {
+  return msgs.map((m) => {
+    if (m.type === 'text') {
+      const text = m.text.includes(HEADING_MARK) ? m.text.replace(HEADING_MARK, `${TEST_PREFIX}${HEADING_MARK}`) : `${TEST_PREFIX}\n${m.text}`;
+      return { ...m, text };
+    }
+    if (m.type === 'flex') return { ...m, altText: `${TEST_PREFIX}${m.altText}`.slice(0, 400) };
+    return m;
+  });
+}

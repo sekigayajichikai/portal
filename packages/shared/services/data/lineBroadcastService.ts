@@ -16,7 +16,8 @@ import { getStoredAppToken, requireRelogin, RELOGIN_MESSAGE } from '../ai/aiProx
 /** LINE Messaging API のメッセージ（text / flex / image）。中身の型はゆるく持つ */
 export type LineMessage = { type: 'text'; text: string } | { type: 'flex'; altText: string; contents: unknown } | { type: 'image'; originalContentUrl: string; previewImageUrl: string };
 
-export type LineSendMode = 'validate' | 'test' | 'admins' | 'broadcast';
+/** validate: 形式チェック / test: 自分 / user: 指定した1人（to 必須） / admins: 管理者 / broadcast: 全員 */
+export type LineSendMode = 'validate' | 'test' | 'user' | 'admins' | 'broadcast';
 
 export interface LineSendResult {
   ok: boolean;
@@ -26,14 +27,15 @@ export interface LineSendResult {
 }
 
 /**
- * LINE にメッセージを送る（validate: 形式チェックのみ / test: 自分にだけ / admins: 管理者（LINE_ADMIN_USER_IDS）だけ / broadcast: 全員）
+ * LINE にメッセージを送る（validate: 形式チェックのみ / test: 自分にだけ / user: opts.to の1人にだけ / admins: 管理者（LINE_ADMIN_USER_IDS）だけ / broadcast: 全員）
  */
-export async function sendLineMessages(mode: LineSendMode, messages: LineMessage[]): Promise<LineSendResult> {
+export async function sendLineMessages(mode: LineSendMode, messages: LineMessage[], opts?: { to?: string }): Promise<LineSendResult> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase未接続');
+  if (mode === 'user' && !opts?.to) throw new Error('送り先のユーザーIDを入れてください');
 
   const { data, error } = await supabase.functions.invoke('line-broadcast', {
-    body: { mode, messages },
+    body: { mode, messages, ...(mode === 'user' ? { to: opts!.to } : {}) },
     headers: { 'x-app-token': getStoredAppToken() ?? '' },
   });
 
