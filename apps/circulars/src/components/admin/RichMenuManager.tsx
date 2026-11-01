@@ -36,6 +36,7 @@ import {
   SAMPLE_DEFS,
   TEMPLATES,
   renderRichMenu,
+  ensureRichMenuFonts,
   buildRichMenuObject,
   canvasToUploadBlob,
   blobToBase64,
@@ -130,7 +131,15 @@ export const RichMenuManager: React.FC = () => {
   /** 保存行の画像が手でアップロードしたものか（未設定は自動生成とみなす） */
   const isUploadedImage = (row: SavedRichMenu | null) => !!row?.image_url && (row.definition as RichMenuDef).imageSource === 'upload';
   const savedImageUrl = useSavedImage && current?.image_url ? current.image_url : null;
-  const preview = useMemo(() => renderRichMenu(def), [def]);
+  /** Web フォントが読めたら描き直す（読み込み前に描いた代替フォントのままにしない） */
+  const [fontTick, setFontTick] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    ensureRichMenuFonts(def).then(() => { if (!cancelled) setFontTick((t) => t + 1); });
+    return () => { cancelled = true; };
+  }, [def]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const preview = useMemo(() => renderRichMenu(def), [def, fontTick]);
   useEffect(() => {
     const c = canvasRef.current;
     // 保存済みを読み終えるまでは描かない（既定デザインがちらつくのを防ぐ）
@@ -224,7 +233,9 @@ export const RichMenuManager: React.FC = () => {
       if (blob.size > 1024 * 1024) throw new Error('保存した画像が1MBを超えています');
       return blob;
     }
-    return canvasToUploadBlob(preview);
+    // LINE に送る画像は、フォントを読み込んでから描き直したものを使う（プレビューが代替フォントのままのことがある）
+    await ensureRichMenuFonts(def);
+    return canvasToUploadBlob(renderRichMenu(def));
   };
 
   /** DB に保存（画像も Storage に置く） */
