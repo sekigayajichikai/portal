@@ -69,6 +69,7 @@ import {
   buildDigest,
   topicChoices,
   topicDeadline,
+  digestWeek,
   addDays,
   availableLinkKinds,
   LINK_KIND_LABEL,
@@ -1147,7 +1148,7 @@ export const WeeklyDigest: React.FC = () => {
                   ...choices.others.map((c) => ({ c, star: false })),
                 ].map(({ c, star }) => {
                   // 今週が申込締切のものは印を付ける（開催が先でも、申込のリマインドとして一押しにできる）
-                  const due = topicDeadline(c, { from: baseDate, to: addDays(baseDate, 6) });
+                  const due = topicDeadline(c, digestWeek(baseDate));
                   const on = currentTopicIds.includes(c.id);
                   const order = currentTopicIds.indexOf(c.id);
                   const disabled = !on && currentTopicIds.length >= MAX_TOPICS;
@@ -1644,8 +1645,8 @@ export const WeeklyDigest: React.FC = () => {
       <div className="bg-white p-5 rounded-2xl shadow border border-slate-200 text-sm text-slate-600 space-y-1">
         <p className="font-bold text-slate-600">組み立てのルール</p>
         <p>・⭐一押し: 配信候補（⭐）のうち開催が近いもの1件。紹介文（1〜2文）と、チラシPDF→記事→予定ページの順でいちばん直接的なURLを添えます ／ 📰レポート: 直近14日に公開したもの最大2件</p>
-        <p>・📅今週の予定: 要予約以外で配信日から7日間、最大6件 ／ 📝申込受付中: 要予約で締切が14日以内、締切順に最大4件</p>
-        <p>・⏰締切間近: 締切が配信日から7日以内（今週締切）。締切が未入力の要予約は「開催7日前」を仮締切にして「頃」を付けます（抽出ダイアログの「締切」欄で入力できます）</p>
+        <p>・📅今週の予定: 要予約以外で配信日から7日間（日曜配信のときは翌月曜〜日曜）、最大6件 ／ 📝申込受付中: 要予約で締切が14日以内、締切順に最大4件</p>
+        <p>・⏰締切間近: 締切がその週のうち（今週締切）。締切が未入力の要予約は「開催7日前」を仮締切にして「頃」を付けます（抽出ダイアログの「締切」欄で入力できます）</p>
         <p>・対象者・参加費は ⭐一押し と 📝申込受付中／⏰締切間近 の行にだけ「（65歳以上・無料）」の形で添えます（📅今週の予定には付けません）</p>
         <p>・件数の上限を超えた分は載りません。載せたいものは ⭐一押しに選ぶと必ず載ります</p>
       </div>
