@@ -51,12 +51,23 @@ export interface PromptOptions {
   multiline?: boolean;
   /** 選択肢（あればタップで選べるリストを表示し、自由入力欄も併設） */
   choices?: string[];
+  /**
+   * 入力欄の下に出すチェック（例: 「マスタにも追加」）。結果は appPromptEx で受け取る。
+   * onlyForNewValue なら、選択肢に無い値を入力したときだけ出す（選択肢をタップして決めたときは常に false）
+   */
+  checkbox?: { label: string; defaultChecked?: boolean; onlyForNewValue?: boolean };
+}
+
+/** appPromptEx の戻り（入力値とチェックの状態） */
+export interface PromptResult {
+  value: string;
+  checked: boolean;
 }
 
 let toastSeq = 0;
 let pushToastImpl: ((toast: ToastItem) => void) | null = null;
 let openConfirmImpl: ((options: ConfirmOptions, resolve: (ok: boolean) => void) => void) | null = null;
-let openPromptImpl: ((options: PromptOptions, resolve: (value: string | null) => void) => void) | null = null;
+let openPromptImpl: ((options: PromptOptions, resolve: (result: PromptResult | null) => void) => void) | null = null;
 
 /** 通知を表示する（type省略時は緑の成功通知） */
 export function showToast(message: string, type: ToastType = 'success'): void {
@@ -94,12 +105,20 @@ export function appConfirm(options: ConfirmOptions): Promise<boolean> {
  * @returns 入力された文字列。キャンセル時は null
  */
 export function appPrompt(options: PromptOptions): Promise<string | null> {
+  return appPromptEx(options).then((r) => (r === null ? null : r.value));
+}
+
+/**
+ * appPrompt のチェック付き版。入力値と options.checkbox のチェック状態を返す（キャンセル時は null）
+ */
+export function appPromptEx(options: PromptOptions): Promise<PromptResult | null> {
   return new Promise((resolve) => {
     if (openPromptImpl) {
       openPromptImpl(options, resolve);
     } else {
       // FeedbackHost未マウント時の保険
-      resolve(window.prompt(options.title, options.defaultValue ?? ''));
+      const v = window.prompt(options.title, options.defaultValue ?? '');
+      resolve(v === null ? null : { value: v, checked: false });
     }
   });
 }
@@ -167,9 +186,10 @@ export const FeedbackHost: React.FC = () => {
   } | null>(null);
   const [promptState, setPromptState] = useState<{
     options: PromptOptions;
-    resolve: (value: string | null) => void;
+    resolve: (result: PromptResult | null) => void;
   } | null>(null);
   const [promptValue, setPromptValue] = useState('');
+  const [promptChecked, setPromptChecked] = useState(false);
 
   useEffect(() => {
     pushToastImpl = (toast) => {
@@ -182,6 +202,7 @@ export const FeedbackHost: React.FC = () => {
     openConfirmImpl = (options, resolve) => setConfirmState({ options, resolve });
     openPromptImpl = (options, resolve) => {
       setPromptValue(options.defaultValue ?? '');
+      setPromptChecked(options.checkbox?.defaultChecked ?? false);
       setPromptState({ options, resolve });
     };
     return () => {
@@ -196,8 +217,18 @@ export const FeedbackHost: React.FC = () => {
     setConfirmState(null);
   };
 
-  const closePrompt = (value: string | null) => {
-    promptState?.resolve(value);
+  /** チェックを出す条件（onlyForNewValue なら、選択肢に無い値を入力しているときだけ） */
+  const showPromptCheckbox = (() => {
+    const cb = promptState?.options.checkbox;
+    if (!cb) return false;
+    if (!cb.onlyForNewValue) return true;
+    const v = promptValue.trim();
+    return v.length > 0 && !(promptState?.options.choices ?? []).includes(v);
+  })();
+
+  /** 閉じる。checked を省くと画面のチェック状態（チェックが出ていなければ false） */
+  const closePrompt = (value: string | null, checked?: boolean) => {
+    promptState?.resolve(value === null ? null : { value, checked: checked ?? (showPromptCheckbox && promptChecked) });
     setPromptState(null);
   };
 
@@ -274,6 +305,19 @@ export const FeedbackHost: React.FC = () => {
                 placeholder={promptState.options.placeholder || (promptState.options.choices?.length ? '上から選ぶか、ここに入力' : undefined)}
                 className="mt-4 w-full border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
+            )}
+
+            {/* 入力欄の下のチェック（例: マスタにも追加） */}
+            {showPromptCheckbox && promptState.options.checkbox && (
+              <label className="mt-3 flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={promptChecked}
+                  onChange={(e) => setPromptChecked(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                {promptState.options.checkbox.label}
+              </label>
             )}
 
             <div className="mt-5 flex gap-3">
