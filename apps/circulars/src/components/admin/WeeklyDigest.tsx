@@ -42,6 +42,11 @@ import {
   listWeeklyDigestDrafts,
   saveWeeklyDigestDraft,
   deleteWeeklyDigestDraft,
+  listLineTestRecipients,
+  addLineTestRecipient,
+  deleteLineTestRecipient,
+  isLineUserId,
+  type LineTestRecipient,
   type WeeklyDigestDraft,
   type PublicEventCard,
   type Article,
@@ -219,22 +224,64 @@ export const WeeklyDigest: React.FC = () => {
   const [greeting, setGreeting] = useState('');
   const [sending, setSending] = useState<LineSendMode | null>(null);
   /** 「この人に送る」の送り先ユーザーID（Uで始まる33文字）。ブラウザごとに覚える */
-  const [testUserId, setTestUserId] = useState<string>(() => {
+  /**
+   * 「この人に送る」の送り先（2026-11-08、B案）。名前＋LINEのユーザーID を DB（line_test_recipients）に共有で登録し、
+   * プルダウンで選ぶ。どの端末からでも同じ一覧が出る。最後に選んだ人はこのブラウザに覚える
+   */
+  const [recipients, setRecipients] = useState<LineTestRecipient[]>([]);
+  const [recipientId, setRecipientId] = useState<string>(() => {
     try {
-      return localStorage.getItem('weekly-digest-test-user-id') ?? '';
+      return localStorage.getItem('weekly-digest-test-recipient') ?? '';
     } catch {
       return '';
     }
   });
-  const changeTestUserId = (v: string) => {
-    setTestUserId(v);
+  const changeRecipient = (id: string) => {
+    setRecipientId(id);
     try {
-      localStorage.setItem('weekly-digest-test-user-id', v);
+      localStorage.setItem('weekly-digest-test-recipient', id);
     } catch {
       /* 保存できなくても画面は動く */
     }
   };
-  const testUserIdValid = /^U[0-9a-f]{32}$/.test(testUserId.trim());
+  const recipient = recipients.find((r) => r.id === recipientId) ?? null;
+  const testUserId = recipient?.line_user_id ?? '';
+  const testUserIdValid = isLineUserId(testUserId);
+  const loadRecipients = () => listLineTestRecipients().then(setRecipients);
+  /** 登録欄（名前・ID）と処理中の印 */
+  const [newRecipientName, setNewRecipientName] = useState('');
+  const [newRecipientId, setNewRecipientId] = useState('');
+  const [recipientBusy, setRecipientBusy] = useState(false);
+  const addRecipient = async () => {
+    setRecipientBusy(true);
+    try {
+      const row = await addLineTestRecipient(newRecipientName, newRecipientId);
+      setNewRecipientName('');
+      setNewRecipientId('');
+      await loadRecipients();
+      changeRecipient(row.id); // 登録した人をそのまま送り先に
+      showToast(`「${row.name}」を登録しました`);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : '登録できませんでした。');
+    } finally {
+      setRecipientBusy(false);
+    }
+  };
+  const removeRecipient = async (r: LineTestRecipient) => {
+    const ok = await appConfirm({ title: `「${r.name}」を送り先から消しますか？`, message: 'LINE の友だち登録には影響しません。また登録すれば戻せます。', confirmLabel: '消す', danger: true });
+    if (!ok) return;
+    setRecipientBusy(true);
+    try {
+      await deleteLineTestRecipient(r.id);
+      if (recipientId === r.id) changeRecipient('');
+      await loadRecipients();
+    } catch (e) {
+      console.error(e);
+      showError('消せませんでした。');
+    } finally {
+      setRecipientBusy(false);
+    }
+  };
   const [sendNote, setSendNote] = useState<string | null>(null);
   const [history, setHistory] = useState<WeeklyDigestSend[]>([]);
   /** 予約配信: 一覧、日時の入力欄（datetime-local の値）、予約中かどうか */
@@ -778,6 +825,7 @@ export const WeeklyDigest: React.FC = () => {
     loadHistory();
     loadSchedules();
     loadQuota();
+    loadRecipients();
     // 予約が送られると状態が変わるので、開いている間は1分ごとに読み直す
     const timer = setInterval(() => {
       loadSchedules();
@@ -870,7 +918,7 @@ export const WeeklyDigest: React.FC = () => {
   /** validate: 形式チェックのみ / test: 自分にだけ / user: 入れたIDの1人にだけ / admins: 管理者 / broadcast: 全員 */
   const send = async (mode: LineSendMode) => {
     if (mode === 'user' && !testUserIdValid) {
-      showError('送り先のユーザーIDを入れてください（Uで始まる33文字）');
+      showError('送り先を選んでください（まだ無ければ、下の「送る相手の登録」で名前と LINE のユーザーID を登録）');
       return;
     }
     if (mode === 'broadcast' && localLinkError()) return;
@@ -1642,22 +1690,26 @@ export const WeeklyDigest: React.FC = () => {
                 >
                   {sending === 'validate' ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />} 形式チェック
                 </button>
-                {/* 特定の1人に送る（IDを直接入れる。全員配信以外は「＜テスト配信＞」付きで届く。2026-11-01） */}
+                {/* 特定の1人に送る（登録済みの人をプルダウンで選ぶ。全員配信以外は「＜テスト配信＞」付きで届く。2026-11-01 → 2026-11-08 に共有の登録へ） */}
                 <span className="inline-flex items-stretch">
-                  <input
-                    type="text"
-                    value={testUserId}
-                    onChange={(e) => changeTestUserId(e.target.value)}
-                    placeholder="LINEのユーザーID（Uから33文字）"
-                    spellCheck={false}
-                    className={`w-64 text-sm border rounded-l-lg px-2 py-2 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${testUserId && !testUserIdValid ? 'border-red-400' : 'border-slate-300'}`}
-                    title="この人にだけ送ります。IDは LINE Developers の「あなたのユーザーID」や、名簿のLINE IDの欄で確認できます"
-                  />
+                  <select
+                    value={recipient ? recipientId : ''}
+                    onChange={(e) => changeRecipient(e.target.value)}
+                    className="text-sm border border-slate-300 rounded-l-lg px-2 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 max-w-[14rem]"
+                    title="この人にだけ送ります。人は下の「送る相手の登録」で増やせます"
+                  >
+                    <option value="">{recipients.length === 0 ? '送る相手（未登録）' : '送る相手を選ぶ'}</option>
+                    {recipients.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     onClick={() => send('user')}
                     disabled={sending !== null || !testUserIdValid}
                     className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-white bg-emerald-600 rounded-r-lg border border-l-0 border-emerald-600 hover:bg-emerald-700 transition disabled:opacity-50"
-                    title="入れたユーザーIDの人にだけ送ります（1通消費）"
+                    title="選んだ人にだけ送ります（1通消費・＜テスト配信＞付き）"
                   >
                     {sending === 'user' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} この人に送る
                   </button>
@@ -1688,6 +1740,53 @@ export const WeeklyDigest: React.FC = () => {
                   {sending === 'broadcast' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 全員に配信
                 </button>
               </div>
+              {/* 「この人に送る」の送り先の登録（名前＋LINEのユーザーID。DB に共有で残り、どの端末でもプルダウンに出る。2026-11-08） */}
+              <details className="text-sm text-slate-600">
+                <summary className="cursor-pointer select-none">送る相手の登録（{recipients.length}人）</summary>
+                <div className="mt-2 space-y-2">
+                  <p className="text-xs text-slate-600">
+                    名前と LINE のユーザーID を登録すると、上の「この人に送る」のプルダウンに出ます。どの端末からでも同じ一覧です。
+                    自分の ID は LINE Developers の「あなたのユーザーID」か、名簿の LINE ID の欄で確認できます。
+                  </p>
+                  <div className="flex flex-wrap items-stretch gap-1.5">
+                    <input
+                      type="text"
+                      value={newRecipientName}
+                      onChange={(e) => setNewRecipientName(e.target.value)}
+                      placeholder="名前（例: はな）"
+                      className="w-36 text-sm border border-slate-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    />
+                    <input
+                      type="text"
+                      value={newRecipientId}
+                      onChange={(e) => setNewRecipientId(e.target.value)}
+                      placeholder="LINEのユーザーID（Uから33文字）"
+                      spellCheck={false}
+                      className={`w-72 text-sm border rounded-lg px-2 py-1.5 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${newRecipientId && !isLineUserId(newRecipientId) ? 'border-red-400' : 'border-slate-300'}`}
+                    />
+                    <button
+                      onClick={addRecipient}
+                      disabled={recipientBusy || !newRecipientName.trim() || !isLineUserId(newRecipientId)}
+                      className="px-3 py-1.5 text-sm font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 transition disabled:opacity-40"
+                    >
+                      {recipientBusy ? <Loader2 size={14} className="animate-spin" /> : '登録'}
+                    </button>
+                  </div>
+                  {recipients.length > 0 && (
+                    <ul className="text-xs space-y-0.5">
+                      {recipients.map((r) => (
+                        <li key={r.id} className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-slate-700">{r.name}</span>
+                          <span className="font-mono text-slate-500">{r.line_user_id.slice(0, 6)}…{r.line_user_id.slice(-4)}</span>
+                          <button onClick={() => removeRecipient(r)} disabled={recipientBusy} className="text-slate-500 hover:text-red-600 underline disabled:opacity-40">
+                            消す
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </details>
               <details className="text-sm text-slate-600">
                 <summary className="cursor-pointer select-none">開発者向け</summary>
                 <div className="mt-2 flex items-center gap-2">
