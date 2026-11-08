@@ -40,7 +40,7 @@ export interface FlexBuildOptions {
   linkKinds: Record<string, LinkKind>;
 }
 
-/** テキスト吹き出しの既定文（画面で編集できる） */
+/** 旧: テキスト吹き出し（吹き出し①）の既定文。2026-11-08 にテキスト吹き出しをやめたので画面では使っていない（テスト・参考用に残す） */
 export function buildGreetingText(d: Digest): string {
   const lines = [digestHeading(d)];
   if (d.topics.length > 0) {
@@ -60,12 +60,18 @@ export function buildGreetingText(d: Digest): string {
 const text = (t: string, extra: Record<string, unknown> = {}) => ({ type: 'text', text: t || ' ', wrap: true, ...extra });
 const uri = (label: string, url: string) => ({ type: 'uri', label: label.slice(0, 20), uri: url });
 const separator = () => ({ type: 'separator' });
-const header = (title: string, sub: string, color: string) => ({
+/** 見出し帯の最上段に置く配信名（吹き出し①のテキストをやめ、最初のカードの帯に載せる。2026-11-08） */
+export const DIGEST_NAME = '関ヶ谷自治会 今週のお知らせ';
+const header = (title: string, sub: string, color: string, top?: string) => ({
   type: 'box',
   layout: 'vertical',
   backgroundColor: color,
   paddingAll: 'md',
-  contents: [text(title, { color: '#ffffff', weight: 'bold', size: 'lg' }), text(sub, { color: '#e8eef8', size: 'sm' })],
+  contents: [
+    ...(top ? [text(top, { color: '#ffffff', size: 'sm', weight: 'bold' })] : []),
+    text(title, { color: '#ffffff', weight: 'bold', size: 'lg' }),
+    text(sub, { color: '#e8eef8', size: 'sm' }),
+  ],
 });
 // 文字サイズは全体に一段階大きめ（高齢の読み手が多い）。Flex の文字は LINE の文字サイズ設定（特大など）に連動せず固定のため、
 // 見出し lg / 本文 md / 補足 sm を基準にする。ボタンも md（押しやすく）
@@ -160,7 +166,7 @@ function deadlineBand(dl: TopicDeadline, margin: string) {
   };
 }
 
-function topicBubble(d: Digest, opts: FlexBuildOptions) {
+function topicBubble(d: Digest, opts: FlexBuildOptions, top?: string) {
   const blocks: unknown[] = [];
   d.topics.forEach((t, i) => {
     // リンク先は チラシPDF → 記事。どちらも無ければ画像もボタンも押せない（カルーセルの行と同じ扱い）
@@ -202,13 +208,13 @@ function topicBubble(d: Digest, opts: FlexBuildOptions) {
   return {
     type: 'bubble',
     size: 'mega',
-    header: header('⭐ 今週の一押し', `${md(d.from)}〜${md(d.to)} のお知らせ`, AMBER),
+    header: header('⭐ 今週の一押し', `${md(d.from)}〜${md(d.to)} のお知らせ`, AMBER, top),
     body: { type: 'box', layout: 'vertical', spacing: 'none', paddingAll: 'lg', contents: blocks },
   };
 }
 
 /** 今週の予定バブル（その週に開催されるものだけ。⏰締切間近は申込受付中カードへ） */
-function eventsBubble(d: Digest) {
+function eventsBubble(d: Digest, top?: string) {
   const rows: unknown[] = [];
   for (const c of d.events) {
     rows.push(eventRow(c, { whenText: `${md(c.event_date!)}${shortTime(c.event_time)}` }));
@@ -221,7 +227,7 @@ function eventsBubble(d: Digest) {
   return {
     type: 'bubble',
     size: 'mega',
-    header: header('📅 今週の予定', `${md(d.from)}〜${md(d.to)}　${ROW_HINT}`, SITE_BLUE),
+    header: header('📅 今週の予定', `${md(d.from)}〜${md(d.to)}　${ROW_HINT}`, SITE_BLUE, top),
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
     // 行は今週の分。ボタンは来週以降も含めた一覧（回覧板サイトの「今後のイベント」）
     footer: { type: 'box', layout: 'vertical', contents: [linkButton('ほかの予定も見る', `${siteUrl()}/`)] },
@@ -229,7 +235,7 @@ function eventsBubble(d: Digest) {
 }
 
 /** 申込受付中バブル（⏰締切間近＝今週締切を先頭に、その後に締切順） */
-function applyBubble(d: Digest) {
+function applyBubble(d: Digest, top?: string) {
   const contents: unknown[] = [];
   const rows = [...d.urgent.map((c) => ({ c, urgent: true })), ...d.apply.map((c) => ({ c, urgent: false }))];
   rows.forEach(({ c, urgent }, i) => {
@@ -249,7 +255,7 @@ function applyBubble(d: Digest) {
     type: 'bubble',
     size: 'mega',
     // 下のボタンは置かない（行き先が1つに決められないため）。代わりに見出しの下で行タップを案内する
-    header: header('📝 申込受付中', ROW_HINT, GREEN),
+    header: header('📝 申込受付中', ROW_HINT, GREEN, top),
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
   };
 }
@@ -279,15 +285,19 @@ function reportBubble(r: Digest['reports'][number]) {
  */
 export function buildTopicFlex(d: Digest, opts: FlexBuildOptions): LineMessage | null {
   if (d.topics.length === 0) return null;
-  const alt = `⭐今週の一押し: ${d.topics.map((t) => `${t.title}（${md(t.event_date!)}）`).join('、')}`.slice(0, 400);
-  return { type: 'flex', altText: alt, contents: topicBubble(d, opts) };
+  // 最初の吹き出しなので、通知文にも見出し帯にも配信名を付ける（吹き出し①のテキストをやめたため。2026-11-08）
+  const alt = `${digestHeading(d)} ⭐今週の一押し: ${d.topics.map((t) => `${t.title}（${md(t.event_date!)}）`).join('、')}`.slice(0, 400);
+  return { type: 'flex', altText: alt, contents: topicBubble(d, opts, DIGEST_NAME) };
 }
 
-/** 今週の予定／申込受付中／レポートのカルーセル。出すものが無ければ null */
-export function buildWeeklyFlex(d: Digest): LineMessage | null {
+/**
+ * 今週の予定／申込受付中／レポートのカルーセル。出すものが無ければ null。
+ * withName = 一押しが無く、これが最初の吹き出しのとき。先頭のカード（今週の予定 → 申込受付中）の帯に配信名を載せる
+ */
+export function buildWeeklyFlex(d: Digest, withName = false): LineMessage | null {
   const bubbles: unknown[] = [];
-  if (d.events.length > 0) bubbles.push(eventsBubble(d));
-  if (d.apply.length > 0 || d.urgent.length > 0) bubbles.push(applyBubble(d));
+  if (d.events.length > 0) bubbles.push(eventsBubble(d, withName ? DIGEST_NAME : undefined));
+  if (d.apply.length > 0 || d.urgent.length > 0) bubbles.push(applyBubble(d, withName && bubbles.length === 0 ? DIGEST_NAME : undefined));
   for (const r of d.reports) bubbles.push(reportBubble(r));
   if (bubbles.length === 0) return null;
 
@@ -298,15 +308,19 @@ export function buildWeeklyFlex(d: Digest): LineMessage | null {
 }
 
 /**
- * 1回の配信ぶんのメッセージ配列: テキスト → ⭐一押し（1枚） → カルーセル（今週の予定・申込・レポート）。
- * 無いものは飛ばす（最大3吹き出し。LINE の上限は5）
+ * 1回の配信ぶんのメッセージ配列: ⭐一押し（1枚） → カルーセル（今週の予定・申込・レポート）。
+ * 無いものは飛ばす（最大2吹き出し。LINE の上限は5）。
+ * 2026-11-08: 先頭のテキスト吹き出し（見出し＋「今週の一押しは…」）をやめ、配信名「関ヶ谷自治会 今週のお知らせ」は
+ * 最初のカードの見出し帯の上段に載せる（一押しがある週は一押しカード、無い週は今週の予定カード）。
+ * 手で直した文が古いまま送られる事故が無くなり、通数も変わらない（1回の push で何吹き出し送っても1通）
  */
-export function buildWeeklyMessages(d: Digest, greeting: string, opts: FlexBuildOptions): LineMessage[] {
-  const msgs: LineMessage[] = [{ type: 'text', text: greeting.trim() || digestHeading(d) }];
+export function buildWeeklyMessages(d: Digest, opts: FlexBuildOptions): LineMessage[] {
+  const msgs: LineMessage[] = [];
   const topic = buildTopicFlex(d, opts);
   if (topic) msgs.push(topic);
-  const rest = buildWeeklyFlex(d);
+  const rest = buildWeeklyFlex(d, !topic);
   if (rest) msgs.push(rest);
+  if (msgs.length === 0) msgs.push({ type: 'text', text: `${digestHeading(d)}\n今週は載せる予定がありません。` });
   return msgs;
 }
 

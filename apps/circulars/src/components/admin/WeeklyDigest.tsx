@@ -56,7 +56,7 @@ import {
   type WeeklyDigestSchedule,
 } from '@cc-saas/shared';
 import { Copy, Check, RefreshCw, Loader2, Send, MessageCircle, ShieldCheck, Users, Sparkles, Trash2, Pencil, Clock, ChevronUp, ChevronDown } from 'lucide-react';
-import { showError, showToast, appConfirm, appChoice } from '@/components/ui/feedback';
+import { showError, showToast, appConfirm } from '@/components/ui/feedback';
 
 import {
   LIMITS,
@@ -84,7 +84,7 @@ import {
   type LinkKind,
   type ImageKind,
 } from './weeklyDigestCore';
-import { buildGreetingText, buildWeeklyMessages, markAsTestMessages, TEST_PREFIX, HEADING_MARK } from './weeklyFlex';
+import { buildWeeklyMessages, markAsTestMessages, TEST_PREFIX } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
 import { CropEditor } from './CropEditor';
 import { EventCardEditDialog } from './EventCardEditDialog';
@@ -163,7 +163,6 @@ export const WeeklyDigest: React.FC = () => {
   /** 一押しごとのリンク先の指定（予定ID → pdf / article。無ければ自動） */
   const [linkKinds, setLinkKinds] = useState<Record<string, LinkKind>>({});
   /** 吹き出しを手で直したか（立っていると自動生成で上書きしない。下書きにも残す） */
-  const [greetingEdited, setGreetingEdited] = useState(false);
   /**
    * 下書き（配信日1つにつき1つ。2026-10-26 に「配信日ごとに複数」をやめた）:
    * 全配信日の一覧（上部の「配信予定」の表に使う）、いま開いている下書きの id、保存状態、最後に保存した時刻
@@ -221,7 +220,6 @@ export const WeeklyDigest: React.FC = () => {
   /** 編集ダイアログで開いている予定（予定タブ・号の画面と同じダイアログ） */
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   /** LINE 送信（Flex）: テキスト吹き出しの文、送信中のモード、直近の結果、履歴 */
-  const [greeting, setGreeting] = useState('');
   const [sending, setSending] = useState<LineSendMode | null>(null);
   /** 「この人に送る」の送り先ユーザーID（Uで始まる33文字）。ブラウザごとに覚える */
   /**
@@ -359,11 +357,11 @@ export const WeeklyDigest: React.FC = () => {
       topic_ids: topicIds ?? null,
       excluded_ids: Array.from(excluded).sort(),
       link_kinds: linkKinds as Record<string, string>,
-      greeting: greetingEdited ? greeting : null,
+      greeting: null, // 旧: 手で直した吹き出し①の文。2026-11-08 にテキスト吹き出しをやめたので常に null（列は残す）
       period_from: period?.from ?? null,
       period_to: period?.to ?? null,
     }),
-    [topicIds, excluded, linkKinds, greeting, greetingEdited, period]
+    [topicIds, excluded, linkKinds, period]
   );
   const DEFAULT_DRAFT_KEY = JSON.stringify({ topic_ids: null, excluded_ids: [], link_kinds: {}, greeting: null, period_from: null, period_to: null });
 
@@ -386,7 +384,6 @@ export const WeeklyDigest: React.FC = () => {
     setTopicIds(undefined);
     setExcluded(new Set());
     setLinkKinds({});
-    setGreetingEdited(false);
     setPeriod(null);
     lastDraftRef.current = DEFAULT_DRAFT_KEY;
     draftIdRef.current = null;
@@ -408,17 +405,11 @@ export const WeeklyDigest: React.FC = () => {
     setExcluded(new Set(ex));
     setLinkKinds(lk);
     setPeriod(pr);
-    if (d.greeting != null) {
-      setGreeting(d.greeting);
-      setGreetingEdited(true);
-    } else {
-      setGreetingEdited(false);
-    }
     lastDraftRef.current = JSON.stringify({
       topic_ids: topic ?? null,
       excluded_ids: [...ex].sort(),
       link_kinds: lk,
-      greeting: d.greeting ?? null,
+      greeting: null, // 旧い下書きに文が残っていても使わない（テキスト吹き出しは廃止）
       period_from: pr?.from ?? null,
       period_to: pr?.to ?? null,
     });
@@ -533,33 +524,10 @@ export const WeeklyDigest: React.FC = () => {
     [base[i], base[j]] = [base[j], base[i]];
     changeTopics(base);
   };
-  /**
-   * 一押しの選択を変える。吹き出し①の文が「手で直した文」のままだと、一押しを変えても文の「今週の一押しは …」が古いまま
-   * 送られてしまう（2026-11-07 のテスト配信で起きた）ので、選び直したら確認を出して文を作り直す（2026-11-08 ユーザー指示）。
-   * 3択: 「作り直す」／「◯◯だけ変える」（文は残す。下の入力欄であとで直す）／「キャンセル」（何も変えない。同日追加）。
-   * 自動生成のままなら黙って作り直る
-   */
-  const changeTopics = (next: string[] | undefined) => changeDigest({ topicIds: next }, '一押し');
-  /** 内容の期間を変える（null = 自動に戻す）。手で直した文があれば一押しと同じく確認する（見出しの日付が変わるため） */
-  const changePeriod = (next: { from: string; to: string } | null) => changeDigest({ week: next }, '内容の期間');
-  const changeDigest = async (patch: { topicIds?: string[] | undefined; week?: { from: string; to: string } | null }, what: string) => {
-    const nextTopicIds = 'topicIds' in patch ? patch.topicIds : topicIds;
-    const nextWeek = 'week' in patch ? patch.week : period;
-    if (greetingEdited) {
-      const preview = buildGreetingText(buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate, { topicIds: nextTopicIds, week: nextWeek }));
-      const r = await appChoice({
-        title: '吹き出し①の文を作り直しますか？',
-        message: `${what}を変えたので、手で直した文（見出しの日付・「今週の一押しは …」）が合わなくなります。作り直すと、手で直した内容は消えて次の文になります。\n\n${preview}`,
-        confirmLabel: '作り直す',
-        altLabel: `${what}だけ変える`,
-        cancelLabel: 'キャンセル',
-      });
-      if (r === 'cancel') return; // 何も変えない（下の画面で選び直す）
-      if (r === 'confirm') setGreetingEdited(false); // 文は useEffect が新しい内容から作り直す
-    }
-    if ('topicIds' in patch) setTopicIds(patch.topicIds);
-    if ('week' in patch) setPeriod(patch.week ?? null);
-  };
+  /** 一押しの選択を変える（2026-11-08 までは手で直した吹き出し①の文の作り直しを確認していたが、テキスト吹き出し自体をやめた） */
+  const changeTopics = (next: string[] | undefined) => setTopicIds(next);
+  /** 内容の期間を変える（null = 自動に戻す） */
+  const changePeriod = (next: { from: string; to: string } | null) => setPeriod(next ?? null);
 
   /** チェック一覧の行（一押し・締切間近・今週の予定・申込受付中の順） */
   const digestItems = useMemo(() => {
@@ -793,29 +761,6 @@ export const WeeklyDigest: React.FC = () => {
 
   // ---- LINE 送信（Flex） ----
 
-  // テキスト吹き出しの既定文（一押しが変わったら作り直す。手で直した後は上書きしない。「作り直す」で戻す）
-  useEffect(() => {
-    if (greetingEdited) return;
-    setGreeting(buildGreetingText(digest));
-  }, [digest, greetingEdited]);
-  // 手で直した文でも、見出しの日付「【関ヶ谷自治会 今週のお知らせ】11/9(月)〜11/15(日)」だけは今の期間に合わせて直す（2026-11-08）。
-  // 期間の決め方を変えた（日曜配信は翌月〜日）あとも、保存済みの文が 11/8(日)〜11/14(土) のまま送られたため。
-  // 見出しは機械的に決まる行なので、人の直しを壊す心配がない。一押しの行は人が書き換えることがあるので触らない（下の注意書きで知らせる）
-  useEffect(() => {
-    if (!greetingEdited) return;
-    const heading = digestHeading(digest);
-    setGreeting((prev) => {
-      const lines = prev.split('\n');
-      const i = lines.findIndex((l) => l.includes(HEADING_MARK));
-      if (i < 0) return prev;
-      const fixed = lines[i].slice(0, lines[i].indexOf(HEADING_MARK)) + heading;
-      if (fixed === lines[i]) return prev;
-      lines[i] = fixed;
-      return lines.join('\n');
-    });
-  }, [digest, greetingEdited]);
-  /** 手で直した文に、今の一押しの題名が入っていない（＝一押しを変えたあと文を作り直していない）ときの注意 */
-  const greetingStaleTopics = greetingEdited ? digest.topics.filter((t) => !greeting.includes(t.title)).map((t) => t.title) : [];
 
   // 上部の「配信予定」の表で今後5週分を見るので、件数は多めに読む
   const loadHistory = () => getWeeklyDigestSends(30).then(setHistory);
@@ -912,7 +857,7 @@ export const WeeklyDigest: React.FC = () => {
       const blob = await new Promise<Blob | null>((resolve) => card.toBlob(resolve, 'image/jpeg', 0.85));
       if (blob) flyerImageUrls[t.id] = await uploadWeeklyImage(blob, baseDate, `${prefix}-${i + 1}`);
     }
-    return buildWeeklyMessages(digest, greeting, { flyerImageUrls, flyerAspects, linkKinds });
+    return buildWeeklyMessages(digest, { flyerImageUrls, flyerAspects, linkKinds });
   };
 
   /** validate: 形式チェックのみ / test: 自分にだけ / user: 入れたIDの1人にだけ / admins: 管理者 / broadcast: 全員 */
@@ -946,7 +891,8 @@ export const WeeklyDigest: React.FC = () => {
       setSendNote(`✅ ${label}（${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}）`);
       showToast(label);
       if (mode !== 'validate') {
-        await recordWeeklyDigestSend({ base_date: baseDate, mode, text: greeting, messages, line_status: result.status, draft_id: draftId, draft_revision: draftRevision });
+        // text は履歴の題名用（見出し「【関ヶ谷自治会 今週のお知らせ】11/9(月)〜11/15(日)」）。テキスト吹き出しは送らない
+        await recordWeeklyDigestSend({ base_date: baseDate, mode, text: digestHeading(digest), messages, line_status: result.status, draft_id: draftId, draft_revision: draftRevision });
         loadHistory();
         loadQuota();
       }
@@ -976,11 +922,11 @@ export const WeeklyDigest: React.FC = () => {
   const contentKey = useMemo(
     () =>
       JSON.stringify({
-        m: buildWeeklyMessages(digest, greeting, { flyerImageUrls: {}, flyerAspects, linkKinds }),
+        m: buildWeeklyMessages(digest, { flyerImageUrls: {}, flyerAspects, linkKinds }),
         crops: digest.topics.map((t) => crops[t.id] ?? null),
         images: digest.topics.map((t) => topicImageKind(t, imageKinds[t.id])),
       }),
-    [digest, greeting, flyerAspects, linkKinds, crops, imageKinds]
+    [digest, flyerAspects, linkKinds, crops, imageKinds]
   );
 
   /** いまの内容で予約する（形式チェックを通してから保存。画像も予約した時点のもので固定） */
@@ -1002,7 +948,7 @@ export const WeeklyDigest: React.FC = () => {
       const messages = await buildMessages(`sched-${id.slice(0, 8)}`);
       // 送る時になって形式エラーで落ちないよう、予約の前に LINE 側でチェックする
       await sendLineMessages('validate', messages);
-      await createWeeklyDigestSchedule({ id, base_date: baseDate, send_at: at.toISOString(), messages, text: greeting, content_key: contentKey, draft_id: draftId, draft_revision: draftRevision });
+      await createWeeklyDigestSchedule({ id, base_date: baseDate, send_at: at.toISOString(), messages, text: digestHeading(digest), content_key: contentKey, draft_id: draftId, draft_revision: draftRevision });
       const label = `${fmtDateTime(at.toISOString())} に予約しました`;
       setSendNote(`⏰ ${label}`);
       showToast(label);
@@ -1021,6 +967,8 @@ export const WeeklyDigest: React.FC = () => {
     if (!ok) return;
     try {
       const done = await cancelWeeklyDigestSchedule(s.id);
+      // 「⏰ … に予約しました」の表示が取り消し後も残っていたので、取り消せたら消す（2026-11-08）
+      if (done) setSendNote(null);
       showToast(done ? '予約を取り消しました' : 'すでに送信が始まっていたため、取り消せませんでした');
     } catch (e: any) {
       showError(e?.message ?? '取り消せませんでした');
@@ -1031,7 +979,7 @@ export const WeeklyDigest: React.FC = () => {
   /** Flex JSON をコピー（LINE Developers の Flex Message Simulator に貼って確認する用） */
   const copyFlexJson = async () => {
     try {
-      const messages = buildWeeklyMessages(digest, greeting, { flyerImageUrls: {}, flyerAspects, linkKinds });
+      const messages = buildWeeklyMessages(digest, { flyerImageUrls: {}, flyerAspects, linkKinds });
       const flex = messages.filter((m) => m.type === 'flex');
       // Flex Message Simulator は1メッセージずつ貼るので、複数あれば配列で（一押し → カルーセル の順）
       await navigator.clipboard.writeText(JSON.stringify(flex.length === 1 ? flex[0] : flex, null, 2));
@@ -1629,7 +1577,7 @@ export const WeeklyDigest: React.FC = () => {
                 LINE に送る（カード形式）
               </h3>
               <p className="text-sm text-slate-600 mt-1">
-                短いテキスト → ⭐一押しカード → カード一覧（今週の予定／申込受付中／レポート）の3つの吹き出しを1回の配信（1通）で送ります。まず「管理者に送る」で届く見た目を確認してから「全員に配信」してください。
+                ⭐一押しカード → カード一覧（今週の予定／申込受付中／レポート）の2つの吹き出しを1回の配信（1通）で送ります。配信名「関ヶ谷自治会 今週のお知らせ」は最初のカードの帯に載ります。まず「管理者に送る」で届く見た目を確認してから「全員に配信」してください。
               </p>
             </div>
           </div>
@@ -1648,39 +1596,8 @@ export const WeeklyDigest: React.FC = () => {
 
           <div className="grid gap-4 lg:grid-cols-2 mt-4">
             <div className="space-y-3">
-              <div>
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1">
-                  <label className="text-sm font-bold text-slate-600">テキスト（吹き出し①・直すと下書きに自動保存）</label>
-                  <span className="flex items-center gap-2 text-xs">
-                    {/* 保存ボタンが無いので、ここにも保存状態を出す（上部の「下書き」の行と同じ） */}
-                    <span className="flex items-center gap-1 text-slate-600">{draftStatus}</span>
-                    <button
-                      onClick={() => {
-                        setGreetingEdited(false);
-                        setGreeting(buildGreetingText(digest));
-                      }}
-                      className={`hover:text-slate-800 ${greetingEdited ? 'text-amber-700 font-bold' : 'text-slate-600'}`}
-                      title="自動生成の文に戻す（手で直した内容は消えます）"
-                    >
-                      {greetingEdited ? '手で直した文（作り直す）' : '作り直す'}
-                    </button>
-                  </span>
-                </div>
-                <textarea
-                  value={greeting}
-                  onChange={(e) => {
-                    setGreeting(e.target.value);
-                    setGreetingEdited(true);
-                  }}
-                  rows={4}
-                  className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                />
-                {greetingStaleTopics.length > 0 && (
-                  <p className="mt-1 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
-                    ⚠ いまの一押し「{greetingStaleTopics.join('」「')}」がこの文に入っていません。一押しを変えたあとの文のままかもしれません。右上の「作り直す」で今の内容の文にできます（手で直した内容は消えます）。
-                  </p>
-                )}
-              </div>
+              {/* 吹き出し①（テキスト）は 2026-11-08 に廃止。配信名は最初のカードの帯に載る。下書きの保存状態はここにも出す */}
+              <p className="flex items-center gap-1 text-xs text-slate-600">{draftStatus}</p>
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => send('validate')}
@@ -1899,7 +1816,7 @@ export const WeeklyDigest: React.FC = () => {
 
             <div>
               <label className="text-sm font-bold text-slate-600 block mb-1">見た目のプレビュー（実際の描画はテスト送信で確認）</label>
-              <FlexPreview digest={digest} greeting={greeting} flyerSrcs={flyerSrcs} flyerAspects={flyerAspects} linkKinds={linkKinds} />
+              <FlexPreview digest={digest} flyerSrcs={flyerSrcs} flyerAspects={flyerAspects} linkKinds={linkKinds} />
             </div>
           </div>
         </div>

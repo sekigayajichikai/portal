@@ -8,11 +8,11 @@
 import React from 'react';
 import type { PublicEventCard } from '@cc-saas/shared';
 import type { CropAspect } from './heroCrop';
+import { DIGEST_NAME } from './weeklyFlex';
 import { type Digest, type LinkKind, md, shortTime, siteUrl, topicLink, audienceFee, hasDetailLink, topicDeadline, topicDeadlineText, applyWhenText } from './weeklyDigestCore';
 
 interface FlexPreviewProps {
   digest: Digest;
-  greeting: string;
   /** 一押しごとのチラシ画像（予定ID → 枠に切り出した data URL か https）。無ければ画像なし */
   flyerSrcs: Record<string, string | null>;
   /** 一押しごとの画像枠の形（予定ID → '1:1' | '4:3' | '16:9' | '210:297' | '297:210'）。無ければ 1:1 */
@@ -65,18 +65,20 @@ const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; pref
   );
 };
 
-export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, flyerSrcs, flyerAspects, linkKinds }) => {
+export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, flyerSrcs, flyerAspects, linkKinds }) => {
+  // 配信名は最初のカードの帯の上段に（一押しがあれば一押し、無ければ今週の予定 → 申込受付中）。テキスト吹き出しは 2026-11-08 に廃止
+  const nameOnTopic = d.topics.length > 0;
+  const nameOnEvents = !nameOnTopic && d.events.length > 0;
+  const nameOnApply = !nameOnTopic && !nameOnEvents && (d.apply.length > 0 || d.urgent.length > 0);
+  const name = <div className="text-sm font-bold">{DIGEST_NAME}</div>;
   return (
     <div className="rounded-xl p-3 space-y-2" style={{ background: '#7494c0' }}>
-      {/* ① テキスト */}
-      <div className="bg-white rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap max-w-[260px] shadow-sm text-slate-800">
-        {greeting}
-      </div>
-      {/* ② ⭐一押し（1枚だけの吹き出しに最大5件を縦に。カルーセルと高さを揃えなくて済む） */}
+      {/* ① ⭐一押し（1枚だけの吹き出しに最大5件を縦に。カルーセルと高さを揃えなくて済む） */}
       {d.topics.length > 0 && (
         <div className="flex">
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#b45309' }}>
+              {nameOnTopic && name}
               <div className="text-base font-bold">⭐ 今週の一押し</div>
               <div className="text-sm opacity-90">
                 {md(d.from)}〜{md(d.to)} のお知らせ
@@ -135,6 +137,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
         {d.events.length > 0 && (
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2563eb' }}>
+              {nameOnEvents && name}
               <div className="text-base font-bold">📅 今週の予定</div>
               <div className="text-sm opacity-90">
                 {md(d.from)}〜{md(d.to)}　{ROW_HINT}
@@ -152,6 +155,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, greeting, f
         {(d.apply.length > 0 || d.urgent.length > 0) && (
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2f6f4e' }}>
+              {nameOnApply && name}
               <div className="text-base font-bold">📝 申込受付中</div>
               <div className="text-sm opacity-90">{ROW_HINT}</div>
             </div>
