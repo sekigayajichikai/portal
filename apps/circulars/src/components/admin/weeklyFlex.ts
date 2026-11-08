@@ -329,11 +329,21 @@ export function buildWeeklyMessages(d: Digest, opts: FlexBuildOptions): LineMess
 export const TEST_PREFIX = '＜テスト配信＞';
 export const HEADING_MARK = '【関ヶ谷自治会 今週のお知らせ】';
 
+/** テスト配信の先頭に足す短いテキスト（吹き出し①を廃止したので、カードだけだとテストだと分からないため。2026-11-08） */
+export const TEST_NOTICE_TEXT = `${TEST_PREFIX} 見た目の確認用です。全員には届いていません。`;
+
 /**
  * 全員配信以外（自分・指定した人・管理者）に送るとき、受け取った側がテストだと分かるように印を付ける（2026-11-01）。
- * テキストは見出しの直前に「＜テスト配信＞」を入れ（見出しが無ければ先頭行に）、Flex は通知に出る altText の先頭に付ける
+ * 先頭に「＜テスト配信＞ …」の短いテキストを1つ足し（2026-11-08）、テキストは見出しの直前に「＜テスト配信＞」を入れ、
+ * Flex は通知に出る altText の先頭に付ける。吹き出しは最大3つ（LINE の上限は5）、通数は変わらない
  */
 export function markAsTestMessages(msgs: LineMessage[]): LineMessage[] {
+  const marked = markEachAsTest(msgs);
+  const notice: LineMessage = { type: 'text', text: TEST_NOTICE_TEXT };
+  return [notice, ...marked].slice(0, 5);
+}
+
+function markEachAsTest(msgs: LineMessage[]): LineMessage[] {
   return msgs.map((m) => {
     if (m.type === 'text') {
       const text = m.text.includes(HEADING_MARK) ? m.text.replace(HEADING_MARK, `${TEST_PREFIX}${HEADING_MARK}`) : `${TEST_PREFIX}\n${m.text}`;

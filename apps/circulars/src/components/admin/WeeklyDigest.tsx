@@ -45,7 +45,11 @@ import {
   listLineTestRecipients,
   addLineTestRecipient,
   deleteLineTestRecipient,
-  isLineUserId,
+  isLineRecipientId,
+  lineRecipientKind,
+  LINE_RECIPIENT_KIND_LABEL,
+  listLineGroups,
+  type LineGroup,
   type LineTestRecipient,
   type WeeklyDigestDraft,
   type PublicEventCard,
@@ -244,16 +248,25 @@ export const WeeklyDigest: React.FC = () => {
   };
   const recipient = recipients.find((r) => r.id === recipientId) ?? null;
   const testUserId = recipient?.line_user_id ?? '';
-  const testUserIdValid = isLineUserId(testUserId);
+  const testUserIdValid = isLineRecipientId(testUserId);
   const loadRecipients = () => listLineTestRecipients().then(setRecipients);
+  /** Bot が参加中のグループ（line-webhook が控えたもの）。登録欄で名前と ID をそのまま使える */
+  const [lineGroups, setLineGroups] = useState<LineGroup[]>([]);
+  const loadLineGroups = () => listLineGroups().then(setLineGroups);
+  /** 表示名: 名前（グループなら「（グループ）」を添える） */
+  const recipientLabel = (r: LineTestRecipient) => {
+    const k = lineRecipientKind(r.line_user_id);
+    const suffix = k && k !== 'user' ? `（${LINE_RECIPIENT_KIND_LABEL[k]}）` : '';
+    return `${r.name}${suffix}`;
+  };
   /** 登録欄（名前・ID）と処理中の印 */
   const [newRecipientName, setNewRecipientName] = useState('');
   const [newRecipientId, setNewRecipientId] = useState('');
   const [recipientBusy, setRecipientBusy] = useState(false);
-  const addRecipient = async () => {
+  const addRecipient = async (name = newRecipientName, id = newRecipientId) => {
     setRecipientBusy(true);
     try {
-      const row = await addLineTestRecipient(newRecipientName, newRecipientId);
+      const row = await addLineTestRecipient(name, id);
       setNewRecipientName('');
       setNewRecipientId('');
       await loadRecipients();
@@ -771,6 +784,7 @@ export const WeeklyDigest: React.FC = () => {
     loadSchedules();
     loadQuota();
     loadRecipients();
+    loadLineGroups();
     // 予約が送られると状態が変わるので、開いている間は1分ごとに読み直す
     const timer = setInterval(() => {
       loadSchedules();
@@ -1618,7 +1632,7 @@ export const WeeklyDigest: React.FC = () => {
                     <option value="">{recipients.length === 0 ? '送る相手（未登録）' : '送る相手を選ぶ'}</option>
                     {recipients.map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.name}
+                        {recipientLabel(r)}
                       </option>
                     ))}
                   </select>
@@ -1626,7 +1640,7 @@ export const WeeklyDigest: React.FC = () => {
                     onClick={() => send('user')}
                     disabled={sending !== null || !testUserIdValid}
                     className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-white bg-emerald-600 rounded-r-lg border border-l-0 border-emerald-600 hover:bg-emerald-700 transition disabled:opacity-50"
-                    title="選んだ人にだけ送ります（1通消費・＜テスト配信＞付き）"
+                    title="選んだ人（またはグループ）にだけ送ります（1通消費・＜テスト配信＞付き）"
                   >
                     {sending === 'user' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} この人に送る
                   </button>
@@ -1659,11 +1673,12 @@ export const WeeklyDigest: React.FC = () => {
               </div>
               {/* 「この人に送る」の送り先の登録（名前＋LINEのユーザーID。DB に共有で残り、どの端末でもプルダウンに出る。2026-11-08） */}
               <details className="text-sm text-slate-600">
-                <summary className="cursor-pointer select-none">送る相手の登録（{recipients.length}人）</summary>
+                <summary className="cursor-pointer select-none">送る相手の登録（{recipients.length}件）</summary>
                 <div className="mt-2 space-y-2">
                   <p className="text-xs text-slate-600">
-                    名前と LINE のユーザーID を登録すると、上の「この人に送る」のプルダウンに出ます。どの端末からでも同じ一覧です。
-                    自分の ID は LINE Developers の「あなたのユーザーID」か、名簿の LINE ID の欄で確認できます。
+                    名前と LINE の ID を登録すると、上の「この人に送る」のプルダウンに出ます。どの端末からでも同じ一覧です。
+                    自分の ID（U で始まる）は LINE Developers の「あなたのユーザーID」か、名簿の LINE ID の欄で確認できます。
+                    グループ（C で始まる）は、公式LINEをそのグループに招待すると下の「参加中のグループ」に出るので、そこから登録できます。
                   </p>
                   <div className="flex flex-wrap items-stretch gap-1.5">
                     <input
@@ -1677,13 +1692,13 @@ export const WeeklyDigest: React.FC = () => {
                       type="text"
                       value={newRecipientId}
                       onChange={(e) => setNewRecipientId(e.target.value)}
-                      placeholder="LINEのユーザーID（Uから33文字）"
+                      placeholder="LINEのID（U・C・R から33文字）"
                       spellCheck={false}
-                      className={`w-72 text-sm border rounded-lg px-2 py-1.5 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${newRecipientId && !isLineUserId(newRecipientId) ? 'border-red-400' : 'border-slate-300'}`}
+                      className={`w-72 text-sm border rounded-lg px-2 py-1.5 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${newRecipientId && !isLineRecipientId(newRecipientId) ? 'border-red-400' : 'border-slate-300'}`}
                     />
                     <button
-                      onClick={addRecipient}
-                      disabled={recipientBusy || !newRecipientName.trim() || !isLineUserId(newRecipientId)}
+                      onClick={() => addRecipient()}
+                      disabled={recipientBusy || !newRecipientName.trim() || !isLineRecipientId(newRecipientId)}
                       className="px-3 py-1.5 text-sm font-bold text-white bg-slate-700 rounded-lg hover:bg-slate-800 transition disabled:opacity-40"
                     >
                       {recipientBusy ? <Loader2 size={14} className="animate-spin" /> : '登録'}
@@ -1693,7 +1708,7 @@ export const WeeklyDigest: React.FC = () => {
                     <ul className="text-xs space-y-0.5">
                       {recipients.map((r) => (
                         <li key={r.id} className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-slate-700">{r.name}</span>
+                          <span className="font-bold text-slate-700">{recipientLabel(r)}</span>
                           <span className="font-mono text-slate-500">{r.line_user_id.slice(0, 6)}…{r.line_user_id.slice(-4)}</span>
                           <button onClick={() => removeRecipient(r)} disabled={recipientBusy} className="text-slate-500 hover:text-red-600 underline disabled:opacity-40">
                             消す
@@ -1702,6 +1717,43 @@ export const WeeklyDigest: React.FC = () => {
                       ))}
                     </ul>
                   )}
+                  {/* 公式LINE（Bot）が参加中のグループ。line-webhook が参加・発言イベントから控える（line_groups）。登録済みのものは印だけ */}
+                  <div className="pt-1">
+                    <p className="text-xs font-bold text-slate-600">
+                      参加中のグループ（{lineGroups.length}）
+                      <button onClick={loadLineGroups} className="ml-2 font-normal text-slate-500 underline hover:text-slate-700">読み直す</button>
+                    </p>
+                    {lineGroups.length === 0 ? (
+                      <p className="text-xs text-slate-500">
+                        まだありません。LINE のグループに公式LINEを招待する（公式アカウント設定の「グループ・複数人トークへの参加を許可」が必要）と、ここに出ます。
+                      </p>
+                    ) : (
+                      <ul className="text-xs space-y-0.5">
+                        {lineGroups.map((g) => {
+                          const registered = recipients.some((r) => r.line_user_id === g.group_id);
+                          const name = g.name ?? (g.kind === 'room' ? '複数人トーク' : 'グループ（名前不明）');
+                          return (
+                            <li key={g.group_id} className="flex flex-wrap items-center gap-2">
+                              <span className="font-bold text-slate-700">{name}</span>
+                              <span className="font-mono text-slate-500">{g.group_id.slice(0, 6)}…{g.group_id.slice(-4)}</span>
+                              {registered ? (
+                                <span className="text-emerald-700">登録済み</span>
+                              ) : (
+                                <button
+                                  onClick={() => addRecipient(name, g.group_id)}
+                                  disabled={recipientBusy}
+                                  className="text-emerald-700 underline hover:text-emerald-900 disabled:opacity-40"
+                                  title="この名前と ID で送る相手に登録します（名前はあとから登録し直せます）"
+                                >
+                                  送る相手に登録
+                                </button>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               </details>
               <details className="text-sm text-slate-600">
