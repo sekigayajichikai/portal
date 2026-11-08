@@ -51,7 +51,7 @@ import {
   type WeeklyDigestSchedule,
 } from '@cc-saas/shared';
 import { Copy, Check, RefreshCw, Loader2, Send, MessageCircle, ShieldCheck, Users, Sparkles, Trash2, Pencil, Clock, ChevronUp, ChevronDown } from 'lucide-react';
-import { showError, showToast, appConfirm } from '@/components/ui/feedback';
+import { showError, showToast, appConfirm, appChoice } from '@/components/ui/feedback';
 
 import {
   LIMITS,
@@ -477,7 +477,8 @@ export const WeeklyDigest: React.FC = () => {
   /**
    * 一押しの選択を変える。吹き出し①の文が「手で直した文」のままだと、一押しを変えても文の「今週の一押しは …」が古いまま
    * 送られてしまう（2026-11-07 のテスト配信で起きた）ので、選び直したら確認を出して文を作り直す（2026-11-08 ユーザー指示）。
-   * 「作り直さない」なら選択だけ変えて文は残す。自動生成のままなら黙って作り直る
+   * 3択: 「作り直す」／「◯◯だけ変える」（文は残す。下の入力欄であとで直す）／「キャンセル」（何も変えない。同日追加）。
+   * 自動生成のままなら黙って作り直る
    */
   const changeTopics = (next: string[] | undefined) => changeDigest({ topicIds: next }, '一押し');
   /** 内容の期間を変える（null = 自動に戻す）。手で直した文があれば一押しと同じく確認する（見出しの日付が変わるため） */
@@ -487,13 +488,15 @@ export const WeeklyDigest: React.FC = () => {
     const nextWeek = 'week' in patch ? patch.week : period;
     if (greetingEdited) {
       const preview = buildGreetingText(buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate, { topicIds: nextTopicIds, week: nextWeek }));
-      const ok = await appConfirm({
+      const r = await appChoice({
         title: '吹き出し①の文を作り直しますか？',
         message: `${what}を変えたので、手で直した文（見出しの日付・「今週の一押しは …」）が合わなくなります。作り直すと、手で直した内容は消えて次の文になります。\n\n${preview}`,
         confirmLabel: '作り直す',
-        cancelLabel: `${what}だけ変える`,
+        altLabel: `${what}だけ変える`,
+        cancelLabel: 'キャンセル',
       });
-      if (ok) setGreetingEdited(false); // 文は useEffect が新しい内容から作り直す
+      if (r === 'cancel') return; // 何も変えない（下の画面で選び直す）
+      if (r === 'confirm') setGreetingEdited(false); // 文は useEffect が新しい内容から作り直す
     }
     if ('topicIds' in patch) setTopicIds(patch.topicIds);
     if ('week' in patch) setPeriod(patch.week ?? null);
@@ -1604,14 +1607,6 @@ export const WeeklyDigest: React.FC = () => {
                 >
                   {sending === 'validate' ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />} 形式チェック
                 </button>
-                <button
-                  onClick={() => send('test')}
-                  disabled={sending !== null}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-slate-600 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
-                  title="開発者（LINE_TEST_USER_ID の人）のLINEにだけ送ります。ふだんの確認は「管理者に送る」を使ってください"
-                >
-                  {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（開発向け）
-                </button>
                 {/* 特定の1人に送る（IDを直接入れる。全員配信以外は「＜テスト配信＞」付きで届く。2026-11-01） */}
                 <span className="inline-flex items-stretch">
                   <input
@@ -1639,6 +1634,15 @@ export const WeeklyDigest: React.FC = () => {
                   title="管理者（リッチメニューの「管理者だけに反映」と同じ人）にだけ送ります。人数ぶん通数を使います"
                 >
                   {sending === 'admins' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 管理者に送る（確認用）
+                </button>
+                {/* 開発向けのテスト送信は管理者の後ろ（2026-11-08。ふだん使うのは「管理者に送る」なので目立たせない） */}
+                <button
+                  onClick={() => send('test')}
+                  disabled={sending !== null}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-slate-600 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
+                  title="開発者（LINE_TEST_USER_ID の人）のLINEにだけ送ります。ふだんの確認は「管理者に送る」を使ってください"
+                >
+                  {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（開発向け）
                 </button>
                 <button
                   onClick={() => send('broadcast')}

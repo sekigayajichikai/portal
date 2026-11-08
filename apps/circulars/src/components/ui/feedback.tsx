@@ -34,7 +34,15 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   /** 取り返しのつかない操作（削除など）は true で赤いボタンにする */
   danger?: boolean;
+  /**
+   * 3つ目の選択肢（キャンセルと実行の間に出す白いボタン）。appChoice でだけ使う。
+   * 例: 「作り直す」「選択だけ変える」「キャンセル」の3択
+   */
+  altLabel?: string;
 }
+
+/** appChoice の結果: confirm=実行ボタン / alt=3つ目のボタン / cancel=キャンセル */
+export type ChoiceResult = 'confirm' | 'alt' | 'cancel';
 
 export interface PromptOptions {
   /** ダイアログの見出し（例: 発行元を入力） */
@@ -66,7 +74,7 @@ export interface PromptResult {
 
 let toastSeq = 0;
 let pushToastImpl: ((toast: ToastItem) => void) | null = null;
-let openConfirmImpl: ((options: ConfirmOptions, resolve: (ok: boolean) => void) => void) | null = null;
+let openConfirmImpl: ((options: ConfirmOptions, resolve: (r: ChoiceResult) => void) => void) | null = null;
 let openPromptImpl: ((options: PromptOptions, resolve: (result: PromptResult | null) => void) => void) | null = null;
 
 /** 通知を表示する（type省略時は緑の成功通知） */
@@ -89,12 +97,21 @@ export function showError(message: string): void {
  * @returns 実行ボタンが押されたら true、キャンセルなら false
  */
 export function appConfirm(options: ConfirmOptions): Promise<boolean> {
+  return appChoice({ ...options, altLabel: undefined }).then((r) => r === 'confirm');
+}
+
+/**
+ * 3択の確認ダイアログ（キャンセル／altLabel／confirmLabel）。altLabel が無ければ appConfirm と同じ2択
+ *
+ * @returns 'confirm' | 'alt' | 'cancel'
+ */
+export function appChoice(options: ConfirmOptions): Promise<ChoiceResult> {
   return new Promise((resolve) => {
     if (openConfirmImpl) {
       openConfirmImpl(options, resolve);
     } else {
       // FeedbackHost未マウント時の保険
-      resolve(window.confirm(options.title));
+      resolve(window.confirm(options.title) ? 'confirm' : 'cancel');
     }
   });
 }
@@ -182,7 +199,7 @@ export const FeedbackHost: React.FC = () => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [confirmState, setConfirmState] = useState<{
     options: ConfirmOptions;
-    resolve: (ok: boolean) => void;
+    resolve: (r: ChoiceResult) => void;
   } | null>(null);
   const [promptState, setPromptState] = useState<{
     options: PromptOptions;
@@ -212,8 +229,8 @@ export const FeedbackHost: React.FC = () => {
     };
   }, []);
 
-  const closeConfirm = (ok: boolean) => {
-    confirmState?.resolve(ok);
+  const closeConfirm = (r: ChoiceResult) => {
+    confirmState?.resolve(r);
     setConfirmState(null);
   };
 
@@ -348,15 +365,24 @@ export const FeedbackHost: React.FC = () => {
                 {confirmState.options.message}
               </p>
             )}
-            <div className="mt-5 flex gap-3">
+            <div className={`mt-5 flex gap-3 ${confirmState.options.altLabel ? 'flex-wrap sm:flex-nowrap' : ''}`}>
               <button
-                onClick={() => closeConfirm(false)}
+                onClick={() => closeConfirm('cancel')}
                 className="flex-1 px-4 py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition"
               >
                 {confirmState.options.cancelLabel || 'キャンセル'}
               </button>
+              {/* 3つ目の選択肢（appChoice の altLabel）。キャンセルと実行の間に白いボタンで出す */}
+              {confirmState.options.altLabel && (
+                <button
+                  onClick={() => closeConfirm('alt')}
+                  className="flex-1 px-4 py-3 bg-white text-slate-700 border border-slate-300 rounded-xl font-medium hover:bg-slate-50 transition"
+                >
+                  {confirmState.options.altLabel}
+                </button>
+              )}
               <button
-                onClick={() => closeConfirm(true)}
+                onClick={() => closeConfirm('confirm')}
                 className={`flex-1 px-4 py-3 rounded-xl font-bold text-white transition ${
                   confirmState.options.danger
                     ? 'bg-red-600 hover:bg-red-700'
