@@ -312,7 +312,7 @@ export function buildWeeklyMessages(d: Digest, greeting: string, opts: FlexBuild
 
 /** テスト配信（全員配信以外）の印。見出し「【関ヶ谷自治会 今週のお知らせ】」の前に付ける */
 export const TEST_PREFIX = '＜テスト配信＞';
-const HEADING_MARK = '【関ヶ谷自治会 今週のお知らせ】';
+export const HEADING_MARK = '【関ヶ谷自治会 今週のお知らせ】';
 
 /**
  * 全員配信以外（自分・指定した人・管理者）に送るとき、受け取った側がテストだと分かるように印を付ける（2026-11-01）。

@@ -70,6 +70,7 @@ import {
   topicChoices,
   topicDeadline,
   digestWeek,
+  digestHeading,
   addDays,
   availableLinkKinds,
   LINK_KIND_LABEL,
@@ -78,7 +79,7 @@ import {
   type LinkKind,
   type ImageKind,
 } from './weeklyDigestCore';
-import { buildGreetingText, buildWeeklyMessages, markAsTestMessages, TEST_PREFIX } from './weeklyFlex';
+import { buildGreetingText, buildWeeklyMessages, markAsTestMessages, TEST_PREFIX, HEADING_MARK } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
 import { CropEditor } from './CropEditor';
 import { EventCardEditDialog } from './EventCardEditDialog';
@@ -750,6 +751,24 @@ export const WeeklyDigest: React.FC = () => {
     if (greetingEdited) return;
     setGreeting(buildGreetingText(digest));
   }, [digest, greetingEdited]);
+  // 手で直した文でも、見出しの日付「【関ヶ谷自治会 今週のお知らせ】11/9(月)〜11/15(日)」だけは今の期間に合わせて直す（2026-11-08）。
+  // 期間の決め方を変えた（日曜配信は翌月〜日）あとも、保存済みの文が 11/8(日)〜11/14(土) のまま送られたため。
+  // 見出しは機械的に決まる行なので、人の直しを壊す心配がない。一押しの行は人が書き換えることがあるので触らない（下の注意書きで知らせる）
+  useEffect(() => {
+    if (!greetingEdited) return;
+    const heading = digestHeading(digest);
+    setGreeting((prev) => {
+      const lines = prev.split('\n');
+      const i = lines.findIndex((l) => l.includes(HEADING_MARK));
+      if (i < 0) return prev;
+      const fixed = lines[i].slice(0, lines[i].indexOf(HEADING_MARK)) + heading;
+      if (fixed === lines[i]) return prev;
+      lines[i] = fixed;
+      return lines.join('\n');
+    });
+  }, [digest, greetingEdited]);
+  /** 手で直した文に、今の一押しの題名が入っていない（＝一押しを変えたあと文を作り直していない）ときの注意 */
+  const greetingStaleTopics = greetingEdited ? digest.topics.filter((t) => !greeting.includes(t.title)).map((t) => t.title) : [];
 
   // 上部の「配信予定」の表で今後5週分を見るので、件数は多めに読む
   const loadHistory = () => getWeeklyDigestSends(30).then(setHistory);
@@ -872,7 +891,7 @@ export const WeeklyDigest: React.FC = () => {
       const result = await sendLineMessages(mode, messages, mode === 'user' ? { to: testUserId.trim() } : undefined);
       const label =
         mode === 'validate' ? '形式チェックOK。LINE に送れる内容です'
-        : mode === 'test' ? 'テスト送信しました（開発向け）。届いたLINEで見た目を確認してください'
+        : mode === 'test' ? 'テスト送信しました（開発者用）。届いたLINEで見た目を確認してください'
         : mode === 'user' ? '入れたIDの人に送りました（＜テスト配信＞付き）'
         : mode === 'admins' ? '管理者に送りました。各自のLINEで見た目を確認してもらってください'
         : '友だち全員に配信しました';
@@ -1608,6 +1627,11 @@ export const WeeklyDigest: React.FC = () => {
                   rows={4}
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                 />
+                {greetingStaleTopics.length > 0 && (
+                  <p className="mt-1 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                    ⚠ いまの一押し「{greetingStaleTopics.join('」「')}」がこの文に入っていません。一押しを変えたあとの文のままかもしれません。右上の「作り直す」で今の内容の文にできます（手で直した内容は消えます）。
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -1653,7 +1677,7 @@ export const WeeklyDigest: React.FC = () => {
                   className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-slate-600 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
                   title="開発者（LINE_TEST_USER_ID の人）のLINEにだけ送ります。ふだんの確認は「管理者に送る」を使ってください"
                 >
-                  {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（開発向け）
+                  {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（開発者用）
                 </button>
                 <button
                   onClick={() => send('broadcast')}
@@ -1761,7 +1785,7 @@ export const WeeklyDigest: React.FC = () => {
                           <span>
                             {new Date(h.sent_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{' '}
                             <span className={`px-1.5 py-0.5 rounded font-bold ${h.mode === 'broadcast' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                              {h.mode === 'broadcast' ? '全員配信' : h.mode === 'admins' ? '管理者' : h.mode === 'user' ? '指定の1人' : 'テスト（開発向け）'}
+                              {h.mode === 'broadcast' ? '全員配信' : h.mode === 'admins' ? '管理者' : h.mode === 'user' ? '指定の1人' : 'テスト（開発者用）'}
                             </span>{' '}
                             配信日 {h.base_date}
                             {h.line_status && h.line_status >= 300 ? ` （LINE ${h.line_status}）` : ''}
