@@ -78,7 +78,7 @@ import {
   type LinkKind,
   type ImageKind,
 } from './weeklyDigestCore';
-import { buildGreetingText, buildWeeklyMessages, markAsTestMessages } from './weeklyFlex';
+import { buildGreetingText, buildWeeklyMessages, markAsTestMessages, TEST_PREFIX } from './weeklyFlex';
 import { FlexPreview } from './FlexPreview';
 import { CropEditor } from './CropEditor';
 import { EventCardEditDialog } from './EventCardEditDialog';
@@ -95,6 +95,23 @@ const toLocalInput = (d: Date) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 /** "10/12(月) 07:00" */
+/** 配信履歴の題名: 送ったテキストの1行目（見出し「【関ヶ谷自治会 今週のお知らせ】11/9(月)〜11/15(日)」）。＜テスト配信＞は外す */
+const sentTitle = (text: string | null | undefined): string => {
+  const first = (text ?? '').split('\n').find((l) => l.trim()) ?? '';
+  const t = first.replace(TEST_PREFIX, '').trim();
+  return t || '（題名なし）';
+};
+/** 配信履歴の一押し: 一押しカードの altText「⭐今週の一押し: A（11/14(土)）、B（11/15(日)）」から後ろの部分。無ければ null */
+const sentTopics = (messages: unknown): string | null => {
+  if (!Array.isArray(messages)) return null;
+  for (const m of messages as Array<{ type?: string; altText?: string }>) {
+    const alt = (m?.type === 'flex' && typeof m.altText === 'string' ? m.altText : '').replace(TEST_PREFIX, '');
+    const i = alt.indexOf('今週の一押し: ');
+    if (i >= 0) return alt.slice(i + '今週の一押し: '.length).trim() || null;
+  }
+  return null;
+};
+
 const fmtDateTime = (iso: string) => {
   const d = new Date(iso);
   return `${md(ymd(d))} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -160,6 +177,8 @@ export const WeeklyDigest: React.FC = () => {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draftState, setDraftState] = useState<'loading' | 'idle' | 'saving' | 'saved' | 'error'>('loading');
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  /** 開いている下書きの版番号（保存のたびに増える。履歴・予約に「どの版を送ったか」として残す。2026-11-08） */
+  const [draftRevision, setDraftRevision] = useState<number | null>(null);
   /** 最後に読み込んだ／保存した下書きのスナップショット（同じ内容なら保存しない） */
   const lastDraftRef = useRef<string>('');
   /** 自動保存のタイマーから見るための現在値（state だと古い値を掴むため） */
@@ -319,7 +338,7 @@ export const WeeklyDigest: React.FC = () => {
     <>
       {draftState === 'loading' && (<><Loader2 size={11} className="animate-spin" /> 下書きを確認中…</>)}
       {draftState === 'saving' && (<><Loader2 size={11} className="animate-spin" /> 下書きに保存中…</>)}
-      {draftState === 'saved' && (<><Check size={11} className="text-emerald-600" /> 下書きに保存済み{draftSavedAt ? `（${new Date(draftSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）` : ''}</>)}
+      {draftState === 'saved' && (<><Check size={11} className="text-emerald-600" /> 下書き{draftRevision ? <span className="font-bold text-slate-700"> #{draftRevision}</span> : ''} に保存済み{draftSavedAt ? `（${new Date(draftSavedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}）` : ''}</>)}
       {draftState === 'idle' && '新しい下書き。変更すると自動で保存されます'}
       {draftState === 'error' && <span className="text-red-600">保存できませんでした（設定が足りないかもしれません。管理者に連絡してください）</span>}
     </>
@@ -336,6 +355,7 @@ export const WeeklyDigest: React.FC = () => {
     draftIdRef.current = null;
     setDraftId(null);
     setDraftSavedAt(null);
+    setDraftRevision(null);
   };
 
   /** 下書きの内容を画面に反映し、それを「開いている下書き」にする */
@@ -368,6 +388,7 @@ export const WeeklyDigest: React.FC = () => {
     draftIdRef.current = d.id;
     setDraftId(d.id);
     setDraftSavedAt(d.updated_at ?? null);
+    setDraftRevision(typeof d.revision === 'number' && d.revision > 0 ? d.revision : null);
     setDraftState('saved');
   };
 
@@ -414,6 +435,7 @@ export const WeeklyDigest: React.FC = () => {
         draftIdRef.current = row.id;
         setDraftId(row.id);
         setDraftSavedAt(row.updated_at ?? new Date().toISOString());
+        setDraftRevision(typeof row.revision === 'number' && row.revision > 0 ? row.revision : null);
         setDraftState('saved');
         refreshDrafts().catch(() => {});
       } catch (e) {
@@ -868,7 +890,7 @@ export const WeeklyDigest: React.FC = () => {
       setSendNote(`✅ ${label}（${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}）`);
       showToast(label);
       if (mode !== 'validate') {
-        await recordWeeklyDigestSend({ base_date: baseDate, mode, text: greeting, messages, line_status: result.status, draft_id: draftId });
+        await recordWeeklyDigestSend({ base_date: baseDate, mode, text: greeting, messages, line_status: result.status, draft_id: draftId, draft_revision: draftRevision });
         loadHistory();
         loadQuota();
       }
@@ -924,7 +946,7 @@ export const WeeklyDigest: React.FC = () => {
       const messages = await buildMessages(`sched-${id.slice(0, 8)}`);
       // 送る時になって形式エラーで落ちないよう、予約の前に LINE 側でチェックする
       await sendLineMessages('validate', messages);
-      await createWeeklyDigestSchedule({ id, base_date: baseDate, send_at: at.toISOString(), messages, text: greeting, content_key: contentKey, draft_id: draftId });
+      await createWeeklyDigestSchedule({ id, base_date: baseDate, send_at: at.toISOString(), messages, text: greeting, content_key: contentKey, draft_id: draftId, draft_revision: draftRevision });
       const label = `${fmtDateTime(at.toISOString())} に予約しました`;
       setSendNote(`⏰ ${label}`);
       showToast(label);
@@ -1138,7 +1160,7 @@ export const WeeklyDigest: React.FC = () => {
                       </td>
                       <td className="px-3 py-1.5 whitespace-nowrap">
                         {r.draft ? (
-                          <span className="text-slate-700">✓ 作成済み <span className="text-slate-600">（更新 {fmtDateTime(r.draft.updated_at)}）</span></span>
+                          <span className="text-slate-700">✓ 作成済み{r.draft.revision ? ` #${r.draft.revision}` : ''} <span className="text-slate-600">（更新 {fmtDateTime(r.draft.updated_at)}）</span></span>
                         ) : isOpen && draftId ? (
                           <span className="text-slate-700">✓ 作成済み</span>
                         ) : (
@@ -1698,6 +1720,7 @@ export const WeeklyDigest: React.FC = () => {
                         return (
                           <li key={s.id} className="flex flex-wrap items-center gap-1.5">
                             <span className={`px-1.5 py-0.5 rounded font-bold ${st.cls}`}>{st.label}</span>
+                            {s.draft_revision ? <span className="font-bold text-slate-700">#{s.draft_revision}</span> : null}
                             <span>
                               {fmtDateTime(s.send_at)} に送信（配信日 {md(s.base_date)}）
                             </span>
@@ -1734,18 +1757,31 @@ export const WeeklyDigest: React.FC = () => {
 
               {history.length > 0 && (
                 <div className="pt-1">
-                  <p className="text-sm font-bold text-slate-600 mb-1">配信履歴</p>
-                  <ul className="text-xs text-slate-600 space-y-0.5">
-                    {history.slice(0, 8).map((h) => (
-                      <li key={h.id}>
-                        {new Date(h.sent_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{' '}
-                        <span className={`px-1.5 py-0.5 rounded font-bold ${h.mode === 'broadcast' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {h.mode === 'broadcast' ? '全員配信' : h.mode === 'admins' ? '管理者' : h.mode === 'user' ? '指定の1人' : 'テスト（開発向け）'}
-                        </span>{' '}
-                        配信日 {h.base_date}
-                        {h.line_status && h.line_status >= 300 ? ` （LINE ${h.line_status}）` : ''}
-                      </li>
-                    ))}
+                  <p className="text-sm font-bold text-slate-600 mb-1">
+                    配信履歴 <span className="font-normal text-xs">（# は下書きの版番号。保存のたびに 1 つ増え、いま開いている版は上の「下書き #」と同じ）</span>
+                  </p>
+                  <ul className="text-xs text-slate-600 space-y-1">
+                    {history.slice(0, 8).map((h) => {
+                      const topics = sentTopics(h.messages);
+                      return (
+                        <li key={h.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          {/* 版番号＋題名（どの内容を送ったか） */}
+                          <span className="font-bold text-slate-700">
+                            #{h.draft_revision ?? '—'} {sentTitle(h.text)}
+                          </span>
+                          {topics && <span className="text-slate-600">一押し: {topics}</span>}
+                          {/* 今までの情報（いつ・誰に・配信日） */}
+                          <span>
+                            {new Date(h.sent_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{' '}
+                            <span className={`px-1.5 py-0.5 rounded font-bold ${h.mode === 'broadcast' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
+                              {h.mode === 'broadcast' ? '全員配信' : h.mode === 'admins' ? '管理者' : h.mode === 'user' ? '指定の1人' : 'テスト（開発向け）'}
+                            </span>{' '}
+                            配信日 {h.base_date}
+                            {h.line_status && h.line_status >= 300 ? ` （LINE ${h.line_status}）` : ''}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}

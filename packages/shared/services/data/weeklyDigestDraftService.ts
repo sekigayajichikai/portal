@@ -28,6 +28,8 @@ export interface WeeklyDigestDraft {
   /** 内容の期間を手で調整したとき（2026-11-08）。両方 null なら自動（配信日から決める）。列: 2026-11-08-weekly-digest-drafts-period.sql */
   period_from: string | null;
   period_to: string | null;
+  /** 版番号。保存のたびに DB のトリガーで 1 ずつ増える（2026-11-08、列: 2026-11-08-weekly-digest-revision.sql）。列が無ければ undefined */
+  revision?: number | null;
   /** 旧: コピー用の文面（2026-10-05 にコピペ用の配信文・配信画像を画面から削除。列は古い下書きのため残す） */
   text: string | null;
   /** 旧: 配信画像の種類（flyer / topic / hybrid / list）。同上 */
@@ -36,7 +38,7 @@ export interface WeeklyDigestDraft {
 }
 
 /** 保存時に渡す内容（id を省くと新規作成）。旧項目 text / image_mode は渡さない */
-export type WeeklyDigestDraftInput = Omit<WeeklyDigestDraft, 'id' | 'updated_at' | 'text' | 'image_mode'> & { id?: string };
+export type WeeklyDigestDraftInput = Omit<WeeklyDigestDraft, 'id' | 'updated_at' | 'text' | 'image_mode' | 'revision'> & { id?: string };
 
 /** 下書きの一覧（配信日の新しい順 → 更新の新しい順）。テーブル未作成のときは空 */
 export async function listWeeklyDigestDrafts(limit = 60): Promise<WeeklyDigestDraft[]> {

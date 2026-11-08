@@ -97,14 +97,29 @@ export interface WeeklyDigestSend {
   line_status: number | null;
   /** 送信元の下書き（weekly_digest_drafts.id。無ければ null） */
   draft_id?: string | null;
+  /** 送った時点の下書きの版番号（2026-11-08。列: 2026-11-08-weekly-digest-revision.sql。無ければ null） */
+  draft_revision?: number | null;
   sent_at: string;
+}
+
+/** draft_revision 列がまだ無い本番でも他の項目は入るように、列エラーのときはその項目を外したものを返す */
+function withoutRevision<T extends { draft_revision?: number | null }>(entry: T, message: string): Omit<T, 'draft_revision'> | null {
+  if (!/draft_revision/.test(message)) return null;
+  console.error('DBに draft_revision 列がありません（sql/migrations/2026-11-08-weekly-digest-revision.sql を適用してください）。版番号は残りません');
+  const { draft_revision: _r, ...rest } = entry;
+  void _r;
+  return rest;
 }
 
 /** 配信履歴を保存する（テーブル未作成なら黙って諦める。送信自体は成功しているため） */
 export async function recordWeeklyDigestSend(entry: Omit<WeeklyDigestSend, 'id' | 'sent_at'>): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) return;
-  const { error } = await supabase.from('weekly_digest_sends').insert(entry);
+  let { error } = await supabase.from('weekly_digest_sends').insert(entry);
+  if (error) {
+    const retry = withoutRevision(entry, error.message);
+    if (retry) ({ error } = await supabase.from('weekly_digest_sends').insert(retry));
+  }
   if (error) console.warn('配信履歴の保存に失敗（テーブル未作成の可能性）:', error.message);
 }
 
@@ -138,6 +153,8 @@ export interface WeeklyDigestSchedule {
   /** 予約した時点の画面の内容（予約後に変わったかの判定用） */
   content_key: string | null;
   draft_id: string | null;
+  /** 予約した時点の下書きの版番号（2026-11-08。無ければ null） */
+  draft_revision?: number | null;
   status: WeeklyDigestScheduleStatus;
   line_status: number | null;
   error: string | null;
@@ -147,11 +164,15 @@ export interface WeeklyDigestSchedule {
 
 /** 予約する（id は画面側で作る。画像のファイル名と LINE の二重送信防止キーにも使うため） */
 export async function createWeeklyDigestSchedule(
-  entry: Pick<WeeklyDigestSchedule, 'id' | 'base_date' | 'send_at' | 'messages' | 'text' | 'content_key' | 'draft_id'>
+  entry: Pick<WeeklyDigestSchedule, 'id' | 'base_date' | 'send_at' | 'messages' | 'text' | 'content_key' | 'draft_id' | 'draft_revision'>
 ): Promise<void> {
   const supabase = getSupabaseClient();
   if (!supabase) throw new Error('Supabase未接続');
-  const { error } = await supabase.from('weekly_digest_schedules').insert(entry);
+  let { error } = await supabase.from('weekly_digest_schedules').insert(entry);
+  if (error) {
+    const retry = withoutRevision(entry, error.message);
+    if (retry) ({ error } = await supabase.from('weekly_digest_schedules').insert(retry));
+  }
   if (error) {
     throw new Error(
       /does not exist|schema cache/.test(error.message)
