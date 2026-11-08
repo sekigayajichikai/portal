@@ -11,7 +11,8 @@
  *
  *   validate  … 送らずに LINE 側で形式チェックだけ行う（Flex JSON の間違いを事前に検出）
  *   test      … LINE_TEST_USER_ID（管理者自身）にだけ push する
- *   user      … body.to のユーザーID（Uで始まる33文字）1人にだけ push する（画面でIDを直接入れて送る。2026-11-01）
+ *   user      … body.to の送り先1つにだけ push する（ユーザーID U…／グループID C…／複数人トークID R…。2026-11-01、グループは 2026-11-08）
+ *               グループに送るには Bot がそのグループに参加している必要がある。グループへの push は1通の扱い
  *   admins    … LINE_ADMIN_USER_IDS（DX委員など。リッチメニューと共通）に multicast する（確認用。人数ぶん通数を使う）
  *   broadcast … 友だち全員に broadcast する
  *
@@ -42,6 +43,8 @@ type Mode = 'validate' | 'test' | 'user' | 'admins' | 'broadcast';
 const MODES: Mode[] = ['validate', 'test', 'user', 'admins', 'broadcast'];
 /** LINE のユーザーID（U + 16進32桁） */
 const USER_ID_RE = /^U[0-9a-f]{32}$/;
+/** 「この人に送る」の送り先: ユーザー（U）・グループ（C）・複数人トーク（R） */
+const RECIPIENT_ID_RE = /^[UCR][0-9a-f]{32}$/;
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -106,10 +109,10 @@ Deno.serve(async (req: Request) => {
     url = `${LINE_API}/push`;
     body = { to, messages };
   } else if (mode === 'user') {
-    // 画面で入れたユーザーID1人にだけ送る（特定の人に見てもらう確認用。1通消費）
+    // 画面で選んだ送り先1つにだけ送る（特定の人・グループに見てもらう確認用。1通消費）
     const to = typeof parsed?.to === 'string' ? parsed.to.trim() : '';
-    if (!USER_ID_RE.test(to)) {
-      return jsonResponse({ error: '送り先のユーザーIDが正しくありません（Uで始まる33文字。LINE Developers や名簿で確認してください）' }, 400);
+    if (!RECIPIENT_ID_RE.test(to)) {
+      return jsonResponse({ error: '送り先のIDが正しくありません（U・C・R のどれかで始まる33文字。LINE Developers や名簿、「送る相手の登録」で確認してください）' }, 400);
     }
     url = `${LINE_API}/push`;
     body = { to, messages };

@@ -6,6 +6,8 @@
  * - それ以外（名簿登録・お問い合わせ・友だち追加など）は、受け取った中身をそのまま名簿GAS（GAS_WEBHOOK_URL）へ渡す。
  *   LINE にはすぐ 200 を返し、GAS への受け渡しは後ろで続ける。
  * - バスの処理で失敗したときも GAS へ渡す（GAS にもバスの処理が残っている）。
+ * - グループ・複数人トークから届いたイベント（Bot の参加・退出・発言）は line_groups に控える（2026-11-08）。
+ *   グループ ID は画面から見えないため、週次配信の「送る相手の登録」でここから選べるようにする。参加時はグループ名も取る。
  *
  * バスをここで答える相手（シークレット BUS_EDGE_MODE）:
  *   off  … 誰も答えない（全部 GAS へ渡すだけ）
@@ -111,6 +113,52 @@ async function db(path: string, init: RequestInit = {}): Promise<unknown> {
   const text = await res.text();
   if (!res.ok) throw new Error(`DB ${res.status}: ${text}`);
   return text ? JSON.parse(text) : null;
+}
+
+// ============================================================
+// グループ・複数人トークの控え（line_groups）
+// ============================================================
+
+/**
+ * グループ／複数人トークから届いたイベントを line_groups に控える。
+ * join … 参加日時とグループ名（summary API）を入れる ／ leave … 退出日時を入れる ／ それ以外 … 最終イベント日時を更新（名前が無ければ取る）
+ * 失敗しても本来の処理（バス・GAS への受け渡し）には影響させない
+ */
+async function recordGroupEvent(event: LineEvent): Promise<void> {
+  const src = (event.source ?? {}) as { type?: string; groupId?: string; roomId?: string };
+  const id = src.type === 'group' ? src.groupId : src.type === 'room' ? src.roomId : undefined;
+  if (!id) return;
+  const kind = src.type === 'group' ? 'group' : 'room';
+  const now = new Date().toISOString();
+  const row: Record<string, unknown> = { group_id: id, kind, last_seen_at: now, updated_at: now };
+  if (event.type === 'join') row.joined_at = now;
+  if (event.type === 'leave') row.left_at = now;
+  else row.left_at = null; // 発言が届く＝参加中
+  // グループ名は join のとき、または控えに名前が無いときだけ取りに行く（毎回は呼ばない）
+  let needName = kind === 'group' && event.type !== 'leave' && event.type === 'join';
+  if (!needName && kind === 'group' && event.type !== 'leave') {
+    const cur = (await db(`line_groups?group_id=eq.${encodeURIComponent(id)}&select=name`)) as Array<{ name: string | null }>;
+    needName = !cur?.[0] || !cur[0].name;
+  }
+  if (needName) {
+    try {
+      const res = await fetch(`https://api.line.me/v2/bot/group/${id}/summary`, {
+        headers: { Authorization: `Bearer ${env('LINE_CHANNEL_ACCESS_TOKEN')}` },
+      });
+      if (res.ok) {
+        const s = (await res.json()) as { groupName?: string; pictureUrl?: string };
+        if (s.groupName) row.name = s.groupName;
+        if (s.pictureUrl) row.picture_url = s.pictureUrl;
+      }
+    } catch (e) {
+      console.error('group summary', e);
+    }
+  }
+  await db('line_groups?on_conflict=group_id', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(row),
+  });
 }
 
 interface BusData {
@@ -567,6 +615,18 @@ Deno.serve(async (req: Request) => {
   const ctx: Ctx = { test, sent: [] };
   const toGas: LineEvent[] = [];
   const timings: { event: string; ms: number; handled: boolean; error?: string }[] = [];
+
+  // グループ・複数人トークのイベントは控える（本番だけ。後ろで続け、失敗しても他の処理に影響させない）
+  if (!test) {
+    const groupEvents = events.filter((e) => {
+      const t = (e.source as { type?: string } | undefined)?.type;
+      return t === 'group' || t === 'room';
+    });
+    if (groupEvents.length > 0) {
+      const p = Promise.all(groupEvents.map((e) => recordGroupEvent(e).catch((err) => console.error('line_groups', err))));
+      if (typeof EdgeRuntime !== 'undefined') EdgeRuntime.waitUntil(p);
+    }
+  }
 
   for (const event of events) {
     const t = Date.now();
