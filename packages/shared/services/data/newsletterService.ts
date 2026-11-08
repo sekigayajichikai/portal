@@ -788,6 +788,56 @@ export async function removePdfUrlFromNewsletter(
  * @param newsletterId - 公開するNewsletterのUUID
  * @returns 更新後のNewsletterデータ
  */
+/**
+ * 旧版になる号（oldId）の予定カードを、新しく公開する号（newId）へ付け替える（2026-11-08）。
+ *
+ * 「編集版を作る」は号と記事を複製するが予定カード（event_cards）は複製しない。そのまま公開すると、
+ * 予定カードは旧版の号に取り残され、住民側の予定一覧にも週次配信にも出なくなる（11月号で「おおぞらふれあいまつり」が消えた）。
+ * - 新しい号に同じ予定（同じ日付・同じ題名）がすでにあるものは付け替えず旧版に残す（二重登録を避ける）
+ * - 記事リンク（linked_article_id）が旧版の記事を指していれば、新しい号の同じ題名の記事に付け替える。見つからなければそのまま
+ * 既存データの一括修正は sql/migrations/2026-11-08-move-event-cards-from-archived.sql
+ */
+export async function moveEventCardsToNewVersion(oldId: string, newId: string): Promise<{ moved: number; skipped: number }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) throw new Error('Supabase未接続です。');
+  const [{ data: oldCards, error: e1 }, { data: newCards, error: e2 }] = await Promise.all([
+    supabase.from('event_cards').select('id, title, event_date, linked_article_id').eq('newsletter_id', oldId),
+    supabase.from('event_cards').select('title, event_date').eq('newsletter_id', newId),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  const key = (c: { title: string; event_date: string | null }) => `${c.event_date ?? ''}|${(c.title ?? '').trim()}`;
+  const existing = new Set((newCards ?? []).map(key));
+  const toMove = (oldCards ?? []).filter((c) => !existing.has(key(c)));
+  const skipped = (oldCards ?? []).length - toMove.length;
+  if (toMove.length === 0) return { moved: 0, skipped };
+
+  // 記事リンクの付け替え先（旧版の記事ID → 新しい号の同じ題名の記事ID）
+  const linkedIds = Array.from(new Set(toMove.map((c) => c.linked_article_id).filter((v): v is string => !!v)));
+  const remap = new Map<string, string>();
+  if (linkedIds.length > 0) {
+    const [{ data: oldArts }, { data: newArts }] = await Promise.all([
+      supabase.from('articles').select('id, title').in('id', linkedIds),
+      supabase.from('articles').select('id, title').eq('newsletter_id', newId),
+    ]);
+    const byTitle = new Map((newArts ?? []).map((a) => [a.title, a.id] as const));
+    for (const a of oldArts ?? []) {
+      const nid = byTitle.get(a.title);
+      if (nid) remap.set(a.id, nid);
+    }
+  }
+
+  let moved = 0;
+  for (const c of toMove) {
+    const patch: Record<string, unknown> = { newsletter_id: newId };
+    if (c.linked_article_id && remap.has(c.linked_article_id)) patch.linked_article_id = remap.get(c.linked_article_id);
+    const { error } = await supabase.from('event_cards').update(patch).eq('id', c.id);
+    if (error) throw error;
+    moved++;
+  }
+  return { moved, skipped };
+}
+
 export async function publishNewsletter(newsletterId: string): Promise<Newsletter> {
   const supabase = getSupabaseClient();
   if (!supabase) {
@@ -820,6 +870,13 @@ export async function publishNewsletter(newsletterId: string): Promise<Newslette
       .update({ status: 'archived', title: archivedTitle })
       .eq('id', target.parent_id);
     console.log(`📦 元の公開版をアーカイブ: ${target.parent_id}`);
+    // 予定カードは編集版の複製に含まれないので、ここで新しい号へ付け替える（失敗しても公開は止めない）
+    try {
+      const moved = await moveEventCardsToNewVersion(target.parent_id, newsletterId);
+      console.log(`📅 予定カードを新しい号へ付け替え: ${moved.moved}件（同じ予定が新しい号にもあり残したもの ${moved.skipped}件）`);
+    } catch (e) {
+      console.error('予定カードの付け替えに失敗（公開は続行。予定タブで旧版の号のカードを確認してください）:', e);
+    }
   }
 
   const { data, error } = await supabase
