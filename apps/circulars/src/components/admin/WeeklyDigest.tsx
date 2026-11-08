@@ -101,17 +101,6 @@ const sentTitle = (text: string | null | undefined): string => {
   const t = first.replace(TEST_PREFIX, '').trim();
   return t || '（題名なし）';
 };
-/** 配信履歴の一押し: 一押しカードの altText「⭐今週の一押し: A（11/14(土)）、B（11/15(日)）」から後ろの部分。無ければ null */
-const sentTopics = (messages: unknown): string | null => {
-  if (!Array.isArray(messages)) return null;
-  for (const m of messages as Array<{ type?: string; altText?: string }>) {
-    const alt = (m?.type === 'flex' && typeof m.altText === 'string' ? m.altText : '').replace(TEST_PREFIX, '');
-    const i = alt.indexOf('今週の一押し: ');
-    if (i >= 0) return alt.slice(i + '今週の一押し: '.length).trim() || null;
-  }
-  return null;
-};
-
 const fmtDateTime = (iso: string) => {
   const d = new Date(iso);
   return `${md(ymd(d))} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -1762,14 +1751,12 @@ export const WeeklyDigest: React.FC = () => {
                   </p>
                   <ul className="text-xs text-slate-600 space-y-1">
                     {history.slice(0, 8).map((h) => {
-                      const topics = sentTopics(h.messages);
                       return (
                         <li key={h.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                          {/* 版番号＋題名（どの内容を送ったか） */}
+                          {/* 版番号＋題名（どの内容を送ったか）。一押しは載せない（2026-11-08 ユーザー指示） */}
                           <span className="font-bold text-slate-700">
                             #{h.draft_revision ?? '—'} {sentTitle(h.text)}
                           </span>
-                          {topics && <span className="text-slate-600">一押し: {topics}</span>}
                           {/* 今までの情報（いつ・誰に・配信日） */}
                           <span>
                             {new Date(h.sent_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{' '}
