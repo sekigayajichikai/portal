@@ -31,6 +31,7 @@ export * from './services/data/lineBroadcastService.js';
 export * from './services/data/driveImportService.js';
 export * from './services/data/lineRichMenuService.js';
 export * from './services/data/weeklyDigestDraftService.js';
+export * from './services/data/lineTestRecipientService.js';
 export * from './services/data/likeService.js';
 export * from './services/data/calendarService.js';
 export * from './services/data/calendarSyncService.js';
