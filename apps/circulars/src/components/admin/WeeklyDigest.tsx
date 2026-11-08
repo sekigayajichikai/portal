@@ -289,6 +289,13 @@ export const WeeklyDigest: React.FC = () => {
    * 配信日を変えたら自動に戻す
    */
   const [topicIds, setTopicIds] = useState<string[] | undefined>(undefined);
+  /**
+   * 内容の期間の手調整（2026-11-08 ユーザー指示）。null = 自動（配信日から。日曜配信なら翌月〜日）。
+   * 「今週の予定」「締切間近」の範囲と、見出し・カードの日付に効く。念のための調整用で、下書きに残る
+   */
+  const [period, setPeriod] = useState<{ from: string; to: string } | null>(null);
+  const autoWeek = useMemo(() => digestWeek(baseDate), [baseDate]);
+  const week = period ?? autoWeek;
 
   /** 下書きとして保存する項目をひとまとめに（比較用のスナップショットにも使う） */
   const draftBody = useMemo(
@@ -297,10 +304,12 @@ export const WeeklyDigest: React.FC = () => {
       excluded_ids: Array.from(excluded).sort(),
       link_kinds: linkKinds as Record<string, string>,
       greeting: greetingEdited ? greeting : null,
+      period_from: period?.from ?? null,
+      period_to: period?.to ?? null,
     }),
-    [topicIds, excluded, linkKinds, greeting, greetingEdited]
+    [topicIds, excluded, linkKinds, greeting, greetingEdited, period]
   );
-  const DEFAULT_DRAFT_KEY = JSON.stringify({ topic_ids: null, excluded_ids: [], link_kinds: {}, greeting: null });
+  const DEFAULT_DRAFT_KEY = JSON.stringify({ topic_ids: null, excluded_ids: [], link_kinds: {}, greeting: null, period_from: null, period_to: null });
 
   /**
    * 下書きの保存状態の表示（上部の「下書き」の行と、吹き出し①の入力欄の2か所に出す）。
@@ -322,6 +331,7 @@ export const WeeklyDigest: React.FC = () => {
     setExcluded(new Set());
     setLinkKinds({});
     setGreetingEdited(false);
+    setPeriod(null);
     lastDraftRef.current = DEFAULT_DRAFT_KEY;
     draftIdRef.current = null;
     setDraftId(null);
@@ -333,9 +343,14 @@ export const WeeklyDigest: React.FC = () => {
     const topic = Array.isArray(d.topic_ids) ? (d.topic_ids as string[]) : undefined;
     const ex = Array.isArray(d.excluded_ids) ? (d.excluded_ids as string[]) : [];
     const lk = (d.link_kinds && typeof d.link_kinds === 'object' ? d.link_kinds : {}) as Record<string, LinkKind>;
+    const isYmd = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    const pf = isYmd(d.period_from) ? d.period_from : null;
+    const pt = isYmd(d.period_to) ? d.period_to : null;
+    const pr = pf && pt ? { from: pf, to: pt < pf ? pf : pt } : null;
     setTopicIds(topic);
     setExcluded(new Set(ex));
     setLinkKinds(lk);
+    setPeriod(pr);
     if (d.greeting != null) {
       setGreeting(d.greeting);
       setGreetingEdited(true);
@@ -347,6 +362,8 @@ export const WeeklyDigest: React.FC = () => {
       excluded_ids: [...ex].sort(),
       link_kinds: lk,
       greeting: d.greeting ?? null,
+      period_from: pr?.from ?? null,
+      period_to: pr?.to ?? null,
     });
     draftIdRef.current = d.id;
     setDraftId(d.id);
@@ -427,14 +444,14 @@ export const WeeklyDigest: React.FC = () => {
       showError('下書きを捨てられませんでした。');
     }
   };
-  const choices = useMemo(() => topicChoices(cards, baseDate), [cards, baseDate]);
+  const choices = useMemo(() => topicChoices(cards, baseDate, period), [cards, baseDate, period]);
 
   /** 拾われた予定の全体（チェック一覧用。digest_exclude のものは最初から入らない） */
-  const fullDigest = useMemo(() => buildDigest(cards, reports, baseDate, { topicIds }), [cards, reports, baseDate, topicIds]);
+  const fullDigest = useMemo(() => buildDigest(cards, reports, baseDate, { topicIds, week: period }), [cards, reports, baseDate, topicIds, period]);
   /** 実際に配信する内容（チェックを外した予定を除いたもの） */
   const digest = useMemo(
-    () => buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate, { topicIds }),
-    [cards, reports, baseDate, excluded, topicIds]
+    () => buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate, { topicIds, week: period }),
+    [cards, reports, baseDate, excluded, topicIds, period]
   );
   /** いま一押しになっている予定のID（自動のときも含む） */
   const currentTopicIds = fullDigest.topics.map((t) => t.id);
@@ -462,20 +479,24 @@ export const WeeklyDigest: React.FC = () => {
    * 送られてしまう（2026-11-07 のテスト配信で起きた）ので、選び直したら確認を出して文を作り直す（2026-11-08 ユーザー指示）。
    * 「作り直さない」なら選択だけ変えて文は残す。自動生成のままなら黙って作り直る
    */
-  const changeTopics = async (next: string[] | undefined) => {
+  const changeTopics = (next: string[] | undefined) => changeDigest({ topicIds: next }, '一押し');
+  /** 内容の期間を変える（null = 自動に戻す）。手で直した文があれば一押しと同じく確認する（見出しの日付が変わるため） */
+  const changePeriod = (next: { from: string; to: string } | null) => changeDigest({ week: next }, '内容の期間');
+  const changeDigest = async (patch: { topicIds?: string[] | undefined; week?: { from: string; to: string } | null }, what: string) => {
+    const nextTopicIds = 'topicIds' in patch ? patch.topicIds : topicIds;
+    const nextWeek = 'week' in patch ? patch.week : period;
     if (greetingEdited) {
-      const preview = buildGreetingText(buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate, { topicIds: next }));
+      const preview = buildGreetingText(buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate, { topicIds: nextTopicIds, week: nextWeek }));
       const ok = await appConfirm({
         title: '吹き出し①の文を作り直しますか？',
-        message: `一押しを変えたので、手で直した文（「今週の一押しは …」）が合わなくなります。作り直すと、手で直した内容は消えて次の文になります。
-
-${preview}`,
+        message: `${what}を変えたので、手で直した文（見出しの日付・「今週の一押しは …」）が合わなくなります。作り直すと、手で直した内容は消えて次の文になります。\n\n${preview}`,
         confirmLabel: '作り直す',
-        cancelLabel: '選択だけ変える',
+        cancelLabel: `${what}だけ変える`,
       });
-      if (ok) setGreetingEdited(false); // 文は useEffect が新しい一押しから作り直す
+      if (ok) setGreetingEdited(false); // 文は useEffect が新しい内容から作り直す
     }
-    setTopicIds(next);
+    if ('topicIds' in patch) setTopicIds(patch.topicIds);
+    if ('week' in patch) setPeriod(patch.week ?? null);
   };
 
   /** チェック一覧の行（一押し・締切間近・今週の予定・申込受付中の順） */
@@ -627,7 +648,7 @@ ${preview}`,
   const saveCrop = async (topic: PublicEventCard) => {
     // 枠の形が未指定なら、いま表示している既定（元画像の向きで決めたもの）を確定して保存する
     const flyer = flyers[topic.id];
-    const crop = flyer ? resolveCrop(normalizeCrop(crops[topic.id]), flyer.width, flyer.height) : normalizeCrop(crops[topic.id]);
+    const crop = flyer ? resolveCrop(normalizeCrop(crops[topic.id])) : normalizeCrop(crops[topic.id]);
     const heroSource = imageKinds[topic.id] ?? null;
     setSavingCrop(topic.id);
     try {
@@ -762,7 +783,7 @@ ${preview}`,
         continue;
       }
       live.add(t.id);
-      const crop = resolveCrop(normalizeCrop(crops[t.id]), flyer.width, flyer.height);
+      const crop = resolveCrop(normalizeCrop(crops[t.id]));
       const cropKey = JSON.stringify(crop);
       const hit = cache.get(t.id);
       if (hit && hit.flyer === flyer && hit.cropKey === cropKey) {
@@ -781,7 +802,7 @@ ${preview}`,
     const out: Record<string, CropAspect> = {};
     for (const t of digest.topics) {
       const flyer = flyers[t.id];
-      if (flyer) out[t.id] = resolveCrop(normalizeCrop(crops[t.id]), flyer.width, flyer.height).aspect;
+      if (flyer) out[t.id] = resolveCrop(normalizeCrop(crops[t.id])).aspect;
     }
     return out;
   }, [digest.topics, flyers, crops]);
@@ -837,7 +858,7 @@ ${preview}`,
       const result = await sendLineMessages(mode, messages, mode === 'user' ? { to: testUserId.trim() } : undefined);
       const label =
         mode === 'validate' ? '形式チェックOK。LINE に送れる内容です'
-        : mode === 'test' ? 'テスト送信しました。自分のLINEで見た目を確認してください'
+        : mode === 'test' ? 'テスト送信しました（開発向け）。届いたLINEで見た目を確認してください'
         : mode === 'user' ? '入れたIDの人に送りました（＜テスト配信＞付き）'
         : mode === 'admins' ? '管理者に送りました。各自のLINEで見た目を確認してもらってください'
         : '友だち全員に配信しました';
@@ -1040,6 +1061,33 @@ ${preview}`,
               title="曜日と違う日に送るときはここで日付を選ぶ"
             />
           </label>
+          {/* 内容の期間（2026-11-08）。ふだんは自動（日曜配信なら翌月〜日）。念のため手で動かせる。下書きに残る */}
+          <label className="text-base font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+            内容の期間
+            <input
+              type="date"
+              value={week.from}
+              onChange={(e) => e.target.value && changePeriod({ from: e.target.value, to: week.to < e.target.value ? e.target.value : week.to })}
+              className={`text-base border-2 rounded-lg px-2 py-1.5 bg-white ${period ? 'border-amber-500' : 'border-slate-400'}`}
+              title="「今週の予定」「締切間近」に載せる期間の初日。見出し・カードの日付もこれになる"
+            />
+            〜
+            <input
+              type="date"
+              value={week.to}
+              min={week.from}
+              onChange={(e) => e.target.value && changePeriod({ from: week.from, to: e.target.value < week.from ? week.from : e.target.value })}
+              className={`text-base border-2 rounded-lg px-2 py-1.5 bg-white ${period ? 'border-amber-500' : 'border-slate-400'}`}
+              title="「今週の予定」「締切間近」に載せる期間の最終日"
+            />
+            {period ? (
+              <button type="button" onClick={() => changePeriod(null)} className="text-sm font-normal text-amber-800 underline hover:text-amber-900" title="配信日から自動で決めた期間に戻す">
+                手で調整中（自動 {md(autoWeek.from)}〜{md(autoWeek.to)} に戻す）
+              </button>
+            ) : (
+              <span className="text-sm font-normal text-slate-500">配信日から自動{toDate(baseDate).getDay() === 0 ? '（日曜配信なので翌月曜〜日曜）' : '（配信日から7日間）'}</span>
+            )}
+          </label>
           <button
             onClick={() => load()}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg transition ml-auto"
@@ -1193,7 +1241,7 @@ ${preview}`,
                   ...choices.others.map((c) => ({ c, star: false })),
                 ].map(({ c, star }) => {
                   // 今週が申込締切のものは印を付ける（開催が先でも、申込のリマインドとして一押しにできる）
-                  const due = topicDeadline(c, digestWeek(baseDate));
+                  const due = topicDeadline(c, week);
                   const on = currentTopicIds.includes(c.id);
                   const order = currentTopicIds.indexOf(c.id);
                   const disabled = !on && currentTopicIds.length >= MAX_TOPICS;
@@ -1500,7 +1548,7 @@ ${preview}`,
                 LINE に送る（カード形式）
               </h3>
               <p className="text-sm text-slate-600 mt-1">
-                短いテキスト → ⭐一押しカード → カード一覧（今週の予定／申込受付中／レポート）の3つの吹き出しを1回の配信（1通）で送ります。まず「テスト送信」で自分のLINEに届く見た目を確認してから「全員に配信」してください。
+                短いテキスト → ⭐一押しカード → カード一覧（今週の予定／申込受付中／レポート）の3つの吹き出しを1回の配信（1通）で送ります。まず「管理者に送る」で届く見た目を確認してから「全員に配信」してください。
               </p>
             </div>
           </div>
@@ -1559,10 +1607,10 @@ ${preview}`,
                 <button
                   onClick={() => send('test')}
                   disabled={sending !== null}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
-                  title="自分のLINEにだけ送ります"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-slate-600 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition disabled:opacity-50"
+                  title="開発者（LINE_TEST_USER_ID の人）のLINEにだけ送ります。ふだんの確認は「管理者に送る」を使ってください"
                 >
-                  {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（自分に）
+                  {sending === 'test' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} テスト送信（開発向け）
                 </button>
                 {/* 特定の1人に送る（IDを直接入れる。全員配信以外は「＜テスト配信＞」付きで届く。2026-11-01） */}
                 <span className="inline-flex items-stretch">
@@ -1587,7 +1635,7 @@ ${preview}`,
                 <button
                   onClick={() => send('admins')}
                   disabled={sending !== null}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 transition disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
                   title="管理者（リッチメニューの「管理者だけに反映」と同じ人）にだけ送ります。人数ぶん通数を使います"
                 >
                   {sending === 'admins' ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />} 管理者に送る（確認用）
@@ -1688,7 +1736,7 @@ ${preview}`,
                       <li key={h.id}>
                         {new Date(h.sent_at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{' '}
                         <span className={`px-1.5 py-0.5 rounded font-bold ${h.mode === 'broadcast' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {h.mode === 'broadcast' ? '全員配信' : h.mode === 'admins' ? '管理者' : h.mode === 'user' ? '指定の1人' : 'テスト'}
+                          {h.mode === 'broadcast' ? '全員配信' : h.mode === 'admins' ? '管理者' : h.mode === 'user' ? '指定の1人' : 'テスト（開発向け）'}
                         </span>{' '}
                         配信日 {h.base_date}
                         {h.line_status && h.line_status >= 300 ? ` （LINE ${h.line_status}）` : ''}

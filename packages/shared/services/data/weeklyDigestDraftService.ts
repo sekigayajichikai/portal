@@ -25,6 +25,9 @@ export interface WeeklyDigestDraft {
   link_kinds: Record<string, string>;
   /** 吹き出し①の文。手で直したときだけ入る（null=自動生成のまま） */
   greeting: string | null;
+  /** 内容の期間を手で調整したとき（2026-11-08）。両方 null なら自動（配信日から決める）。列: 2026-11-08-weekly-digest-drafts-period.sql */
+  period_from: string | null;
+  period_to: string | null;
   /** 旧: コピー用の文面（2026-10-05 にコピペ用の配信文・配信画像を画面から削除。列は古い下書きのため残す） */
   text: string | null;
   /** 旧: 配信画像の種類（flyer / topic / hybrid / list）。同上 */
@@ -58,7 +61,17 @@ export async function saveWeeklyDigestDraft(draft: WeeklyDigestDraftInput): Prom
   if (!supabase) throw new Error('Supabase未接続です。');
   const row = { ...draft, updated_at: new Date().toISOString() };
   const { data, error } = await supabase.from('weekly_digest_drafts').upsert(row, { onConflict: 'id' }).select('*').single();
-  if (error) throw error;
+  if (error) {
+    // period_from / period_to の列がまだ無い本番（SQL 未適用）でも他の項目は保存できるようにする。期間の指定だけ残らない
+    if (/period_(from|to)/.test(error.message)) {
+      console.error('DBに period_from / period_to 列がありません（sql/migrations/2026-11-08-weekly-digest-drafts-period.sql を適用してください）。期間の指定は保存されません');
+      const rest = Object.fromEntries(Object.entries(row).filter(([k]) => k !== 'period_from' && k !== 'period_to'));
+      const retry = await supabase.from('weekly_digest_drafts').upsert(rest, { onConflict: 'id' }).select('*').single();
+      if (retry.error) throw retry.error;
+      return { period_from: null, period_to: null, ...(retry.data as WeeklyDigestDraft) };
+    }
+    throw error;
+  }
   return data as WeeklyDigestDraft;
 }
 

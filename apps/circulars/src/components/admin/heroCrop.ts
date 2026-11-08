@@ -2,8 +2,8 @@
  * 一押しカードの画像（チラシPDFの1ページ目、または記事の写真）から、カード用の枠を切り出す
  *
  * crop = { x, y, scale, aspect }
- *   aspect … 枠の形。画面で選べるのは '210:297'（縦長 A4 全面）と「自由」の2つ（2026-11-08 に絞った）。
- *            未指定なら元画像から決める（A4 の縦長なら '210:297'、それ以外の写真などはその画像の形そのままの「自由」）
+ *   aspect … 枠の形。画面で選べるのは '210:297'（縦長A4。ページ全面）と「自由」の2つ（2026-11-08 に絞った）。
+ *            未指定なら縦長A4（既定）
  *            「自由」（2026-10-27）: 決まった形以外の '幅:高さ'（整数。例 '1000:623'）。紙面の上で枠をなぞって決めた形。
  *            LINE の Flex の aspectRatio がそのまま受け付ける書き方（1〜100000 の整数、高さは幅の3倍まで）に合わせている
  *            '1:1' / '4:3' / '16:9' / '297:210' は以前の選択肢。保存済みのカードのために計算だけ残す（画面には、その値が保存されているときだけ出す）
@@ -19,7 +19,7 @@ export type CropAspect = PresetAspect | `${number}:${number}`;
 /** legacy = 以前の選択肢。保存済みの値の計算用に残すだけで、ボタンには出さない（2026-11-08） */
 export const ASPECTS: Array<{ key: PresetAspect; label: string; ratio: number; legacy?: true }> = [
   // チラシ（A4）を切らずにページ全体で載せる。LINE の aspectRatio は整数の「幅:高さ」なので 210:297
-  { key: '210:297', label: '縦長 A4（全面）', ratio: 210 / 297 },
+  { key: '210:297', label: '縦長A4', ratio: 210 / 297 },
   { key: '1:1', label: '正方形', ratio: 1, legacy: true },
   { key: '4:3', label: '横長 4:3', ratio: 4 / 3, legacy: true },
   { key: '16:9', label: '横長 16:9', ratio: 16 / 9, legacy: true },
@@ -88,20 +88,14 @@ export function normalizeCrop(c?: Partial<HeroCrop> | null, legacyY?: number | n
   return DEFAULT_CROP;
 }
 
-/**
- * 元画像から既定の枠を決める（2026-11-08）。
- * A4 の縦長（チラシPDF）なら「縦長 A4（全面）」、それ以外（記事の写真など）はその画像の形そのままの「自由」。
- * どちらも拡大 ×1・位置 0 なら画像全体がそのまま載る
- */
-export function defaultAspectFor(w: number, h: number): CropAspect {
-  const a4 = 210 / 297;
-  const r = w / Math.max(1, h);
-  return Math.abs(r - a4) / a4 <= 0.1 ? A4_PORTRAIT : freeAspectFromSize(w, h);
+/** 既定の枠は縦長A4（2026-11-08 ユーザー指示。以前は横長の写真は 4:3、それ以外は正方形）。写真などで合わないときは「自由」に切り替える */
+export function defaultAspectFor(): CropAspect {
+  return A4_PORTRAIT;
 }
 
-/** aspect が未指定なら元画像の向きで決めた値を入れて返す */
-export function resolveCrop(crop: HeroCrop, w: number, h: number): HeroCrop & { aspect: CropAspect } {
-  return { ...crop, aspect: crop.aspect ?? defaultAspectFor(w, h) };
+/** aspect が未指定なら既定（縦長A4）を入れて返す（2026-11-08 までは元画像の向きで決めていたので w, h を取っていた） */
+export function resolveCrop(crop: HeroCrop): HeroCrop & { aspect: CropAspect } {
+  return { ...crop, aspect: crop.aspect ?? defaultAspectFor() };
 }
 
 export const aspectRatioOf = (a: CropAspect): number => {
@@ -113,7 +107,7 @@ export const aspectRatioOf = (a: CropAspect): number => {
 
 /** 元画像に対する切り出し矩形 */
 export function cropRect(w: number, h: number, crop: HeroCrop): { sx: number; sy: number; sw: number; sh: number } {
-  const r = aspectRatioOf(resolveCrop(crop, w, h).aspect);
+  const r = aspectRatioOf(resolveCrop(crop).aspect);
   // 枠が元画像に収まる最大の大きさ → scale で縮める（＝拡大）
   const baseW = Math.min(w, h * r);
   const sw = baseW / crop.scale;
@@ -179,7 +173,7 @@ export function canvasToJpegBase64(src: HTMLCanvasElement, maxSide = 1000, quali
 export function drawCropped(src: HTMLCanvasElement | HTMLImageElement, crop: HeroCrop, width = 1040): HTMLCanvasElement {
   const w = src instanceof HTMLImageElement ? src.naturalWidth : src.width;
   const h = src instanceof HTMLImageElement ? src.naturalHeight : src.height;
-  const r = aspectRatioOf(resolveCrop(crop, w, h).aspect);
+  const r = aspectRatioOf(resolveCrop(crop).aspect);
   const c = document.createElement('canvas');
   c.width = Math.round(width);
   c.height = Math.round(width / r);
