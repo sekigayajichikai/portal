@@ -3,7 +3,7 @@
  *
  * チラシPDFの1ページ目や記事の写真から、一押しカードに載せる枠を決める。
  * - 枠の形: 「縦長A4」か「自由」の2つ（2026-11-08 に絞った。既定は縦長A4。ボタンは 縦長A4 → 自由 の順）
- *   決まった形のときの 拡大スライダー・上/中央/下・リセット も同日に外した（縦長A4は押せばページ全面。微調整はドラッグとホイール）
+ *   拡大スライダー・上/中央/下・リセット も同日に外した（「縦長A4」を押せばページ全面＝リセット。微調整はドラッグとホイール）
  *   以前の 正方形／横長4:3／横長16:9／横長 A4 は、保存済みのカードにその値があるときだけボタンに出す
  *   - プレビューをドラッグすると位置が動く（マウス・タッチ両対応）
  *   - ホイールで拡大縮小
@@ -178,16 +178,6 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
     </div>
   );
 
-  const resetButton = (
-    <button
-      type="button"
-      onClick={() => onChange({ x: 0, y: 0, scale: 1 })}
-      title="既定（縦長A4・ページ全面）に戻す"
-      className="px-2 py-0.5 rounded border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
-    >
-      リセット
-    </button>
-  );
 
   if (freeMode) {
     return (
@@ -224,7 +214,6 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
             <p className="text-slate-600 mb-0.5">カードに載る画像（{crop.aspect.replace(':', '：')}）</p>
             <canvas ref={canvasRef} className="rounded border border-slate-300" style={{ width: pw, height: ph }} />
           </div>
-          <div className="flex flex-wrap gap-1">{resetButton}</div>
           <p className="text-slate-500">細長すぎる枠（縦横 3 倍まで）と、小さすぎる枠（紙面の幅の 1/{MAX_SCALE_FREE} まで）は、そこで止まります。</p>
         </div>
       </div>
