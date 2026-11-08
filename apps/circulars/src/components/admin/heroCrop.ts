@@ -2,9 +2,11 @@
  * 一押しカードの画像（チラシPDFの1ページ目、または記事の写真）から、カード用の枠を切り出す
  *
  * crop = { x, y, scale, aspect }
- *   aspect … 枠の形。'1:1'（正方形）/ '4:3' / '16:9'（横長）/ '210:297'・'297:210'（縦長・横長 A4。チラシ1ページを全面で）。未指定なら元画像の向きから決める（横長の写真は 4:3、それ以外は 1:1）
- *            「自由」（2026-10-27）: 上の5つ以外の '幅:高さ'（整数。例 '1000:623'）。紙面の上で枠をなぞって決めた形。
+ *   aspect … 枠の形。画面で選べるのは '210:297'（縦長 A4 全面）と「自由」の2つ（2026-11-08 に絞った）。
+ *            未指定なら元画像から決める（A4 の縦長なら '210:297'、それ以外の写真などはその画像の形そのままの「自由」）
+ *            「自由」（2026-10-27）: 決まった形以外の '幅:高さ'（整数。例 '1000:623'）。紙面の上で枠をなぞって決めた形。
  *            LINE の Flex の aspectRatio がそのまま受け付ける書き方（1〜100000 の整数、高さは幅の3倍まで）に合わせている
+ *            '1:1' / '4:3' / '16:9' / '297:210' は以前の選択肢。保存済みのカードのために計算だけ残す（画面には、その値が保存されているときだけ出す）
  *   scale  … 拡大率（1 = 枠が元画像に収まる最大、3 = その1/3 を拡大。自由な形のときは 6 まで）
  *   x, y   … 枠の位置（0 = 左端/上端、1 = 右端/下端。動かせる範囲に対する割合）
  */
@@ -14,14 +16,18 @@ import { PDFJS_DOC_OPTIONS } from '@/lib/pdfConfig';
 export type PresetAspect = '1:1' | '4:3' | '16:9' | '210:297' | '297:210';
 /** 自由な形は '幅:高さ'（整数）の文字列。Flex の aspectRatio と同じ書き方 */
 export type CropAspect = PresetAspect | `${number}:${number}`;
-export const ASPECTS: Array<{ key: PresetAspect; label: string; ratio: number }> = [
-  { key: '1:1', label: '正方形', ratio: 1 },
-  { key: '4:3', label: '横長 4:3', ratio: 4 / 3 },
-  { key: '16:9', label: '横長 16:9', ratio: 16 / 9 },
-  // チラシ（A4）を切らずにページ全体で載せる。LINE の aspectRatio は整数の「幅:高さ」なので 210:297 / 297:210
+/** legacy = 以前の選択肢。保存済みの値の計算用に残すだけで、ボタンには出さない（2026-11-08） */
+export const ASPECTS: Array<{ key: PresetAspect; label: string; ratio: number; legacy?: true }> = [
+  // チラシ（A4）を切らずにページ全体で載せる。LINE の aspectRatio は整数の「幅:高さ」なので 210:297
   { key: '210:297', label: '縦長 A4（全面）', ratio: 210 / 297 },
-  { key: '297:210', label: '横長 A4（全面）', ratio: 297 / 210 },
+  { key: '1:1', label: '正方形', ratio: 1, legacy: true },
+  { key: '4:3', label: '横長 4:3', ratio: 4 / 3, legacy: true },
+  { key: '16:9', label: '横長 16:9', ratio: 16 / 9, legacy: true },
+  { key: '297:210', label: '横長 A4（全面）', ratio: 297 / 210, legacy: true },
 ];
+/** 画面のボタンに出す決まった形（いまは 縦長 A4 だけ。あとは「自由」） */
+export const ASPECT_CHOICES = ASPECTS.filter((a) => !a.legacy);
+export const A4_PORTRAIT: PresetAspect = '210:297';
 
 export interface HeroCrop {
   x: number;
@@ -82,9 +88,15 @@ export function normalizeCrop(c?: Partial<HeroCrop> | null, legacyY?: number | n
   return DEFAULT_CROP;
 }
 
-/** 元画像の向きから既定の枠を決める（横長の写真は 4:3、縦長のチラシなどは正方形） */
+/**
+ * 元画像から既定の枠を決める（2026-11-08）。
+ * A4 の縦長（チラシPDF）なら「縦長 A4（全面）」、それ以外（記事の写真など）はその画像の形そのままの「自由」。
+ * どちらも拡大 ×1・位置 0 なら画像全体がそのまま載る
+ */
 export function defaultAspectFor(w: number, h: number): CropAspect {
-  return w / h >= 1.2 ? '4:3' : '1:1';
+  const a4 = 210 / 297;
+  const r = w / Math.max(1, h);
+  return Math.abs(r - a4) / a4 <= 0.1 ? A4_PORTRAIT : freeAspectFromSize(w, h);
 }
 
 /** aspect が未指定なら元画像の向きで決めた値を入れて返す */

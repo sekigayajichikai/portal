@@ -2,7 +2,8 @@
  * カード画像の切り出し編集（枠の形＋拡大縮小＋ドラッグで位置決め）
  *
  * チラシPDFの1ページ目や記事の写真から、一押しカードに載せる枠を決める。
- * - 枠の形: 正方形／横長4:3／横長16:9／縦長・横長 A4（横長の写真は既定で4:3）
+ * - 枠の形: 「縦長 A4（全面）」か「自由」の2つ（2026-11-08 に絞った。既定は A4 のチラシなら A4 全面、写真はその形のまま＝自由）
+ *   以前の 正方形／横長4:3／横長16:9／横長 A4 は、保存済みのカードにその値があるときだけボタンに出す
  *   - プレビューをドラッグすると位置が動く（マウス・タッチ両対応）
  *   - スライダー（またはホイール）で拡大縮小
  *   - 「上」「中央」「下」（横長なら左・中央・右）で位置をすぐ揃えられる
@@ -16,6 +17,7 @@ import 'react-image-crop/dist/ReactCrop.css';
 import {
   type HeroCrop,
   ASPECTS,
+  ASPECT_CHOICES,
   MIN_SCALE,
   MAX_SCALE,
   MAX_SCALE_FREE,
@@ -50,11 +52,12 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
    * 「自由」モードか。保存された形が自由な形なら自動で自由モード、決まった形なら決まった形モード。
    * ボタンで切り替えたときは、形が変わるまでその選択を保つ
    */
-  const [freeMode, setFreeMode] = useState(isFreeAspect(value.aspect));
+  // 未指定のときの既定（写真なら自由）も見るので、保存値ではなく resolve した形で判定する
+  const [freeMode, setFreeMode] = useState(isFreeAspect(crop.aspect));
   useEffect(() => {
-    if (isFreeAspect(value.aspect)) setFreeMode(true);
-    else if (isPresetAspect(value.aspect)) setFreeMode(false);
-  }, [value.aspect]);
+    if (isFreeAspect(crop.aspect)) setFreeMode(true);
+    else if (isPresetAspect(crop.aspect)) setFreeMode(false);
+  }, [crop.aspect]);
 
   // 自由モードでは結果のプレビューを小さく横に出す
   const pw = freeMode ? 120 : size;
@@ -165,7 +168,8 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
       >
         自由
       </button>
-      {ASPECTS.map((a) => (
+      {/* 決まった形は縦長 A4 だけ。以前の形（正方形など）は、この予定に保存されているときだけ出す（押すとその形のまま） */}
+      {ASPECTS.filter((a) => ASPECT_CHOICES.includes(a) || (!freeMode && crop.aspect === a.key)).map((a) => (
         <button
           key={a.key}
           type="button"
@@ -182,10 +186,8 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
   const resetButton = (
     <button
       type="button"
-      onClick={() => {
-        setFreeMode(false);
-        onChange({ x: 0, y: 0, scale: 1 });
-      }}
+      onClick={() => onChange({ x: 0, y: 0, scale: 1 })}
+      title="既定に戻す（A4 のチラシは縦長 A4 全面、写真はその形のまま）"
       className="px-2 py-0.5 rounded border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
     >
       リセット
@@ -269,7 +271,7 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
           ))}
           {resetButton}
         </div>
-        <p className="text-slate-400">横長の写真は 4:3、縦長のチラシは正方形が既定。プレビューをドラッグで位置、スライダーかホイールで拡大縮小。記事の形に合わせたいときは「自由」。</p>
+        <p className="text-slate-400">A4 のチラシはそのまま全面が既定。プレビューをドラッグで位置、スライダーかホイールで拡大縮小。紙面の一部や記事の形に合わせたいときは「自由」。</p>
       </div>
     </div>
   );

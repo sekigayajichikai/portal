@@ -443,23 +443,40 @@ export const WeeklyDigest: React.FC = () => {
    * 起点は保存値ではなく「いま実際に一押しになっているもの」。下書きに残った選べない予定のID
    * （「今後も載せない」にした・消した・過ぎた予定）で上限に達したことになり、チェックできなくなるのを防ぐ
    */
-  const toggleTopic = (id: string) =>
-    setTopicIds(() => {
-      const base = currentTopicIds;
-      if (base.includes(id)) return base.filter((x) => x !== id);
-      if (base.length >= MAX_TOPICS) return base;
-      return [...base, id];
-    });
+  const toggleTopic = (id: string) => {
+    const base = currentTopicIds;
+    if (!base.includes(id) && base.length >= MAX_TOPICS) return;
+    changeTopics(base.includes(id) ? base.filter((x) => x !== id) : [...base, id]);
+  };
   /** 一押しの順番を1つ上／下へ（1番目と2番目の入れ替え。2026-10-27。以前はチェックし直すしかなかった） */
-  const moveTopic = (id: string, dir: -1 | 1) =>
-    setTopicIds(() => {
-      const base = [...currentTopicIds];
-      const i = base.indexOf(id);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= base.length) return base;
-      [base[i], base[j]] = [base[j], base[i]];
-      return base;
-    });
+  const moveTopic = (id: string, dir: -1 | 1) => {
+    const base = [...currentTopicIds];
+    const i = base.indexOf(id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= base.length) return;
+    [base[i], base[j]] = [base[j], base[i]];
+    changeTopics(base);
+  };
+  /**
+   * 一押しの選択を変える。吹き出し①の文が「手で直した文」のままだと、一押しを変えても文の「今週の一押しは …」が古いまま
+   * 送られてしまう（2026-11-07 のテスト配信で起きた）ので、選び直したら確認を出して文を作り直す（2026-11-08 ユーザー指示）。
+   * 「作り直さない」なら選択だけ変えて文は残す。自動生成のままなら黙って作り直る
+   */
+  const changeTopics = async (next: string[] | undefined) => {
+    if (greetingEdited) {
+      const preview = buildGreetingText(buildDigest(cards.filter((c) => !excluded.has(c.id)), reports, baseDate, { topicIds: next }));
+      const ok = await appConfirm({
+        title: '吹き出し①の文を作り直しますか？',
+        message: `一押しを変えたので、手で直した文（「今週の一押しは …」）が合わなくなります。作り直すと、手で直した内容は消えて次の文になります。
+
+${preview}`,
+        confirmLabel: '作り直す',
+        cancelLabel: '選択だけ変える',
+      });
+      if (ok) setGreetingEdited(false); // 文は useEffect が新しい一押しから作り直す
+    }
+    setTopicIds(next);
+  };
 
   /** チェック一覧の行（一押し・締切間近・今週の予定・申込受付中の順） */
   const digestItems = useMemo(() => {
@@ -1159,12 +1176,12 @@ export const WeeklyDigest: React.FC = () => {
                   {topicIds === undefined ? '自動: ⭐候補のうち直近の1件' : topicIds.length === 0 ? '今週は一押しなし（テキスト→カード一覧の2吹き出し）' : `${topicIds.length}件を選択中`}
                 </span>
                 {topicIds !== undefined && (
-                  <button onClick={() => setTopicIds(undefined)} className="text-slate-600 hover:text-slate-800 underline">
+                  <button onClick={() => changeTopics(undefined)} className="text-slate-600 hover:text-slate-800 underline">
                     自動に戻す
                   </button>
                 )}
                 {topicIds === undefined && currentTopicIds.length > 0 && (
-                  <button onClick={() => setTopicIds([])} className="text-slate-600 hover:text-slate-800 underline">
+                  <button onClick={() => changeTopics([])} className="text-slate-600 hover:text-slate-800 underline">
                     今週は一押しなし
                   </button>
                 )}
