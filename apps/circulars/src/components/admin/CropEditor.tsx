@@ -2,10 +2,11 @@
  * カード画像の切り出し編集（枠の形＋拡大縮小＋ドラッグで位置決め）
  *
  * チラシPDFの1ページ目や記事の写真から、一押しカードに載せる枠を決める。
- * - 枠の形: 正方形／横長4:3／横長16:9／縦長・横長 A4（横長の写真は既定で4:3）
+ * - 枠の形: 「縦長A4」か「自由」の2つ（2026-11-08 に絞った。既定は縦長A4。ボタンは 縦長A4 → 自由 の順）
+ *   拡大スライダー・上/中央/下・リセット も同日に外した（「縦長A4」を押せばページ全面＝リセット。微調整はドラッグとホイール）
+ *   以前の 正方形／横長4:3／横長16:9／横長 A4 は、保存済みのカードにその値があるときだけボタンに出す
  *   - プレビューをドラッグすると位置が動く（マウス・タッチ両対応）
- *   - スライダー（またはホイール）で拡大縮小
- *   - 「上」「中央」「下」（横長なら左・中央・右）で位置をすぐ揃えられる
+ *   - ホイールで拡大縮小
  * - 「自由」（2026-10-27）: 紙面全体を出し、その上で枠を好きな大きさ・形になぞる。
  *   記事の形はまちまちなので、決まった形だと上下や左右が切れるときに使う。カードの画像もその形になる
  */
@@ -16,6 +17,8 @@ import 'react-image-crop/dist/ReactCrop.css';
 import {
   type HeroCrop,
   ASPECTS,
+  ASPECT_CHOICES,
+  A4_PORTRAIT,
   MIN_SCALE,
   MAX_SCALE,
   MAX_SCALE_FREE,
@@ -44,25 +47,23 @@ const FREE_VIEW_WIDTH = 320;
 export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange, size = 220 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ x: number; y: number; crop: HeroCrop } | null>(null);
-  const crop = resolveCrop(value, source.width, source.height);
+  const crop = resolveCrop(value);
   const ratio = aspectRatioOf(crop.aspect);
   /**
    * 「自由」モードか。保存された形が自由な形なら自動で自由モード、決まった形なら決まった形モード。
    * ボタンで切り替えたときは、形が変わるまでその選択を保つ
    */
-  const [freeMode, setFreeMode] = useState(isFreeAspect(value.aspect));
+  // 未指定のときの既定（写真なら自由）も見るので、保存値ではなく resolve した形で判定する
+  const [freeMode, setFreeMode] = useState(isFreeAspect(crop.aspect));
   useEffect(() => {
-    if (isFreeAspect(value.aspect)) setFreeMode(true);
-    else if (isPresetAspect(value.aspect)) setFreeMode(false);
-  }, [value.aspect]);
+    if (isFreeAspect(crop.aspect)) setFreeMode(true);
+    else if (isPresetAspect(crop.aspect)) setFreeMode(false);
+  }, [crop.aspect]);
 
   // 自由モードでは結果のプレビューを小さく横に出す
   const pw = freeMode ? 120 : size;
   const ph = Math.round(pw / ratio);
   const { sw, sh } = cropRect(source.width, source.height, crop);
-  // 枠を動かせる方向（元画像に対して枠が小さい方向だけ）
-  const canMoveX = source.width - sw > 1;
-  const canMoveY = source.height - sh > 1;
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -108,13 +109,10 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
     onChange({ ...crop, scale: Number(next.toFixed(3)) });
   };
 
-  const setPos = (p: number) => onChange(canMoveY && !canMoveX ? { ...crop, y: p } : canMoveX && !canMoveY ? { ...crop, x: p } : { ...crop, x: p, y: p });
-  const posLabels: Array<[string, number]> = canMoveY && !canMoveX ? [['上', 0], ['中央', 0.5], ['下', 1]] : [['左', 0], ['中央', 0.5], ['右', 1]];
-
-  /** 決まった形に切り替える（自由モードからのときは、拡大が決まった形の上限を超えていれば上限に） */
+  /** 決まった形に切り替える。縦長A4 はページ全面（等倍・位置0）に戻す＝実質のリセット。旧い形は拡大だけ上限に収める */
   const choosePreset = (key: (typeof ASPECTS)[number]['key']) => {
     setFreeMode(false);
-    onChange({ ...crop, aspect: key, scale: Math.min(MAX_SCALE, crop.scale) });
+    onChange(key === A4_PORTRAIT ? { x: 0, y: 0, scale: 1, aspect: key } : { ...crop, aspect: key, scale: Math.min(MAX_SCALE, crop.scale) });
   };
   /** 「自由」に切り替える。今の枠をそのまま自由な形の枠にする（見た目は変わらず、そこから好きになぞれる） */
   const chooseFree = () => {
@@ -157,15 +155,8 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
 
   const aspectButtons = (
     <div className="flex flex-wrap gap-1">
-      <button
-        type="button"
-        onClick={chooseFree}
-        className={`px-2 py-0.5 rounded border font-bold ${freeMode ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-800 border-amber-400 hover:bg-amber-50'}`}
-        title="紙面全体を出して、その上で枠を好きな大きさ・形になぞる。カードの画像もその形になる"
-      >
-        自由
-      </button>
-      {ASPECTS.map((a) => (
+      {/* 決まった形は縦長 A4 だけ。以前の形（正方形など）は、この予定に保存されているときだけ出す（押すとその形のまま） */}
+      {ASPECTS.filter((a) => ASPECT_CHOICES.includes(a) || (!freeMode && crop.aspect === a.key)).map((a) => (
         <button
           key={a.key}
           type="button"
@@ -176,21 +167,17 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
           {a.label}
         </button>
       ))}
+      <button
+        type="button"
+        onClick={chooseFree}
+        className={`px-2 py-0.5 rounded border font-bold ${freeMode ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-800 border-amber-400 hover:bg-amber-50'}`}
+        title="紙面全体を出して、その上で枠を好きな大きさ・形になぞる。カードの画像もその形になる"
+      >
+        自由
+      </button>
     </div>
   );
 
-  const resetButton = (
-    <button
-      type="button"
-      onClick={() => {
-        setFreeMode(false);
-        onChange({ x: 0, y: 0, scale: 1 });
-      }}
-      className="px-2 py-0.5 rounded border border-slate-300 bg-white text-slate-600 hover:bg-slate-100"
-    >
-      リセット
-    </button>
-  );
 
   if (freeMode) {
     return (
@@ -227,7 +214,6 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
             <p className="text-slate-600 mb-0.5">カードに載る画像（{crop.aspect.replace(':', '：')}）</p>
             <canvas ref={canvasRef} className="rounded border border-slate-300" style={{ width: pw, height: ph }} />
           </div>
-          <div className="flex flex-wrap gap-1">{resetButton}</div>
           <p className="text-slate-500">細長すぎる枠（縦横 3 倍まで）と、小さすぎる枠（紙面の幅の 1/{MAX_SCALE_FREE} まで）は、そこで止まります。</p>
         </div>
       </div>
@@ -248,28 +234,9 @@ export const CropEditor: React.FC<CropEditorProps> = ({ source, value, onChange,
         title="ドラッグで位置、ホイールで拡大縮小"
       />
       <div className="flex-1 min-w-0 text-xs space-y-1.5">
-        {/* 枠の形 */}
+        {/* 枠の形（拡大スライダーと 上/中央/下/リセット は 2026-11-08 に外した。縦長A4 を押せばページ全面に戻る） */}
         {aspectButtons}
-        <label className="block">
-          <span className="text-slate-500">拡大 ×{crop.scale.toFixed(1)}</span>
-          <input
-            type="range"
-            min={MIN_SCALE * 100}
-            max={MAX_SCALE * 100}
-            value={Math.round(Math.min(MAX_SCALE, crop.scale) * 100)}
-            onChange={(e) => onChange({ ...crop, scale: Number(e.target.value) / 100 })}
-            className="w-full"
-          />
-        </label>
-        <div className="flex flex-wrap gap-1">
-          {posLabels.map(([label, p]) => (
-            <button key={label} type="button" onClick={() => setPos(p)} className="px-2 py-0.5 rounded border border-slate-300 bg-white text-slate-600 hover:bg-slate-100">
-              {label}
-            </button>
-          ))}
-          {resetButton}
-        </div>
-        <p className="text-slate-400">横長の写真は 4:3、縦長のチラシは正方形が既定。プレビューをドラッグで位置、スライダーかホイールで拡大縮小。記事の形に合わせたいときは「自由」。</p>
+        <p className="text-slate-400">縦長A4（チラシ1ページ全面）が既定。紙面の一部や記事の形に合わせたいときは「自由」。</p>
       </div>
     </div>
   );

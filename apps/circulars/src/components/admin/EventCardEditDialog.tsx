@@ -280,7 +280,7 @@ export const EventCardEditDialog: React.FC<EventCardEditDialogProps> = ({ cardId
         updates.organizer = resolveOrganizerName(updates.organizer ?? null, orgs);
       }
       if (cropDirty && crop && cropSource) {
-        const c = resolveCrop(crop, cropSource.width, cropSource.height);
+        const c = resolveCrop(crop);
         updates.hero_crop = c;
         updates.hero_crop_y = c.y;
       } else if ('hero_source' in updates) {

@@ -221,6 +221,11 @@ export interface DigestOptions {
    * 一押しから外れた予定は、今週の範囲内なら「今週の予定」に普通の行として載る
    */
   topicIds?: string[] | null;
+  /**
+   * 内容の期間の指定（2026-11-08）。undefined/null = 自動（digestWeek。日曜配信なら翌月〜日）。
+   * 指定があれば「今週の予定」「締切間近」などはこの期間で組み立て、見出しの日付もこれになる。念のための調整用
+   */
+  week?: { from: string; to: string } | null;
 }
 
 /**
@@ -233,8 +238,14 @@ export const digestWeek = (baseDate: string): { from: string; to: string } => {
   return { from, to: addDays(from, 6) };
 };
 
+/** 内容の期間（指定があればそれ、無ければ配信日から自動）。to < from なら from の1日だけにする */
+export const resolveWeek = (baseDate: string, week?: { from: string; to: string } | null): { from: string; to: string } =>
+  week && /^\d{4}-\d{2}-\d{2}$/.test(week.from) && /^\d{4}-\d{2}-\d{2}$/.test(week.to)
+    ? { from: week.from, to: week.to < week.from ? week.from : week.to }
+    : digestWeek(baseDate);
+
 export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDate: string, opts: DigestOptions = {}): Digest {
-  const { from, to } = digestWeek(baseDate);
+  const { from, to } = resolveWeek(baseDate, opts.week);
   const applyUntil = addDays(from, 14);
   // 締切間近 = 今週が締切（一押しの「⏰今週締切」と同じ範囲）。以前は3日以内だったが、週1回の配信では
   // 4〜6日後の締切が「申込受付中」に埋もれるため、配信の週いっぱいに広げた（2026-10-05）
@@ -310,9 +321,10 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
  */
 export function topicChoices(
   cards: PublicEventCard[],
-  baseDate: string
+  baseDate: string,
+  weekOverride?: { from: string; to: string } | null
 ): { starred: PublicEventCard[]; dueThisWeek: PublicEventCard[]; others: PublicEventCard[] } {
-  const week = digestWeek(baseDate);
+  const week = resolveWeek(baseDate, weekOverride);
   const until = addDays(week.from, 28);
   const isDue = (c: PublicEventCard) => !!topicDeadline(c, week)?.thisWeek;
   const future = cards
