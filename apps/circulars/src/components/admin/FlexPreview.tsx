@@ -70,7 +70,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, flyerSrcs, 
   const nameOnTopic = d.topics.length > 0;
   const nameOnEvents = !nameOnTopic && d.events.length > 0;
   const nameOnApply = !nameOnTopic && !nameOnEvents && (d.apply.length > 0 || d.urgent.length > 0);
-  const name = <div className="text-sm font-bold">{DIGEST_NAME}</div>;
+  const name = <div className="text-base font-bold">{DIGEST_NAME}</div>;
   return (
     <div className="rounded-xl p-3 space-y-2" style={{ background: '#7494c0' }}>
       {/* ① ⭐一押し（1枚だけの吹き出しに最大5件を縦に。カルーセルと高さを揃えなくて済む） */}
@@ -80,7 +80,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, flyerSrcs, 
             <div className="px-3 py-2 text-white" style={{ background: '#b45309' }}>
               {nameOnTopic && name}
               <div className="text-base font-bold">⭐ 今週の一押し</div>
-              <div className="text-sm opacity-90">
+              <div className="text-base opacity-90">
                 {md(d.from)}〜{md(d.to)} のお知らせ
               </div>
             </div>
@@ -139,7 +139,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, flyerSrcs, 
             <div className="px-3 py-2 text-white" style={{ background: '#2563eb' }}>
               {nameOnEvents && name}
               <div className="text-base font-bold">📅 今週の予定</div>
-              <div className="text-sm opacity-90">
+              <div className="text-base opacity-90">
                 {md(d.from)}〜{md(d.to)}　{ROW_HINT}
               </div>
             </div>
@@ -157,7 +157,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, flyerSrcs, 
             <div className="px-3 py-2 text-white" style={{ background: '#2f6f4e' }}>
               {nameOnApply && name}
               <div className="text-base font-bold">📝 申込受付中</div>
-              <div className="text-sm opacity-90">{ROW_HINT}</div>
+              <div className="text-base opacity-90">{ROW_HINT}</div>
             </div>
             <div className="px-3 pb-2">
               {/* ⏰締切間近（今週締切）を先頭に、その後は締切順 */}

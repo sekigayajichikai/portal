@@ -68,9 +68,10 @@ const header = (title: string, sub: string, color: string, top?: string) => ({
   backgroundColor: color,
   paddingAll: 'md',
   contents: [
-    ...(top ? [text(top, { color: '#ffffff', size: 'sm', weight: 'bold' })] : []),
+    // 配信名は見出しと同じ大きさ、日付の行も一段大きく（2026-11-08 ユーザー指示。高齢の読み手が多い）
+    ...(top ? [text(top, { color: '#ffffff', size: 'lg', weight: 'bold' })] : []),
     text(title, { color: '#ffffff', weight: 'bold', size: 'lg' }),
-    text(sub, { color: '#e8eef8', size: 'sm' }),
+    text(sub, { color: '#e8eef8', size: 'md' }),
   ],
 });
 // 文字サイズは全体に一段階大きめ（高齢の読み手が多い）。Flex の文字は LINE の文字サイズ設定（特大など）に連動せず固定のため、
