@@ -389,7 +389,7 @@ export function hasGeminiEventAccess(): boolean {
 }
 
 /** Gemini generateContent の REST レスポンス（必要な部分のみ） */
-type GeminiGenerateResponse = {
+export type GeminiGenerateResponse = {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
     finishReason?: string;
@@ -403,7 +403,7 @@ type GeminiGenerateResponse = {
  * Gemini generateContent を呼ぶ（ローカルキーがあれば直接、無ければ ai-proxy 経由）
  * REST ボディ形式に統一し、scripts/schedule-test/run-gemini.mjs と同じリクエストになるようにする。
  */
-async function callGeminiGenerate(body: unknown, model: string = GEMINI_EVENT_MODEL): Promise<GeminiGenerateResponse> {
+export async function callGeminiGenerate(body: unknown, model: string = GEMINI_EVENT_MODEL): Promise<GeminiGenerateResponse> {
   const path = `models/${model}:generateContent`;
   const key = getLocalGeminiKey();
   if (key) {
@@ -490,7 +490,7 @@ async function callGeminiWithRetry(body: unknown): Promise<GeminiGenerateRespons
 }
 
 /** レスポンスからテキストを取り出す（ブロック・空応答はエラーに） */
-function extractGeminiText(res: GeminiGenerateResponse): string {
+export function extractGeminiText(res: GeminiGenerateResponse): string {
   if (res.promptFeedback?.blockReason) {
     throw new Error(`Gemini が応答をブロックしました: ${res.promptFeedback.blockReason}`);
   }

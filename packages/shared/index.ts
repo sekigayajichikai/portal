@@ -37,6 +37,9 @@ export * from './services/data/calendarService.js';
 export * from './services/data/calendarSyncService.js';
 export * from './services/data/trashService.js';
 export * from './services/data/bookingService.js';
+export * from './services/survey/surveyDefinition.js';
+export * from './services/survey/surveyReadService.js';
+export * from './services/data/surveyService.js';
 
 // 画像関連サービス
 export * from './services/image/pendingImageService.js';
