@@ -35,7 +35,6 @@ import { filesToSheetImages, rotateSheetImage, type SheetImage } from './sheetIm
 import { SheetReviewDialog } from './SheetReviewDialog';
 import { SurveyTally, effectiveAnswers } from './SurveyTally';
 
-const REGIONS = ['関ヶ谷', '山の手', '夏山'];
 type View = 'sheets' | 'tally' | 'usage';
 
 const statusLabel: Record<SurveySheet['status'], { text: string; cls: string }> = {
@@ -50,7 +49,6 @@ const localId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2,
 
 export const SurveyPanel: React.FC = () => {
   const [def, setDef] = useState<SurveyDefinition>(BOSAI_KYOTEN_SURVEY);
-  const [region, setRegion] = useState(REGIONS[0]);
   const [billing, setBilling] = useState<'free' | 'paid'>(() => (localStorage.getItem('survey-billing') === 'paid' ? 'paid' : 'free'));
   const [sheets, setSheets] = useState<SurveySheet[]>([]);
   const [logs, setLogs] = useState<AiUsageLog[]>([]);
@@ -106,7 +104,7 @@ export const SurveyPanel: React.FC = () => {
       for (const img of list) {
         if (sheets.some((s) => s.source_name === img.sourceName && s.source_page === img.sourcePage)) { dup++; continue; }
         const row: SurveySheet = {
-          id: localId(), survey_id: def.id, region, source_name: img.sourceName, source_page: img.sourcePage,
+          id: localId(), survey_id: def.id, region: null, source_name: img.sourceName, source_page: img.sourcePage,
           reading: null, corrected: null, status: 'unread', model: null, usage: null, thumb: img.thumbDataUrl, note: img.rotated ? '向きを自動で直した' : null,
           created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         };
@@ -145,7 +143,7 @@ export const SurveyPanel: React.FC = () => {
       try {
         const r = await readSurveySheet(def, img.pngBase64, 'image/png', { onRetry: (msg) => setReading({ done, total: targets.length, msg }) });
         total.input += r.usage.input; total.output += r.usage.output; total.thinking += r.usage.thinking; model = r.model;
-        await persist({ ...s, reading: r.reading, status: needsReview(r.reading) ? 'review' : 'read', model: r.model, usage: r.usage, region });
+        await persist({ ...s, reading: r.reading, status: needsReview(r.reading) ? 'review' : 'read', model: r.model, usage: r.usage });
         done++;
         setReading({ done, total: targets.length, msg: '' });
         if (done < targets.length) await new Promise((r) => setTimeout(r, 13000)); // 無料枠 1分5回に合わせる
@@ -213,10 +211,10 @@ export const SurveyPanel: React.FC = () => {
   };
 
   const exportCsv = () => {
-    const head = ['票ID', 'ファイル', 'ページ', '地域', '状態', ...def.questions.map((q) => `問${q.no}`), 'AIが迷った点', 'メモ'];
+    const head = ['票ID', 'ファイル', 'ページ', '状態', ...def.questions.map((q) => `問${q.no}`), 'AIが迷った点', 'メモ'];
     const rows = sheets.map((s) => {
       const a = effectiveAnswers(s) ?? {};
-      return [s.id, s.source_name, String(s.source_page), s.region ?? '', statusLabel[s.status].text, ...def.questions.map((q) => (Array.isArray(a[q.key]) ? (a[q.key] as number[]).join(',') : String(a[q.key] ?? ''))), (s.reading?.flags ?? []).join(' / '), s.note ?? ''];
+      return [s.id, s.source_name, String(s.source_page), statusLabel[s.status].text, ...def.questions.map((q) => (Array.isArray(a[q.key]) ? (a[q.key] as number[]).join(',') : String(a[q.key] ?? ''))), (s.reading?.flags ?? []).join(' / '), s.note ?? ''];
     });
     const csv = '﻿' + [head, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -249,9 +247,6 @@ export const SurveyPanel: React.FC = () => {
           <div className="flex items-center gap-2 text-sm">
             <select value={def.id} onChange={(e) => setDef(SURVEY_DEFINITIONS.find((d) => d.id === e.target.value) ?? BOSAI_KYOTEN_SURVEY)} className="border border-slate-300 rounded-lg px-2 py-1.5">
               {SURVEY_DEFINITIONS.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
-            </select>
-            <select value={region} onChange={(e) => setRegion(e.target.value)} className="border border-slate-300 rounded-lg px-2 py-1.5" title="紙の票の地域（回収ルートで決まる）">
-              {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
         </div>
