@@ -29,6 +29,42 @@ export interface SurveyDefinition {
   /** 用紙の題名（画像の向きの確認や AI への説明に使う） */
   sheetTitle: string;
   questions: SurveyQuestion[];
+  /** draft（準備中）/ open（回収中）/ closed（集計済み）。DB の surveys.status */
+  status?: 'draft' | 'open' | 'closed';
+  note?: string | null;
+  createdAt?: string;
+}
+
+/** 設問の空の雛形（画面で「設問を足す」） */
+export function emptyQuestion(no: number): SurveyQuestion {
+  return { key: `q${no}`, no, text: '', kind: 'single', choices: [{ no: 1, label: '' }, { no: 2, label: '' }] };
+}
+
+/** 設問の番号と key を 1 から振り直す（並べ替え・削除のあと） */
+export function renumberQuestions(qs: SurveyQuestion[]): SurveyQuestion[] {
+  return qs.map((q, i) => ({ ...q, no: i + 1, key: `q${i + 1}`, choices: q.kind === 'free' ? [] : q.choices.map((c, j) => ({ ...c, no: j + 1 })) }));
+}
+
+/** 定義の不備（画面で保存前に知らせる） */
+export function validateDefinition(def: SurveyDefinition): string[] {
+  const errs: string[] = [];
+  if (!def.title.trim()) errs.push('アンケートの名前を入れてください');
+  if (def.questions.length === 0) errs.push('設問が1つもありません');
+  def.questions.forEach((q) => {
+    if (!q.text.trim()) errs.push(`問${q.no}: 設問文が空です`);
+    if (q.kind !== 'free') {
+      if (q.choices.length < 2) errs.push(`問${q.no}: 選択肢は2つ以上にしてください`);
+      if (q.choices.some((c) => !c.label.trim())) errs.push(`問${q.no}: 空の選択肢があります`);
+    }
+  });
+  return errs;
+}
+
+/** 新しいアンケートの ID（英数字とハイフン。日付＋乱数） */
+export function newSurveyId(): string {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  return `survey-${ymd}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /** 1票の読み取り結果（AI の返事をそのまま保持する形） */

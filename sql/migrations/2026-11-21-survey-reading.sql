@@ -11,6 +11,24 @@
 -- 管理画面はメール＋パスワードで Supabase にログインしているので authenticated 向けのポリシー。
 -- =====================================================
 
+-- アンケートの定義（回覧板の「号」に相当。設問・選択肢は JSON で持つ）
+CREATE TABLE IF NOT EXISTS surveys (
+  id TEXT PRIMARY KEY,                         -- 'bosai-kyoten-2026-10' のような短い英数字、または uuid 文字列
+  title TEXT NOT NULL,                         -- 画面に出す名前
+  sheet_title TEXT NOT NULL DEFAULT '',        -- 用紙の題名（AI に用紙の構成を伝える）
+  questions JSONB NOT NULL DEFAULT '[]',       -- [{ key, no, text, kind, choices:[{no,label}], note }]
+  status TEXT NOT NULL DEFAULT 'open'          -- draft（準備中）/ open（回収中）/ closed（集計済み）
+    CHECK (status IN ('draft', 'open', 'closed')),
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+COMMENT ON TABLE surveys IS 'アンケートの定義（設問・選択肢）。回答用紙の読み取りと集計の単位';
+ALTER TABLE surveys ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS surveys_admin ON surveys;
+CREATE POLICY surveys_admin ON surveys
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
 CREATE TABLE IF NOT EXISTS survey_sheets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   survey_id TEXT NOT NULL,                     -- 'bosai-kyoten-2026-10'（定義は packages/shared/services/survey/surveyDefinition.ts）
@@ -62,4 +80,4 @@ CREATE POLICY ai_usage_log_admin ON ai_usage_log
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 SELECT table_name, column_name, data_type FROM information_schema.columns
-WHERE table_name IN ('survey_sheets', 'ai_usage_log') ORDER BY table_name, ordinal_position;
+WHERE table_name IN ('surveys', 'survey_sheets', 'ai_usage_log') ORDER BY table_name, ordinal_position;

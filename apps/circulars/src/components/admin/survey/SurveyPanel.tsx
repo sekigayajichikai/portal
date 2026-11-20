@@ -1,5 +1,7 @@
 /**
- * 「アンケート」タブ: 紙の回答用紙を AI で読み取り、人が確認して集計する
+ * 「アンケート」タブ: アンケートの一覧（回覧板の号と同じ扱い）と、各アンケートの読み取り・確認・集計
+ *
+ * SurveyPanel = 一覧（新しいアンケート・設問の編集・開く）／ SurveyDetail = 1つのアンケートの票・集計・AI 利用記録
  *
  * 流れ: PDF/写真を選ぶ → 「AI で読み取りますか？ 見込み ○○円」 → 1枚ずつ読む（進捗表示）
  *      → 自信の低い票だけ人が確認 → 集計 → CSV
@@ -10,8 +12,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BOSAI_KYOTEN_SURVEY,
-  SURVEY_DEFINITIONS,
   SURVEY_READ_MODEL,
+  countSurveySheets,
+  deleteSurvey,
+  emptyQuestion,
+  listSurveys,
+  newSurveyId,
+  upsertSurvey,
   addAiUsageLog,
   canReadSurvey,
   costJpy,
@@ -29,11 +36,12 @@ import {
   type SurveySheetReading,
   type TokenUsage,
 } from '@cc-saas/shared';
-import { Upload, Sparkles, Loader2, AlertTriangle, CheckCircle2, Table2, BarChart3, Receipt, Download, Trash2, FileJson, RotateCw } from 'lucide-react';
+import { Upload, Sparkles, Loader2, AlertTriangle, CheckCircle2, Table2, BarChart3, Receipt, Download, Trash2, FileJson, RotateCw, ArrowLeft, Plus, Edit3, ClipboardList } from 'lucide-react';
 import { appConfirm, showError, showToast } from '@/components/ui/feedback';
 import { filesToSheetImages, rotateSheetImage, type SheetImage } from './sheetImages';
 import { SheetReviewDialog } from './SheetReviewDialog';
 import { SurveyTally, effectiveAnswers } from './SurveyTally';
+import { SurveyEditorDialog } from './SurveyEditorDialog';
 
 type View = 'sheets' | 'tally' | 'usage';
 
@@ -47,8 +55,7 @@ const statusLabel: Record<SurveySheet['status'], { text: string; cls: string }> 
 
 const localId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-export const SurveyPanel: React.FC = () => {
-  const [def, setDef] = useState<SurveyDefinition>(BOSAI_KYOTEN_SURVEY);
+export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void; onEdit: (hasSheets: boolean) => void }> = ({ def, onBack, onEdit }) => {
   const [billing, setBilling] = useState<'free' | 'paid'>(() => (localStorage.getItem('survey-billing') === 'paid' ? 'paid' : 'free'));
   const [sheets, setSheets] = useState<SurveySheet[]>([]);
   const [logs, setLogs] = useState<AiUsageLog[]>([]);
@@ -238,17 +245,19 @@ export const SurveyPanel: React.FC = () => {
     <div className="space-y-4">
       <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-xl font-bold text-slate-800">アンケートの読み取りと集計</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              紙の回答用紙（スキャン PDF かスマホ写真）を AI が読み、○の付いた番号を表にします。AI が迷った票だけ人が確認します。
-            </p>
+          <div className="flex items-start gap-3">
+            <button onClick={onBack} className="mt-0.5 p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" title="アンケートの一覧へ"><ArrowLeft size={18} /></button>
+            <div>
+              <h2 className="text-xl font-bold text-slate-800">{def.title}</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                紙の回答用紙（スキャン PDF かスマホ写真）を AI が読み、○の付いた番号を表にします。AI が迷った票だけ人が確認します。
+                {def.note && <span className="ml-2 text-slate-400">{def.note}</span>}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-sm">
-            <select value={def.id} onChange={(e) => setDef(SURVEY_DEFINITIONS.find((d) => d.id === e.target.value) ?? BOSAI_KYOTEN_SURVEY)} className="border border-slate-300 rounded-lg px-2 py-1.5">
-              {SURVEY_DEFINITIONS.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
-            </select>
-          </div>
+          <button onClick={() => onEdit(sheets.length > 0)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200">
+            <Edit3 size={14} /> 設問を見る・直す（{def.questions.length} 問）
+          </button>
         </div>
         {!dbOk && (
           <div className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -408,6 +417,117 @@ export const SurveyPanel: React.FC = () => {
       {reviewSheet && (
         <SheetReviewDialog def={def} sheet={reviewSheet} onClose={() => setReviewId(null)} onSave={(next) => saveReview(reviewSheet.id, next)} />
       )}
+    </div>
+  );
+};
+
+const surveyStatus: Record<string, { text: string; cls: string }> = {
+  draft: { text: '準備中', cls: 'bg-slate-100 text-slate-600' },
+  open: { text: '回収中', cls: 'bg-green-100 text-green-700' },
+  closed: { text: '集計済み', cls: 'bg-blue-100 text-blue-700' },
+};
+
+/** アンケートの一覧。回覧板の号の一覧と同じ位置づけ */
+export const SurveyPanel: React.FC = () => {
+  const [surveys, setSurveys] = useState<SurveyDefinition[]>([]);
+  const [counts, setCounts] = useState<Record<string, { total: number; review: number }>>({});
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<SurveyDefinition | null>(null);
+  const [editor, setEditor] = useState<{ def: SurveyDefinition; isNew: boolean; hasSheets: boolean } | null>(null);
+  const [dbOk, setDbOk] = useState(true);
+
+  const reload = async () => {
+    setLoading(true);
+    const [list, c] = await Promise.all([listSurveys([BOSAI_KYOTEN_SURVEY]), countSurveySheets()]);
+    setSurveys(list);
+    setCounts(c);
+    setLoading(false);
+  };
+  useEffect(() => { void reload(); }, []);
+
+  const save = async (def: SurveyDefinition) => {
+    const saved = await upsertSurvey(def);
+    if (!saved) setDbOk(false);
+    const next = saved ?? def;
+    setSurveys((prev) => (prev.some((p) => p.id === next.id) ? prev.map((p) => (p.id === next.id ? next : p)) : [next, ...prev]));
+    if (selected?.id === next.id) setSelected(next);
+    showToast('保存しました');
+  };
+
+  const remove = async (def: SurveyDefinition) => {
+    const n = counts[def.id]?.total ?? 0;
+    if (!(await appConfirm({ title: `「${def.title}」を消しますか？`, message: n ? `読み取った ${n} 票も一緒に消えます。元の PDF や写真は消えません。` : '票はありません。', confirmLabel: '消す', danger: true }))) return;
+    await deleteSurvey(def.id);
+    setSurveys((prev) => prev.filter((p) => p.id !== def.id));
+  };
+
+  if (selected) {
+    return (
+      <>
+        <SurveyDetail def={selected} onBack={() => { setSelected(null); void reload(); }} onEdit={(hasSheets) => setEditor({ def: selected, isNew: false, hasSheets })} />
+        {editor && <SurveyEditorDialog initial={editor.def} isNew={editor.isNew} hasSheets={editor.hasSheets} onClose={() => setEditor(null)} onSave={save} />}
+      </>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">アンケート</h2>
+            <p className="text-sm text-slate-500 mt-1">
+              紙の回答用紙を AI で読み取り、人が確認して集計します。アンケートごとに設問を登録し、回収した票を入れていきます。
+            </p>
+          </div>
+          <button
+            onClick={() => setEditor({ def: { id: newSurveyId(), title: '', sheetTitle: '', questions: [emptyQuestion(1)], status: 'draft', note: null }, isNew: true, hasSheets: false })}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold bg-primary-600 text-white hover:bg-primary-700"
+          >
+            <Plus size={16} /> 新しいアンケート
+          </button>
+        </div>
+        {!dbOk && (
+          <div className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            保存先の表（surveys）がまだありません。sql/migrations/2026-11-21-survey-reading.sql を Supabase で実行してください。それまでは再読み込みで消えます。
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="text-slate-500 text-sm">読み込み中…</div>
+      ) : (
+        <div className="space-y-3">
+          {surveys.map((d) => {
+            const c = counts[d.id];
+            const st = surveyStatus[d.status ?? 'open'];
+            return (
+              <div key={d.id} className="bg-white rounded-xl shadow border border-slate-200 p-4 flex items-center gap-4 hover:border-primary-300 cursor-pointer" onClick={() => setSelected(d)}>
+                <div className="w-10 h-10 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center shrink-0"><ClipboardList size={20} /></div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-slate-800">{d.title}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[11px] ${st.cls}`}>{st.text}</span>
+                    {c && c.review > 0 && <span className="px-1.5 py-0.5 rounded text-[11px] bg-amber-100 text-amber-800">要確認 {c.review}</span>}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {d.questions.length} 問 ／ 票 {c?.total ?? 0}
+                    {d.note && <span className="ml-2">{d.note}</span>}
+                    {d.createdAt && <span className="ml-2 text-slate-400">{new Date(d.createdAt).toLocaleDateString('ja-JP')} 作成</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => setEditor({ def: d, isNew: false, hasSheets: (c?.total ?? 0) > 0 })} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500" title="設問を直す"><Edit3 size={15} /></button>
+                  <button onClick={() => void remove(d)} className="p-2 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-700" title="消す"><Trash2 size={15} /></button>
+                  <button onClick={() => setSelected(d)} className="ml-1 px-3 py-1.5 rounded-lg text-sm font-bold bg-slate-800 text-white hover:bg-slate-700">開く</button>
+                </div>
+              </div>
+            );
+          })}
+          {surveys.length === 0 && <div className="text-sm text-slate-400 p-8 text-center">「新しいアンケート」から作ってください</div>}
+        </div>
+      )}
+      {editor && <SurveyEditorDialog initial={editor.def} isNew={editor.isNew} hasSheets={editor.hasSheets} onClose={() => setEditor(null)} onSave={save} />}
     </div>
   );
 };

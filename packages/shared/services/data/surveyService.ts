@@ -5,7 +5,7 @@
  * テーブルが未作成でも画面は動く（読めないときは空、書けないときは warn してメモリ上だけ）。
  */
 import { getSupabaseClient } from '../supabaseClient.js';
-import type { SurveySheetReading } from '../survey/surveyDefinition.js';
+import type { SurveyDefinition, SurveyQuestion, SurveySheetReading } from '../survey/surveyDefinition.js';
 import type { TokenUsage } from '../survey/surveyReadService.js';
 
 export interface SurveySheet {
@@ -29,6 +29,86 @@ export interface SurveySheet {
   note: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** surveys テーブルの行 */
+export interface SurveyRow {
+  id: string;
+  title: string;
+  sheet_title: string;
+  questions: SurveyQuestion[];
+  status: 'draft' | 'open' | 'closed';
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function rowToDefinition(r: SurveyRow): SurveyDefinition {
+  return { id: r.id, title: r.title, sheetTitle: r.sheet_title, questions: r.questions ?? [], status: r.status, note: r.note, createdAt: r.created_at };
+}
+
+export function definitionToRow(d: SurveyDefinition): Omit<SurveyRow, 'created_at' | 'updated_at'> & { updated_at: string } {
+  return { id: d.id, title: d.title, sheet_title: d.sheetTitle, questions: d.questions, status: d.status ?? 'open', note: d.note ?? null, updated_at: new Date().toISOString() };
+}
+
+/**
+ * アンケートの一覧（新しい順）。表が無い・空のときはコードに書いた既定（防災拠点アンケート）だけを返し、
+ * 表があって空なら既定を1件登録しておく（最初の1回だけ）
+ */
+export async function listSurveys(defaults: SurveyDefinition[]): Promise<SurveyDefinition[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return defaults;
+  const { data, error } = await supabase.from('surveys').select('*').order('created_at', { ascending: false });
+  if (error) {
+    warnOnce('surveys_read', `surveys を読めませんでした（SQL 未適用の可能性）: ${error.message}`);
+    return defaults;
+  }
+  const rows = (data as SurveyRow[]) ?? [];
+  if (rows.length === 0 && defaults.length > 0) {
+    const { error: e2 } = await supabase.from('surveys').insert(defaults.map(definitionToRow));
+    if (e2) warnOnce('surveys_seed', `既定のアンケートを登録できませんでした: ${e2.message}`);
+    return defaults;
+  }
+  return rows.map(rowToDefinition);
+}
+
+export async function upsertSurvey(def: SurveyDefinition): Promise<SurveyDefinition | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase.from('surveys').upsert(definitionToRow(def)).select('*').single();
+  if (error) {
+    warnOnce('surveys_write', `surveys に保存できませんでした（SQL 未適用の可能性）: ${error.message}`);
+    return null;
+  }
+  return rowToDefinition(data as SurveyRow);
+}
+
+/** アンケートを消す（票も一緒に消す） */
+export async function deleteSurvey(id: string): Promise<boolean> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  await supabase.from('survey_sheets').delete().eq('survey_id', id);
+  const { error } = await supabase.from('surveys').delete().eq('id', id);
+  if (error) {
+    console.warn('surveys を削除できませんでした:', error.message);
+    return false;
+  }
+  return true;
+}
+
+/** アンケートごとの票数（一覧の表示用） */
+export async function countSurveySheets(): Promise<Record<string, { total: number; review: number }>> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return {};
+  const { data, error } = await supabase.from('survey_sheets').select('survey_id, status');
+  if (error) return {};
+  const out: Record<string, { total: number; review: number }> = {};
+  for (const r of (data as { survey_id: string; status: string }[]) ?? []) {
+    out[r.survey_id] ??= { total: 0, review: 0 };
+    out[r.survey_id].total++;
+    if (r.status === 'review') out[r.survey_id].review++;
+  }
+  return out;
 }
 
 export interface AiUsageLog {
