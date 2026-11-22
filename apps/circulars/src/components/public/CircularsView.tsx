@@ -281,13 +281,19 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
       return;
     }
     setIsLoadingEventArticle(true);
+    let opened = false;
     try {
       const article = await getArticleById(card.linked_article_id);
       if (article && (article.visibility === 'public' || article.visibility === 'members-only')) {
         setEventArticleModal({ article, issueTitle });
+        opened = true;
       }
-    } catch { /* 取得失敗時はモーダルを開かない */ }
+    } catch { /* 下でチラシPDFに回す */ }
     finally { setIsLoadingEventArticle(false); }
+    // 記事が開けなかった（公開前の号の記事・削除済みなど）ときは、チラシPDFがあればそちらを開く
+    if (!opened && card.source_pdf_url) {
+      if (!window.open(card.source_pdf_url, '_blank', 'noopener')) window.location.href = card.source_pdf_url;
+    }
   };
 
   const [collapsingId, setCollapsingId] = useState<string | null>(null);
@@ -576,16 +582,16 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
                     ? newsletters.find(n => n.id === card.newsletter_id)?.title
                     : null;
 
-                  return (
-                    <button
-                      key={`ev-${card.id}`}
-                      onClick={() => openEventArticle(card)}
-                      className={`shrink-0 w-52 rounded-xl border-2 p-4 text-left transition-all snap-center ${
-                        idx === carouselIndex
-                          ? 'border-blue-500 bg-blue-50 shadow-md scale-[1.02]'
-                          : 'border-slate-200 bg-white hover:border-blue-300'
-                      }`}
-                    >
+                  // 押したときの行き先: リンク記事（その場で開く）→ チラシPDF（別タブ）→ どちらも無ければ押せない
+                  const pdfUrl = card.source_pdf_url || null;
+                  const hasLink = !!card.linked_article_id || !!pdfUrl;
+                  const cardClass = `block shrink-0 w-52 rounded-xl border-2 p-4 text-left transition-all snap-center ${
+                    idx === carouselIndex
+                      ? 'border-blue-500 bg-blue-50 shadow-md scale-[1.02]'
+                      : `border-slate-200 bg-white ${hasLink ? 'hover:border-blue-300' : ''}`
+                  }`;
+                  const body = (
+                    <>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[1.2em] font-bold text-blue-600">{dayLabel || '日付未定'}</span>
                         {dayOfWeek && <span className="text-[0.8em] text-slate-500">({dayOfWeek})</span>}
@@ -600,12 +606,37 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
                       {issueTitle && (
                         <p className="text-[0.75em] text-slate-400 mt-1 truncate">📰 {issueTitle}</p>
                       )}
-                      {card.linked_article_id && (
+                      {card.linked_article_id ? (
                         <p className="text-[0.8em] text-blue-600 font-medium mt-2 flex items-center gap-0.5">
                           詳しく読む <ChevronRight size={13} />
                         </p>
-                      )}
-                    </button>
+                      ) : pdfUrl ? (
+                        <p className="text-[0.8em] text-blue-600 font-medium mt-2 flex items-center gap-0.5">
+                          <FileText size={13} /> チラシを見る <ChevronRight size={13} />
+                        </p>
+                      ) : null}
+                    </>
+                  );
+
+                  if (card.linked_article_id) {
+                    return (
+                      <button key={`ev-${card.id}`} onClick={() => openEventArticle(card)} className={cardClass}>
+                        {body}
+                      </button>
+                    );
+                  }
+                  if (pdfUrl) {
+                    // リンクにしておくと、スマホやLINE内のブラウザでも確実にPDFが開く
+                    return (
+                      <a key={`ev-${card.id}`} href={pdfUrl} target="_blank" rel="noopener noreferrer" className={cardClass}>
+                        {body}
+                      </a>
+                    );
+                  }
+                  return (
+                    <div key={`ev-${card.id}`} className={cardClass}>
+                      {body}
+                    </div>
                   );
                 })}
               </div>

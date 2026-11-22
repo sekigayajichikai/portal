@@ -585,7 +585,7 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
 
   /**
    * 既存カードの「空欄だけ」を候補の値で埋める更新内容を作る。
-   * タイトル・日付・記事リンクなど、人が直した可能性のある項目は触らない。
+   * タイトル・日付や、すでに付いている記事リンクなど、人が直した可能性のある項目は触らない。
    * 埋めるものが無ければ null（更新しない）。
    */
   const buildFillUpdates = (existing: EventCard, c: EditableCandidate): Partial<EventCard> | null => {
@@ -605,6 +605,13 @@ export const EventCandidateDialog: React.FC<EventCandidateDialogProps> = ({
     if (!existing.description && c.description) u.description = c.description;
     if (!existing.digest_exclude && c.digest_exclude) u.digest_exclude = true;
     if (!existing.source_pdf_url && c.sourcePdfUrl) u.source_pdf_url = c.sourcePdfUrl;
+    // 記事リンクも空欄のときだけ補う（「🔗 記事にリンク」がオンの候補のみ。付いているリンクは変えない）。
+    // 予定表やチラシから先に登録された予定は、あとで詳しい記事が出てもリンクが付かず、
+    // 住民側で押しても記事が開かなかった（2026-11-22）
+    if (!existing.linked_article_id && c.linkArticle && c.article_index !== null) {
+      const articleId = articles[c.article_index]?.id;
+      if (articleId) u.linked_article_id = articleId;
+    }
     return Object.keys(u).length > 0 ? u : null;
   };
 
