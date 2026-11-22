@@ -1,13 +1,12 @@
 /**
  * 週次配信の LINE メッセージ（テキスト＋Flex カルーセル）を組み立てる
  *
- * 1回の配信 = ① 短いテキスト（見出し＋ひとこと） → ② ⭐一押しカード（1枚） → ③ Flex カルーセル
- *   ② ⭐ 今週の一押し … 見出し帯＋（最大5件を縦に）チラシ画像（正方形・切り出し位置は人が決める）＋タイトル・日時・場所・紹介文＋「詳しく見る」
- *      （カルーセルは全カードの高さが揃う仕様なので、背の高い一押しは別の吹き出しにする）
- *   ③ カルーセルの中身（該当が無いカードは出さない）:
- *     1. 📅 今週の予定 … 行ごとにタップで詳細（⏰締切間近があれば先頭に）
- *     2. 📝 申込受付中 … タイトル・開催日・締切・場所。行ごとにタップ
- *     3. 📰 新しいレポート … 1本ずつ（扉写真＋タイトル＋「レポートを読む」）
+ * 1回の配信 = Flex カルーセル1つ（横並び。2026-11-22 に一押しも同じカルーセルへ）
+ *   カルーセルの中身（該当が無いカードは出さない）:
+ *     1. ⭐ 今週の一押し … 見出し帯＋（最大5件を縦に）チラシ画像（切り出し位置は人が決める）＋タイトル・日時・場所・紹介文＋「詳しく見る」
+ *     2. 📅 今週の予定 … 行ごとにタップで詳細
+ *     3. 📝 申込受付中 … ⏰締切間近を先頭に、タイトル・開催日・締切・場所。行ごとにタップ
+ *     4. 📰 新しいレポート … 1本ずつ（扉写真＋タイトル＋「レポートを読む」）
  *
  * Flex の制約: 画像は https のURL、カルーセルは最大12バブル、altText は400文字以内。
  * 仕様: docs/週次配信.md
@@ -142,7 +141,7 @@ function eventRow(
  *   ├──────（2件目があれば区切り線）
  *   └ 画像 / タイトル / … / [詳しく見る]
  *
- * 画像は hero ではなく body の image 部品（複数置けるように）。カルーセルにしないので高さ揃えの空白は出ない。
+ * 画像は hero ではなく body の image 部品（複数置けるように）。カルーセルの先頭に置く（2026-11-22）。
  */
 /**
  * 「今週が申込締切」の赤い帯（一押しの画像の上）
@@ -280,49 +279,38 @@ function reportBubble(r: Digest['reports'][number]) {
 }
 
 /**
- * ⭐一押しの Flex（1枚だけのバブル）。
- * カルーセルは全カードの高さが一番高いカードに揃う仕様なので、背の高い一押しは別の吹き出しにして、
- * 残り（今週の予定／申込受付中／レポート）だけをカルーセルにする（高さの近いカード同士で揃う）。
+ * 週次配信の Flex（カルーセル1つ）: ⭐一押し → 📅今週の予定 → 📝申込受付中 → 📰レポート を横並びにする。出すものが無ければ null。
+ *
+ * 2026-11-22: 一押しを別の吹き出し（縦に2つ）にしていたのをやめ、同じカルーセルの先頭に入れた（横にスワイプして順に見られるように）。
+ * カルーセルは全カードの高さが一番高いカードに揃う仕様なので、一押しの件数が多い週は、ほかのカードの下に余白が出る。
+ * 配信名「関ヶ谷自治会 今週のお知らせ」は先頭のカードの見出し帯の上段に載せる（一押し → 今週の予定 → 申込受付中 の順で最初にあるもの）
  */
-export function buildTopicFlex(d: Digest, opts: FlexBuildOptions): LineMessage | null {
-  if (d.topics.length === 0) return null;
-  // 最初の吹き出しなので、通知文にも見出し帯にも配信名を付ける（吹き出し①のテキストをやめたため。2026-11-08）
-  const alt = `${digestHeading(d)} ⭐今週の一押し: ${d.topics.map((t) => `${t.title}（${md(t.event_date!)}）`).join('、')}`.slice(0, 400);
-  return { type: 'flex', altText: alt, contents: topicBubble(d, opts, DIGEST_NAME) };
-}
-
-/**
- * 今週の予定／申込受付中／レポートのカルーセル。出すものが無ければ null。
- * withName = 一押しが無く、これが最初の吹き出しのとき。先頭のカード（今週の予定 → 申込受付中）の帯に配信名を載せる
- */
-export function buildWeeklyFlex(d: Digest, withName = false): LineMessage | null {
+export function buildWeeklyFlex(d: Digest, opts: FlexBuildOptions): LineMessage | null {
   const bubbles: unknown[] = [];
-  if (d.events.length > 0) bubbles.push(eventsBubble(d, withName ? DIGEST_NAME : undefined));
-  if (d.apply.length > 0 || d.urgent.length > 0) bubbles.push(applyBubble(d, withName && bubbles.length === 0 ? DIGEST_NAME : undefined));
+  const top = () => (bubbles.length === 0 ? DIGEST_NAME : undefined);
+  if (d.topics.length > 0) bubbles.push(topicBubble(d, opts, top()));
+  if (d.events.length > 0) bubbles.push(eventsBubble(d, top()));
+  if (d.apply.length > 0 || d.urgent.length > 0) bubbles.push(applyBubble(d, top()));
   for (const r of d.reports) bubbles.push(reportBubble(r));
   if (bubbles.length === 0) return null;
 
-  const alt = `${digestHeading(d)} 今週の予定・申込受付中`.slice(0, 400);
+  // 通知文（altText）には見出し（日付つき）を付ける。一押しがあればその題名も
+  const summary =
+    d.topics.length > 0 ? `⭐今週の一押し: ${d.topics.map((t) => `${t.title}（${md(t.event_date!)}）`).join('、')}` : '今週の予定・申込受付中';
+  const alt = `${digestHeading(d)} ${summary}`.slice(0, 400);
   // バブルが1枚だけならカルーセルにせずそのまま
   const contents = bubbles.length === 1 ? bubbles[0] : { type: 'carousel', contents: bubbles.slice(0, 12) };
   return { type: 'flex', altText: alt, contents };
 }
 
 /**
- * 1回の配信ぶんのメッセージ配列: ⭐一押し（1枚） → カルーセル（今週の予定・申込・レポート）。
- * 無いものは飛ばす（最大2吹き出し。LINE の上限は5）。
- * 2026-11-08: 先頭のテキスト吹き出し（見出し＋「今週の一押しは…」）をやめ、配信名「関ヶ谷自治会 今週のお知らせ」は
- * 最初のカードの見出し帯の上段に載せる（一押しがある週は一押しカード、無い週は今週の予定カード）。
- * 手で直した文が古いまま送られる事故が無くなり、通数も変わらない（1回の push で何吹き出し送っても1通）
+ * 1回の配信ぶんのメッセージ配列: カルーセル1つ（⭐一押し・今週の予定・申込・レポートの横並び）。
+ * 2026-11-08: 先頭のテキスト吹き出し（見出し＋「今週の一押しは…」）をやめ、配信名は先頭のカードの見出し帯の上段に載せる。
+ * 手で直した文が古いまま送られる事故が無くなった
  */
 export function buildWeeklyMessages(d: Digest, opts: FlexBuildOptions): LineMessage[] {
-  const msgs: LineMessage[] = [];
-  const topic = buildTopicFlex(d, opts);
-  if (topic) msgs.push(topic);
-  const rest = buildWeeklyFlex(d, !topic);
-  if (rest) msgs.push(rest);
-  if (msgs.length === 0) msgs.push({ type: 'text', text: `${digestHeading(d)}\n今週は載せる予定がありません。` });
-  return msgs;
+  const flex = buildWeeklyFlex(d, opts);
+  return [flex ?? { type: 'text', text: `${digestHeading(d)}\n今週は載せる予定がありません。` }];
 }
 
 /** テスト配信（全員配信以外）の印。見出し「【関ヶ谷自治会 今週のお知らせ】」の前に付ける */
@@ -335,7 +323,7 @@ export const TEST_NOTICE_TEXT = `${TEST_PREFIX} 見た目の確認用です。�
 /**
  * 全員配信以外（自分・指定した人・管理者）に送るとき、受け取った側がテストだと分かるように印を付ける（2026-11-01）。
  * 先頭に「＜テスト配信＞ …」の短いテキストを1つ足し（2026-11-08）、テキストは見出しの直前に「＜テスト配信＞」を入れ、
- * Flex は通知に出る altText の先頭に付ける。吹き出しは最大3つ（LINE の上限は5）、通数は変わらない
+ * Flex は通知に出る altText の先頭に付ける。吹き出しは2つ（LINE の上限は5）、通数は変わらない
  */
 export function markAsTestMessages(msgs: LineMessage[]): LineMessage[] {
   const marked = markEachAsTest(msgs);
