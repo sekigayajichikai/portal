@@ -612,7 +612,7 @@ const CircularsView: React.FC<CircularsViewProps> = ({ isSimpleMode, previewNews
                         </p>
                       ) : pdfUrl ? (
                         <p className="text-[0.8em] text-blue-600 font-medium mt-2 flex items-center gap-0.5">
-                          <FileText size={13} /> チラシを見る <ChevronRight size={13} />
+                          <FileText size={13} /> 詳しく見る <ChevronRight size={13} />
                         </p>
                       ) : null}
                     </>
