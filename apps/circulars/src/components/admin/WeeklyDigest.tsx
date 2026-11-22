@@ -9,12 +9,10 @@
  *   ⭐ 今週の一押し … 最大5件（⭐配信候補のうち直近のもの、または人が選ぶ。紹介文と、チラシPDF／記事への直リンクを添える。どちらも無ければリンク無し）
  *   人が決めたこと（一押しの選択・外した予定・リンク先・手で直した吹き出し）は配信日ごとの下書き（weekly_digest_drafts）に自動保存する
  *   📰 新しいレポート … 最大2件（直近14日に公開されたレポート）
- *   📅 今週の予定 … 最大6件（open / recurring / 種別なし。配信日から7日間）
- *   📝 申込受付中 … 最大4件（reserve。締切が14日以内。締切不明は開催7日前を仮締切）
- *   ⏰ 締切間近 … 締切が配信の週（配信日から7日間）のうちのもの（申込受付中から抜き出して先頭に）
+ *   📅 今週の予定 … 最大6件（配信日から7日間に開催。要予約のものも含む）
+ *   ※「📝申込受付中／⏰締切間近」の欄は 2026-11-23 に廃止（要予約の催しも、開催の週に「今週の予定」へ載る）
  *
- * 配信のタイミングは「開催日」ではなく「行動が必要な日（申込締切）」で決める。
- * 要予約のイベントは開催の2〜3週間前に「申込受付中」で初めて登場し、締切の週に「締切間近」で再掲される。
+ * 申込締切を早めに知らせたい催しは、一押しに選ぶ（今週が締切なら赤い帯が出る。開催が先でも選べる）。
  *
  * 仕様: docs/週次配信.md
  */
@@ -358,7 +356,7 @@ export const WeeklyDigest: React.FC = () => {
   const [topicIds, setTopicIds] = useState<string[] | undefined>(undefined);
   /**
    * 内容の期間の手調整（2026-11-08 ユーザー指示）。null = 自動（配信日から。日曜配信なら翌月〜日）。
-   * 「今週の予定」「締切間近」の範囲と、見出し・カードの日付に効く。念のための調整用で、下書きに残る
+   * 「今週の予定」の範囲と、見出し・カードの日付に効く。念のための調整用で、下書きに残る
    */
   const [period, setPeriod] = useState<{ from: string; to: string } | null>(null);
   const autoWeek = useMemo(() => digestWeek(baseDate), [baseDate]);
@@ -542,7 +540,7 @@ export const WeeklyDigest: React.FC = () => {
   /** 内容の期間を変える（null = 自動に戻す） */
   const changePeriod = (next: { from: string; to: string } | null) => setPeriod(next ?? null);
 
-  /** チェック一覧の行（一押し・締切間近・今週の予定・申込受付中の順） */
+  /** チェック一覧の行（一押し・今週の予定の順） */
   const digestItems = useMemo(() => {
     const rows: Array<{ card: PublicEventCard; section: string }> = [];
     // 一押しは「今週の予定」にも重ねて載るが、チェック一覧では1行にまとめる（外すと両方から消える）
@@ -553,9 +551,7 @@ export const WeeklyDigest: React.FC = () => {
       rows.push({ card, section });
     };
     for (const c of fullDigest.topics) push(c, '⭐ 一押し');
-    for (const c of fullDigest.urgent) push(c, '⏰ 締切間近');
     for (const c of fullDigest.events) push(c, '📅 今週の予定');
-    for (const c of fullDigest.apply) push(c, '📝 申込受付中');
     return rows;
   }, [fullDigest]);
 
@@ -1040,11 +1036,9 @@ export const WeeklyDigest: React.FC = () => {
   const counts = {
     topic: digest.topics.length,
     reports: digest.reports.length,
-    urgent: digest.urgent.length,
     events: digest.events.length,
-    apply: digest.apply.length,
   };
-  const total = counts.topic + counts.reports + counts.urgent + counts.events + counts.apply;
+  const total = counts.topic + counts.reports + counts.events;
 
   return (
     <div className="space-y-4">
@@ -1112,7 +1106,7 @@ export const WeeklyDigest: React.FC = () => {
               value={week.from}
               onChange={(e) => e.target.value && changePeriod({ from: e.target.value, to: week.to < e.target.value ? e.target.value : week.to })}
               className={`text-base border-2 rounded-lg px-2 py-1.5 bg-white ${period ? 'border-amber-500' : 'border-slate-400'}`}
-              title="「今週の予定」「締切間近」に載せる期間の初日。見出し・カードの日付もこれになる"
+              title="「今週の予定」に載せる期間の初日。見出し・カードの日付もこれになる"
             />
             〜
             <input
@@ -1121,7 +1115,7 @@ export const WeeklyDigest: React.FC = () => {
               min={week.from}
               onChange={(e) => e.target.value && changePeriod({ from: week.from, to: e.target.value < week.from ? week.from : e.target.value })}
               className={`text-base border-2 rounded-lg px-2 py-1.5 bg-white ${period ? 'border-amber-500' : 'border-slate-400'}`}
-              title="「今週の予定」「締切間近」に載せる期間の最終日"
+              title="「今週の予定」に載せる期間の最終日"
             />
             {period ? (
               <button type="button" onClick={() => changePeriod(null)} className="text-sm font-normal text-amber-800 underline hover:text-amber-900" title="配信日から自動で決めた期間に戻す">
@@ -1239,9 +1233,7 @@ export const WeeklyDigest: React.FC = () => {
               {[
                 ['⭐ 一押し', counts.topic, MAX_TOPICS],
                 ['📰 レポート', counts.reports, LIMITS.reports],
-                ['⏰ 締切間近', counts.urgent, null],
                 ['📅 予定', counts.events, LIMITS.events],
-                ['📝 申込受付中', counts.apply, LIMITS.apply],
               ].map(([label, n, max]) => (
                 <span
                   key={String(label)}
@@ -1264,7 +1256,7 @@ export const WeeklyDigest: React.FC = () => {
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <span className="font-bold text-slate-700">⭐ 今週の一押し（最大{MAX_TOPICS}件・チェックした順）</span>
                 <span className="text-slate-600">
-                  {topicIds === undefined ? '自動: ⭐候補のうち直近の1件' : topicIds.length === 0 ? '今週は一押しなし（今週の予定・申込のカードだけ）' : `${topicIds.length}件を選択中`}
+                  {topicIds === undefined ? '自動: ⭐候補のうち直近の1件' : topicIds.length === 0 ? '今週は一押しなし（今週の予定のカードだけ）' : `${topicIds.length}件を選択中`}
                 </span>
                 {topicIds !== undefined && (
                   <button onClick={() => changeTopics(undefined)} className="text-slate-600 hover:text-slate-800 underline">
@@ -1591,7 +1583,7 @@ export const WeeklyDigest: React.FC = () => {
                 LINE に送る（カード形式）
               </h3>
               <p className="text-sm text-slate-600 mt-1">
-                ⭐一押し／今週の予定／申込受付中／レポートのカードを横並び（左右にスワイプ）にして、1回の配信（1通）で送ります。配信名「関ヶ谷自治会 今週のお知らせ」は最初のカードの帯に載ります。まず「管理者に送る」で届く見た目を確認してから「全員に配信」してください。
+                ⭐一押し／今週の予定／レポートのカードを横並び（左右にスワイプ）にして、1回の配信（1通）で送ります。配信名「関ヶ谷自治会 今週のお知らせ」は最初のカードの帯に載ります。まず「管理者に送る」で届く見た目を確認してから「全員に配信」してください。
               </p>
             </div>
           </div>
@@ -1877,9 +1869,9 @@ export const WeeklyDigest: React.FC = () => {
       <div className="bg-white p-5 rounded-2xl shadow border border-slate-200 text-sm text-slate-600 space-y-1">
         <p className="font-bold text-slate-600">組み立てのルール</p>
         <p>・⭐一押し: 配信候補（⭐）のうち開催が近いもの1件。紹介文（1〜2文）と、チラシPDF→記事→予定ページの順でいちばん直接的なURLを添えます ／ 📰レポート: 直近14日に公開したもの最大2件</p>
-        <p>・📅今週の予定: 要予約以外で配信日から7日間（日曜配信のときは翌月曜〜日曜）、最大6件 ／ 📝申込受付中: 要予約で締切が14日以内、締切順に最大4件</p>
-        <p>・⏰締切間近: 締切がその週のうち（今週締切）。締切が未入力の要予約は「開催7日前」を仮締切にして「頃」を付けます（抽出ダイアログの「締切」欄で入力できます）</p>
-        <p>・対象者・参加費は ⭐一押し と 📝申込受付中／⏰締切間近 の行にだけ「（65歳以上・無料）」の形で添えます（📅今週の予定には付けません）</p>
+        <p>・📅今週の予定: 配信日から7日間（日曜配信のときは翌月曜〜日曜）に開催されるもの、最大6件。要予約の催しも開催の週に載ります</p>
+        <p>・申込の締切は、一押しにした予定にだけ出ます（今週が締切なら赤い帯）。締切が未入力の要予約は「開催7日前」を仮締切にして「頃」を付けます</p>
+        <p>・対象者・参加費は ⭐一押し にだけ「（65歳以上・無料）」の形で添えます（📅今週の予定には付けません）</p>
         <p>・件数の上限を超えた分は載りません。載せたいものは ⭐一押しに選ぶと必ず載ります</p>
       </div>
     </div>
