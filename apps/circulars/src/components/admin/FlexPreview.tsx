@@ -1,7 +1,7 @@
 /**
  * Flex カルーセルの見た目プレビュー（LINE のトーク画面風）
  *
- * weeklyFlex.ts と同じ Digest から、同じ構成（一押し／今週の予定／申込受付中／レポート）を
+ * weeklyFlex.ts と同じ Digest から、同じ構成（一押し／今週の予定／レポート）を
  * HTML で描く。本物の描画は LINE Developers の Flex Message Simulator か「テスト送信」で確認する。
  */
 
@@ -9,7 +9,7 @@ import React from 'react';
 import type { PublicEventCard } from '@cc-saas/shared';
 import type { CropAspect } from './heroCrop';
 import { DIGEST_NAME } from './weeklyFlex';
-import { type Digest, type LinkKind, md, shortTime, siteUrl, topicLink, audienceFee, hasDetailLink, topicDeadline, topicDeadlineText, applyWhenText } from './weeklyDigestCore';
+import { type Digest, type LinkKind, md, shortTime, siteUrl, topicLink, audienceFee, hasDetailLink, topicDeadline, topicDeadlineText } from './weeklyDigestCore';
 
 interface FlexPreviewProps {
   digest: Digest;
@@ -66,14 +66,13 @@ const Row: React.FC<{ c: PublicEventCard; when: string; whenColor?: string; pref
 };
 
 export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, flyerSrcs, flyerAspects, linkKinds }) => {
-  // 配信名は最初のカードの帯の上段に（一押しがあれば一押し、無ければ今週の予定 → 申込受付中）。テキスト吹き出しは 2026-11-08 に廃止
+  // 配信名は最初のカードの帯の上段に（一押しがあれば一押し、無ければ今週の予定）。テキスト吹き出しは 2026-11-08 に廃止
   const nameOnTopic = d.topics.length > 0;
   const nameOnEvents = !nameOnTopic && d.events.length > 0;
-  const nameOnApply = !nameOnTopic && !nameOnEvents && (d.apply.length > 0 || d.urgent.length > 0);
   const name = <div className="text-base font-bold">{DIGEST_NAME}</div>;
   return (
     <div className="rounded-xl p-3 space-y-2" style={{ background: '#7494c0' }}>
-      {/* カルーセル1つ（⭐一押し／今週の予定／申込受付中／レポートの横並び。2026-11-22 に一押しも同じ並びへ）。高さは一番高いカードに揃う（実物と同じ） */}
+      {/* カルーセル1つ（⭐一押し／今週の予定／レポートの横並び。2026-11-22 に一押しも同じ並びへ）。高さは一番高いカードに揃う（実物と同じ） */}
       <div className="flex gap-2 overflow-x-auto pb-1">
       {d.topics.length > 0 && (
           <Bubble>
@@ -146,38 +145,6 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, flyerSrcs, 
               ))}
             </div>
             <div className="px-3 py-2 mt-auto text-center text-sm font-bold text-blue-700">ほかの予定も見る</div>
-          </Bubble>
-        )}
-
-        {(d.apply.length > 0 || d.urgent.length > 0) && (
-          <Bubble>
-            <div className="px-3 py-2 text-white" style={{ background: '#2f6f4e' }}>
-              {nameOnApply && name}
-              <div className="text-base font-bold">📝 申込受付中</div>
-              <div className="text-base opacity-90">{ROW_HINT}</div>
-            </div>
-            <div className="px-3 pb-2">
-              {/* ⏰締切間近（今週締切）を先頭に、その後は締切順 */}
-              {d.urgent.map((c) => (
-                <Row
-                  key={c.id}
-                  c={c}
-                  prefix="⏰ "
-                  when={applyWhenText(c, d, true)}
-                  whenColor="text-red-700"
-                  sub={`${md(c.event_date!)}開催${audienceFee(c)}`}
-                />
-              ))}
-              {d.apply.map((c) => (
-                <Row
-                  key={c.id}
-                  c={c}
-                  when={applyWhenText(c, d, false)}
-                  whenColor="text-red-700"
-                  sub={`${md(c.event_date!)}開催${audienceFee(c)}`}
-                />
-              ))}
-            </div>
           </Bubble>
         )}
 

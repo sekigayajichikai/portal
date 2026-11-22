@@ -15,7 +15,7 @@ import { publicSiteUrl } from '@/lib/siteUrl';
 
 export const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
 /** 件数上限（情報量の抑制） */
-export const LIMITS = { topic: 1, reports: 2, events: 6, apply: 4 };
+export const LIMITS = { topic: 1, reports: 2, events: 6 };
 
 export const toDate = (s: string) => new Date(s + 'T00:00:00');
 export const ymd = (d: Date) =>
@@ -149,9 +149,6 @@ export const topicImageKind = (c: PublicEventCard | null, kind?: ImageKind | nul
   return src.fallback ? 'newsletter_pdf' : 'pdf';
 };
 
-/** 申込が必要な予定（締切付き） */
-export type ApplyItem = PublicEventCard & { deadline: string; deadlineGuessed: boolean };
-
 /** 「申込が必要」= 要予約、または締切が入っているもの（定員制の連続講座など） */
 export const needsApply = (c: PublicEventCard) => c.category === 'reserve' || !!c.apply_deadline;
 
@@ -182,15 +179,6 @@ export const topicDeadlineText = (t: TopicDeadline) =>
     ? `⏰ 申込は今週 ${md(t.deadline)}${t.guessed ? '頃' : ''}まで！お早めに`
     : `📝 申込締切 ${md(t.deadline)}${t.guessed ? '頃' : ''}`;
 
-/**
- * 申込受付中の行の1行目（締切）。今週締切は「締切間近」、翌週（配信の週の次の7日間）は「来週締切」、それより先は「締切」。
- * 来週締切が今週の配信に載っていて「今週締切？」と読まれたため、言葉で区別する（2026-10-05）
- */
-export const applyWhenText = (c: ApplyItem, d: Pick<Digest, 'to'>, urgent: boolean) => {
-  const label = urgent ? '締切間近' : c.deadline <= addDays(d.to, 7) ? '来週締切' : '締切';
-  return `${label} ${md(c.deadline)}${c.deadlineGuessed ? '頃' : ''}`;
-};
-
 export interface Digest {
   from: string;
   to: string;
@@ -198,8 +186,6 @@ export interface Digest {
   topics: PublicEventCard[];
   reports: Article[];
   events: PublicEventCard[];
-  apply: ApplyItem[];
-  urgent: ApplyItem[];
 }
 
 /**
@@ -207,9 +193,8 @@ export interface Digest {
  *
  *   ⭐ 今週の一押し … 1件（⭐配信候補のうち直近のもの）
  *   📰 新しいレポート … 最大2件（直近14日に公開されたレポート）
- *   📅 今週の予定 … 最大6件（open / recurring / 種別なし。配信日から7日間）
- *   📝 申込受付中 … 最大4件（reserve。締切が14日以内。締切不明は開催7日前を仮締切）
- *   ⏰ 締切間近 … 締切が配信の週（配信日から7日間）のうちのもの（申込受付中から抜き出して先頭に）
+ *   📅 今週の予定 … 最大6件（配信日から7日間に開催。要予約のものも含む）
+ *   ※「📝申込受付中／⏰締切間近」の欄は 2026-11-23 に廃止
  */
 /** 一押しの最大件数（1枚のカードに縦に並べる） */
 export const MAX_TOPICS = 5; // 2026-10-27 に 2 → 5（1か月分をまとめて作るとき、催しの多い週に備えて）
@@ -223,7 +208,7 @@ export interface DigestOptions {
   topicIds?: string[] | null;
   /**
    * 内容の期間の指定（2026-11-08）。undefined/null = 自動（digestWeek。日曜配信なら翌月〜日）。
-   * 指定があれば「今週の予定」「締切間近」などはこの期間で組み立て、見出しの日付もこれになる。念のための調整用
+   * 指定があれば「今週の予定」などはこの期間で組み立て、見出しの日付もこれになる。念のための調整用
    */
   week?: { from: string; to: string } | null;
 }
@@ -247,9 +232,6 @@ export const resolveWeek = (baseDate: string, week?: { from: string; to: string 
 export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDate: string, opts: DigestOptions = {}): Digest {
   const { from, to } = resolveWeek(baseDate, opts.week);
   const applyUntil = addDays(from, 14);
-  // 締切間近 = 今週が締切（一押しの「⏰今週締切」と同じ範囲）。以前は3日以内だったが、週1回の配信では
-  // 4〜6日後の締切が「申込受付中」に埋もれるため、配信の週いっぱいに広げた（2026-10-05）
-  const urgentUntil = to;
 
   // 「週次配信に載せない」（役員向け会議など）は最初から候補に入れない。カレンダーには載る
   const future = cards.filter((c) => c.event_date && c.event_date >= from && !c.digest_exclude);
@@ -275,35 +257,17 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
     const auto = topicPool.find((c) => c.event_date! <= applyUntil) ?? topicPool[0] ?? null;
     topics = auto ? [auto] : [];
   }
-  // 今週の予定: 申込不要のもので、配信日から7日間に開催（上限 LIMITS.events）。
-  // 一押しにした予定は、週の外（最大4週間先）でも必ず重ねて載せ、上限にも数えない（2026-09-27/28 ユーザー指示。
-  // 一押しカードだけだと一覧から抜けて見えるため）。並びは全体を日付順にする
+  // 今週の予定: 配信日から7日間に開催されるもの（上限 LIMITS.events）。要予約の催しもここに載せる
+  // （2026-11-23 に「📝申込受付中／⏰締切間近」の欄をやめたため。締切は一押しにしたときだけ赤い帯で伝える）。
+  // 一押しにした予定は、週の外（最大4週間先）でも重ねて載せ、上限にも数えない（2026-09-27/28 ユーザー指示。
+  // 一押しカードだけだと一覧から抜けて見えるため）。並びは全体を日付順にする。
+  // ただし申込が必要な一押しで開催が週の外のものは重ねない（締切の案内なのに今週の予定に「11/20 …」と並ぶと紛らわしいため。2026-10-05）
   const topicIdSet = new Set(topics.map((c) => c.id));
   const weekEvents = future
-    .filter((c) => !needsApply(c) && c.event_date! <= to && !topicIdSet.has(c.id))
+    .filter((c) => c.event_date! <= to && !topicIdSet.has(c.id))
     .sort(byDate)
     .slice(0, LIMITS.events);
-
-  // 申込受付中: 申込が必要で、締切（不明なら開催7日前）が14日以内
-  const apply = future
-    .filter(needsApply)
-    .map((c) => {
-      const deadlineGuessed = !c.apply_deadline;
-      const deadline = c.apply_deadline || addDays(c.event_date!, -7);
-      return { ...c, deadline, deadlineGuessed };
-    })
-    .filter((c) => c.deadline >= from && c.deadline <= applyUntil)
-    .sort((a, b) => (a.deadline < b.deadline ? -1 : 1));
-  const urgent = apply.filter((c) => c.deadline <= urgentUntil);
-  // 一押しは件数上限で落とさない
-  const applyRest = apply
-    .filter((c) => c.deadline > urgentUntil)
-    .filter((c, i) => i < LIMITS.apply || topicIdSet.has(c.id));
-
-  // 一押しを「今週の予定」に重ねるのは、申込の欄に載っていないときだけ。
-  // 申込の一押し（開催は先・締切が今週など）が今週の予定に「11/20 …」と並ぶと紛らわしいため（2026-10-05）
-  const inApplyLists = new Set([...urgent, ...applyRest].map((c) => c.id));
-  const events = [...topics.filter((t) => t.event_date! <= to || !inApplyLists.has(t.id)), ...weekEvents].sort(byDate);
+  const events = [...topics.filter((t) => t.event_date! <= to || !needsApply(t)), ...weekEvents].sort(byDate);
 
   // 新しいレポート: 直近14日に公開（updated_at 基準）
   const since = addDays(baseDate, -14);
@@ -311,7 +275,7 @@ export function buildDigest(cards: PublicEventCard[], reports: Article[], baseDa
     .filter((r) => (r.updated_at || r.created_at || '').slice(0, 10) >= since)
     .slice(0, LIMITS.reports);
 
-  return { from, to, topics, reports: recentReports, events, apply: applyRest, urgent };
+  return { from, to, topics, reports: recentReports, events };
 }
 
 /**

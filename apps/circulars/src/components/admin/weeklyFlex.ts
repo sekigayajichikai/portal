@@ -4,9 +4,8 @@
  * 1回の配信 = Flex カルーセル1つ（横並び。2026-11-22 に一押しも同じカルーセルへ）
  *   カルーセルの中身（該当が無いカードは出さない）:
  *     1. ⭐ 今週の一押し … 見出し帯＋（最大5件を縦に）チラシ画像（切り出し位置は人が決める）＋タイトル・日時・場所・紹介文＋「詳しく見る」
- *     2. 📅 今週の予定 … 行ごとにタップで詳細
- *     3. 📝 申込受付中 … ⏰締切間近を先頭に、タイトル・開催日・締切・場所。行ごとにタップ
- *     4. 📰 新しいレポート … 1本ずつ（扉写真＋タイトル＋「レポートを読む」）
+ *     2. 📅 今週の予定 … 行ごとにタップで詳細（要予約の催しもここ。「📝申込受付中」の欄は 2026-11-23 に廃止）
+ *     3. 📰 新しいレポート … 1本ずつ（扉写真＋タイトル＋「レポートを読む」）
  *
  * Flex の制約: 画像は https のURL、カルーセルは最大12バブル、altText は400文字以内。
  * 仕様: docs/週次配信.md
@@ -14,16 +13,14 @@
 
 import type { LineMessage, PublicEventCard } from '@cc-saas/shared';
 import type { CropAspect } from './heroCrop';
-import { type Digest, type LinkKind, type TopicDeadline, applyWhenText, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading, hasDetailLink, topicDeadline, topicDeadlineText } from './weeklyDigestCore';
+import { type Digest, type LinkKind, type TopicDeadline, md, shortTime, siteUrl, topicLink, audienceFee, digestHeading, hasDetailLink, topicDeadline, topicDeadlineText } from './weeklyDigestCore';
 
 /**
  * 配色は「役割別＝リンク先の色」（2026-09-21 決定）:
  *   今週の予定・一押しのボタン … 回覧板サイトのブルー（押した先がサイト／チラシ）
- *   申込受付中 … グリーン（申込＝行動が必要なもの。締切の赤が埋もれない）
  *   レポート … レポート画面の赤
  */
 const RED = '#c0392b';
-const GREEN = '#2f6f4e';
 const BLUE = '#1d4ed8';
 const SITE_BLUE = '#2563eb';
 /** 一押しの見出し帯（⭐ の琥珀色。他のカードと役割が違うことが分かる色） */
@@ -52,7 +49,7 @@ export function buildGreetingText(d: Digest): string {
     });
     lines.push(`⭐ 今週の一押しは ${parts.join(' と ')}です。`);
   }
-  lines.push('今週の予定と申込は、下のカードをスワイプしてご覧ください 👇');
+  lines.push('今週の予定は、下のカードをスワイプしてご覧ください 👇');
   return lines.join('\n');
 }
 
@@ -90,7 +87,7 @@ const DETAIL_GRAY = '#555555';
 const ROW_HINT = '「詳しく ›」をタップすると案内が開きます';
 
 /**
- * 予定1件の「行」。今週の予定・申込受付中で共通。
+ * 予定1件の「行」（今週の予定）。
  *
  *   9/25(金) 13:30〜                詳しく ›
  *   映画上映会「愛の調べ」
@@ -213,7 +210,7 @@ function topicBubble(d: Digest, opts: FlexBuildOptions, top?: string) {
   };
 }
 
-/** 今週の予定バブル（その週に開催されるものだけ。⏰締切間近は申込受付中カードへ） */
+/** 今週の予定バブル（その週に開催されるもの。要予約の催しも含む） */
 function eventsBubble(d: Digest, top?: string) {
   const rows: unknown[] = [];
   for (const c of d.events) {
@@ -231,32 +228,6 @@ function eventsBubble(d: Digest, top?: string) {
     body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
     // 行は今週の分。ボタンは来週以降も含めた一覧（回覧板サイトの「今後のイベント」）
     footer: { type: 'box', layout: 'vertical', contents: [linkButton('ほかの予定も見る', `${siteUrl()}/`)] },
-  };
-}
-
-/** 申込受付中バブル（⏰締切間近＝今週締切を先頭に、その後に締切順） */
-function applyBubble(d: Digest, top?: string) {
-  const contents: unknown[] = [];
-  const rows = [...d.urgent.map((c) => ({ c, urgent: true })), ...d.apply.map((c) => ({ c, urgent: false }))];
-  rows.forEach(({ c, urgent }, i) => {
-    if (i > 0) contents.push(separator());
-    // 今週の予定と同じ行レイアウト（1行目: 締切 / タイトル・開催日・場所 / 右端: 詳しく ›）。
-    // 各行がそれぞれのチラシ（申込方法）に飛ぶ。申込が複数・別PDFでも行ごとに正しい先へ
-    contents.push(
-      eventRow(c, {
-        prefix: urgent ? '⏰ ' : '',
-        whenText: applyWhenText(c, d, urgent),
-        whenColor: RED,
-        sub: [{ text: `${md(c.event_date!)}開催${audienceFee(c)}`, color: '#444444' }],
-      })
-    );
-  });
-  return {
-    type: 'bubble',
-    size: 'mega',
-    // 下のボタンは置かない（行き先が1つに決められないため）。代わりに見出しの下で行タップを案内する
-    header: header('📝 申込受付中', ROW_HINT, GREEN, top),
-    body: { type: 'box', layout: 'vertical', spacing: 'md', contents },
   };
 }
 
@@ -279,24 +250,24 @@ function reportBubble(r: Digest['reports'][number]) {
 }
 
 /**
- * 週次配信の Flex（カルーセル1つ）: ⭐一押し → 📅今週の予定 → 📝申込受付中 → 📰レポート を横並びにする。出すものが無ければ null。
+ * 週次配信の Flex（カルーセル1つ）: ⭐一押し → 📅今週の予定 → 📰レポート を横並びにする。出すものが無ければ null。
  *
  * 2026-11-22: 一押しを別の吹き出し（縦に2つ）にしていたのをやめ、同じカルーセルの先頭に入れた（横にスワイプして順に見られるように）。
  * カルーセルは全カードの高さが一番高いカードに揃う仕様なので、一押しの件数が多い週は、ほかのカードの下に余白が出る。
- * 配信名「関ヶ谷自治会 今週のお知らせ」は先頭のカードの見出し帯の上段に載せる（一押し → 今週の予定 → 申込受付中 の順で最初にあるもの）
+ * 配信名「関ヶ谷自治会 今週のお知らせ」は先頭のカードの見出し帯の上段に載せる（一押しがあれば一押し、無ければ今週の予定）。
+ * 2026-11-23: 「📝申込受付中」のカードをやめた（はなさんの指示。配信は一押し＋今週の予定に絞る）
  */
 export function buildWeeklyFlex(d: Digest, opts: FlexBuildOptions): LineMessage | null {
   const bubbles: unknown[] = [];
   const top = () => (bubbles.length === 0 ? DIGEST_NAME : undefined);
   if (d.topics.length > 0) bubbles.push(topicBubble(d, opts, top()));
   if (d.events.length > 0) bubbles.push(eventsBubble(d, top()));
-  if (d.apply.length > 0 || d.urgent.length > 0) bubbles.push(applyBubble(d, top()));
   for (const r of d.reports) bubbles.push(reportBubble(r));
   if (bubbles.length === 0) return null;
 
   // 通知文（altText）には見出し（日付つき）を付ける。一押しがあればその題名も
   const summary =
-    d.topics.length > 0 ? `⭐今週の一押し: ${d.topics.map((t) => `${t.title}（${md(t.event_date!)}）`).join('、')}` : '今週の予定・申込受付中';
+    d.topics.length > 0 ? `⭐今週の一押し: ${d.topics.map((t) => `${t.title}（${md(t.event_date!)}）`).join('、')}` : '今週の予定';
   const alt = `${digestHeading(d)} ${summary}`.slice(0, 400);
   // バブルが1枚だけならカルーセルにせずそのまま
   const contents = bubbles.length === 1 ? bubbles[0] : { type: 'carousel', contents: bubbles.slice(0, 12) };
@@ -304,7 +275,7 @@ export function buildWeeklyFlex(d: Digest, opts: FlexBuildOptions): LineMessage 
 }
 
 /**
- * 1回の配信ぶんのメッセージ配列: カルーセル1つ（⭐一押し・今週の予定・申込・レポートの横並び）。
+ * 1回の配信ぶんのメッセージ配列: カルーセル1つ（⭐一押し・今週の予定・レポートの横並び）。
  * 2026-11-08: 先頭のテキスト吹き出し（見出し＋「今週の一押しは…」）をやめ、配信名は先頭のカードの見出し帯の上段に載せる。
  * 手で直した文が古いまま送られる事故が無くなった
  */
