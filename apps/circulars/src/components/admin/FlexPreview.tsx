@@ -73,9 +73,9 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, flyerSrcs, 
   const name = <div className="text-base font-bold">{DIGEST_NAME}</div>;
   return (
     <div className="rounded-xl p-3 space-y-2" style={{ background: '#7494c0' }}>
-      {/* ① ⭐一押し（1枚だけの吹き出しに最大5件を縦に。カルーセルと高さを揃えなくて済む） */}
+      {/* カルーセル1つ（⭐一押し／今週の予定／申込受付中／レポートの横並び。2026-11-22 に一押しも同じ並びへ）。高さは一番高いカードに揃う（実物と同じ） */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
       {d.topics.length > 0 && (
-        <div className="flex">
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#b45309' }}>
               {nameOnTopic && name}
@@ -130,10 +130,7 @@ export const FlexPreview: React.FC<FlexPreviewProps> = ({ digest: d, flyerSrcs, 
               })}
             </div>
           </Bubble>
-        </div>
       )}
-      {/* ③ カルーセル（今週の予定／申込受付中／レポート） */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
         {d.events.length > 0 && (
           <Bubble>
             <div className="px-3 py-2 text-white" style={{ background: '#2563eb' }}>

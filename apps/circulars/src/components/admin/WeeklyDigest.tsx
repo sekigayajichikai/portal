@@ -1264,7 +1264,7 @@ export const WeeklyDigest: React.FC = () => {
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <span className="font-bold text-slate-700">⭐ 今週の一押し（最大{MAX_TOPICS}件・チェックした順）</span>
                 <span className="text-slate-600">
-                  {topicIds === undefined ? '自動: ⭐候補のうち直近の1件' : topicIds.length === 0 ? '今週は一押しなし（テキスト→カード一覧の2吹き出し）' : `${topicIds.length}件を選択中`}
+                  {topicIds === undefined ? '自動: ⭐候補のうち直近の1件' : topicIds.length === 0 ? '今週は一押しなし（今週の予定・申込のカードだけ）' : `${topicIds.length}件を選択中`}
                 </span>
                 {topicIds !== undefined && (
                   <button onClick={() => changeTopics(undefined)} className="text-slate-600 hover:text-slate-800 underline">
@@ -1591,7 +1591,7 @@ export const WeeklyDigest: React.FC = () => {
                 LINE に送る（カード形式）
               </h3>
               <p className="text-sm text-slate-600 mt-1">
-                ⭐一押しカード → カード一覧（今週の予定／申込受付中／レポート）の2つの吹き出しを1回の配信（1通）で送ります。配信名「関ヶ谷自治会 今週のお知らせ」は最初のカードの帯に載ります。まず「管理者に送る」で届く見た目を確認してから「全員に配信」してください。
+                ⭐一押し／今週の予定／申込受付中／レポートのカードを横並び（左右にスワイプ）にして、1回の配信（1通）で送ります。配信名「関ヶ谷自治会 今週のお知らせ」は最初のカードの帯に載ります。まず「管理者に送る」で届く見た目を確認してから「全員に配信」してください。
               </p>
             </div>
           </div>
