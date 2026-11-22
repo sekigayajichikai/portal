@@ -104,7 +104,21 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
   const [reviewLinkUrl, setReviewLinkUrl] = useState<string | null>(null);
   /** 号の予定カード（リンク記事の題名・号名付き。別の号の記事へのリンクも表示するため） */
   const [eventCards, setEventCards] = useState<AdminEventCard[]>([]);
-  const reloadEventCards = async (newsletterId: string) => setEventCards(await getAdminEventCards({ newsletterId }));
+  /**
+   * 号の予定を読み込む。公開版の編集コピー（下書きで parent_id あり）のときは、公開版の号に付いた予定も一緒に出す。
+   * 編集コピーは号と記事だけを複製し、予定は公開版に付いたまま（公開するときに新しい号へ付け替わる）。
+   * 編集コピーの予定だけを数えると「0件」と出て、予定が消えたように見えるため（2026-11-23）
+   */
+  const editCopyParentId = (nl: Newsletter | null | undefined) => (nl && nl.parent_id && nl.status === 'draft' ? nl.parent_id : null);
+  const reloadEventCards = async (newsletterId: string, parentId: string | null = selectedNewsletter?.id === newsletterId ? editCopyParentId(selectedNewsletter) : null) => {
+    const [own, inherited] = await Promise.all([
+      getAdminEventCards({ newsletterId }),
+      parentId ? getAdminEventCards({ newsletterId: parentId }) : Promise.resolve([] as AdminEventCard[]),
+    ]);
+    // 日付順（日付未定は末尾）。同じ日は元の並びのまま
+    const all = [...inherited, ...own].sort((a, b) => (a.event_date ?? '9999') < (b.event_date ?? '9999') ? -1 : (a.event_date ?? '9999') > (b.event_date ?? '9999') ? 1 : 0);
+    setEventCards(all);
+  };
   const [showEventExtract, setShowEventExtract] = useState(false);
   /** 編集ダイアログで開いている予定カード（予定タブ・週次配信と同じダイアログ） */
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
@@ -215,7 +229,7 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
       console.log('✅ 記事読み込み完了:', articleData.length, '件');
 
       // イベントカードも取得
-      try { await reloadEventCards(newsletter.id); } catch { setEventCards([]); }
+      try { await reloadEventCards(newsletter.id, editCopyParentId(newsletter)); } catch { setEventCards([]); }
 
     } catch (error: any) {
       console.error('❌ 記事読み込みエラー:', error);
@@ -969,6 +983,18 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
               </button>
             </div>
           </div>
+          {/* 編集コピーでは公開版の予定を出している。その説明 */}
+          {editCopyParentId(selectedNewsletter) && (() => {
+            const inheritedCount = eventCards.filter((c) => c.newsletter_id !== selectedNewsletter.id).length;
+            const ownCount = eventCards.length - inheritedCount;
+            return (
+              <p className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                公開中の号の予定 {inheritedCount}件を表示しています。「公開する」で差し替えると、そのまま新しい号に引き継がれます（入れ直しは不要です）。
+                ここで予定を直すと、すぐ住民向けページに出ます。
+                {ownCount > 0 && ` この編集コピーで足した予定が ${ownCount}件あります（「編集コピー」の印）。`}
+              </p>
+            );
+          })()}
           {/* AIで予定を取り込んだ直後の注意: 別の号との重複・日時の間違いは予定タブで確かめる */}
           {eventsJustImported && (
             <div className="mb-3 rounded-lg border-2 border-amber-300 bg-amber-50 px-4 py-3 flex flex-wrap items-start gap-3 text-sm">
@@ -1028,6 +1054,9 @@ export const NewsletterList: React.FC<NewsletterListProps> = ({ onEditNewsletter
                         <span className="text-sm font-bold text-blue-600 shrink-0">{card.event_date || '日付未定'}</span>
                         {card.event_time && <span className="text-xs text-slate-500 shrink-0">{card.event_time}</span>}
                         <span className="text-sm font-medium text-slate-800 truncate">{card.title}</span>
+                        {editCopyParentId(selectedNewsletter) && card.newsletter_id === selectedNewsletter.id && (
+                          <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700" title="この編集コピーで足した予定。公開するまで住民向けページには出ません">編集コピー</span>
+                        )}
                       </div>
                       {(card.event_location || card.organizer) && (
                         <p className="text-xs text-slate-400 truncate">
