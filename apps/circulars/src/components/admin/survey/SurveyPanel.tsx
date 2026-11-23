@@ -28,7 +28,8 @@ import {
   listAiUsageLogs,
   listSurveySheets,
   needsReview,
-  readSurveySheet,
+  readSurveySheetsBatch,
+  SURVEY_BATCH_SIZE,
   upsertSurveySheet,
   type AiUsageLog,
   type SurveyDefinition,
@@ -62,8 +63,8 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
   const [view, setView] = useState<View>('sheets');
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState<string | null>(null);
-  /** 読み取りの進み具合。currentId = いま AI に送っている票、queue = まだ順番待ちの票、stopping = 中止を押した（今の1枚が終わったら止まる） */
-  const [reading, setReading] = useState<{ done: number; total: number; msg: string; currentId: string | null; queue: string[]; stopping?: boolean } | null>(null);
+  /** 読み取りの進み具合。currentIds = いま AI に送っている票（まとめ読みなので複数）、queue = まだ順番待ちの票、stopping = 中止を押した（今の1回が終わったら止まる） */
+  const [reading, setReading] = useState<{ done: number; total: number; msg: string; currentIds: string[]; queue: string[]; stopping?: boolean } | null>(null);
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [dbOk, setDbOk] = useState(true);
   /** AI に送る画像（保存しない。再読み込みで消える） */
@@ -142,39 +143,60 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
   /** 未読だが画像が手元に無い票の数（再読み込みで画像が消えたもの。選び直すまで読めない） */
   const unreadNoImage = useMemo(() => sheets.filter((s) => s.status === 'unread' && !images.current.has(s.id)).length, [sheets, imageTick]);
 
+  /**
+   * 未読の票を SURVEY_BATCH_SIZE 枚ずつまとめて1回の呼び出しで読む（2026-11-23。それまでは1枚1回）。
+   * 無料枠は「1日20回」なので、1枚ずつだと 20 枚で止まる。まとめれば 100 枚読める。
+   * 返事に無かった票は未読のまま残る（もう一度「AI で読み取る」を押せば、その票だけ読み直す）
+   */
   const runRead = async () => {
     const targets = unreadWithImage;
     if (targets.length === 0) { showError('読み取る票がありません。PDF か写真を選んでください（再読み込みした場合は選び直し）'); return; }
     if (!canReadSurvey()) { showError('AI の準備ができていません。ログインし直してください'); return; }
     const estimate = estimateSurveyCostJpy(targets.length);
+    const groups: SurveySheet[][] = [];
+    for (let i = 0; i < targets.length; i += SURVEY_BATCH_SIZE) groups.push(targets.slice(i, i + SURVEY_BATCH_SIZE));
     const ok = await appConfirm({
       title: 'AI で読み取りますか？',
-      message: `${targets.length} 枚を ${SURVEY_READ_MODEL} で読みます。見込み ${formatJpy(estimate)}（${billing === 'free' ? '無料枠のキーなら 0 円' : '有料枠'}）。1枚 5〜20 秒、混んでいると数分かかります。終わったら実績を記録します。`,
-      confirmLabel: `読み取る（見込み ${formatJpy(estimate)}）`,
+      message: `${targets.length} 枚を ${SURVEY_BATCH_SIZE} 枚ずつまとめて、${groups.length} 回の呼び出しで読みます。${billing === 'free' ? `無料枠のキーなので 0 円です（無料枠を ${groups.length} 回ぶん使います。有料なら ${formatJpy(estimate)}）` : `見込み ${formatJpy(estimate)}（有料枠）`}。1回 20〜60 秒、混んでいると数分かかります。終わったら実績を記録します。`,
+      confirmLabel: `読み取る（${billing === 'free' ? '0 円' : `見込み ${formatJpy(estimate)}`}）`,
     });
     if (!ok) return;
     stopRef.current = false;
     const ids = targets.map((t) => t.id);
-    setReading({ done: 0, total: targets.length, msg: '', currentId: null, queue: ids });
+    setReading({ done: 0, total: targets.length, msg: '', currentIds: [], queue: ids });
     const total: TokenUsage = { input: 0, output: 0, thinking: 0 };
-    let done = 0, model = SURVEY_READ_MODEL, stopNote: string | null = null;
-    for (const s of targets) {
+    let done = 0, missing = 0, model = SURVEY_READ_MODEL, stopNote: string | null = null;
+    for (let g = 0; g < groups.length; g++) {
       if (stopRef.current) { stopNote = '利用者が中止'; break; }
-      const img = images.current.get(s.id);
-      if (!img) continue;
-      const queue = ids.slice(ids.indexOf(s.id) + 1);
-      setReading((prev) => ({ done, total: targets.length, msg: '', currentId: s.id, queue, stopping: prev?.stopping }));
+      const group = groups[g].filter((s) => images.current.has(s.id));
+      if (group.length === 0) continue;
+      const groupIds = group.map((s) => s.id);
+      const queue = groups.slice(g + 1).flat().map((s) => s.id);
+      setReading((prev) => ({ done, total: targets.length, msg: '', currentIds: groupIds, queue, stopping: prev?.stopping }));
       try {
-        const r = await readSurveySheet(def, img.pngBase64, 'image/png', { onRetry: (msg) => setReading((prev) => ({ done, total: targets.length, msg, currentId: s.id, queue, stopping: prev?.stopping })) });
+        const r = await readSurveySheetsBatch(
+          def,
+          // 票名は「ファイル名_pページ」。1回の中で重ならない（同じファイル・同じページの票は登録時に1つにしている）
+          group.map((s) => ({ name: `${s.source_name.replace(/\.[^.]+$/, '')}_p${s.source_page}`, imageBase64: images.current.get(s.id)!.pngBase64, mimeType: 'image/png' as const })),
+          { onRetry: (msg) => setReading((prev) => ({ done, total: targets.length, msg, currentIds: groupIds, queue, stopping: prev?.stopping })) }
+        );
         total.input += r.usage.input; total.output += r.usage.output; total.thinking += r.usage.thinking; model = r.model;
-        await persist({ ...s, reading: r.reading, status: needsReview(r.reading) ? 'review' : 'read', model: r.model, usage: r.usage });
-        done++;
-        // 次の票まで 13 秒あける（無料枠 1分5回に合わせる）。その間は「次の票を待っています」と出す
-        setReading((prev) => ({ done, total: targets.length, msg: done < targets.length ? '次の票まで少し待っています（回数制限のため 13 秒あけます）' : '', currentId: null, queue, stopping: prev?.stopping }));
-        if (done < targets.length && !stopRef.current) await new Promise((r) => setTimeout(r, 13000));
+        // 使用量は1回ぶんを枚数で等分して、票ごとに記録する
+        const share = (v: number) => Math.round(v / group.length);
+        const usage: TokenUsage = { input: share(r.usage.input), output: share(r.usage.output), thinking: share(r.usage.thinking) };
+        for (let k = 0; k < group.length; k++) {
+          const reading = r.readings[k];
+          if (!reading) { missing++; continue; }
+          await persist({ ...group[k], reading, status: needsReview(reading) ? 'review' : 'read', model: r.model, usage });
+          done++;
+        }
+        const last = g === groups.length - 1;
+        // 次の回まで 13 秒あける（無料枠 1分5回に合わせる）。その間は「待っています」と出す
+        setReading((prev) => ({ done, total: targets.length, msg: last ? '' : '次の回まで少し待っています（回数制限のため 13 秒あけます）', currentIds: [], queue, stopping: prev?.stopping }));
+        if (!last && !stopRef.current) await new Promise((res) => setTimeout(res, 13000));
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        stopNote = `${s.source_name} p${s.source_page} で停止: ${msg}`;
+        stopNote = `${group[0].source_name} p${group[0].source_page} からの ${group.length} 枚で停止: ${msg}`;
         showError(msg);
         break;
       }
@@ -186,11 +208,12 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
         feature: 'survey_read', target: def.id, items: done, model,
         input_tokens: total.input, output_tokens: total.output, thinking_tokens: total.thinking,
         estimated_jpy: Math.round(estimate * 100) / 100, actual_jpy: Math.round(actual * 100) / 100, billing,
-        note: stopNote ? `${done}/${targets.length} 枚で中断。${stopNote}` : null,
+        note: [stopNote ? `${done}/${targets.length} 枚で中断。${stopNote}` : null, missing ? `返事に無かった票 ${missing} 枚（未読のまま）` : null].filter(Boolean).join(' / ') || null,
       });
       if (log) setLogs((prev) => [log, ...prev]); else setDbOk(false);
     }
-    if (done > 0) showToast(`${done} 枚を読みました。実績 ${formatJpy(actual)}（トークン ${total.input + total.output + total.thinking}）`);
+    if (done > 0) showToast(`${done} 枚を読みました。${billing === 'free' ? '無料枠なので 0 円' : `実績 ${formatJpy(actual)}`}（トークン ${total.input + total.output + total.thinking}）`);
+    if (missing > 0) showError(`${missing} 枚は AI の返事に入っていませんでした。未読のまま残してあるので、もう一度「AI で読み取る」を押してください`);
   };
 
   const saveReview = async (id: string, next: { corrected: Record<string, number[] | string> | null; status: SurveySheet['status']; note: string | null }) => {
@@ -255,7 +278,7 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
   }), [sheets]);
   const monthTotal = useMemo(() => {
     const ym = new Date().toISOString().slice(0, 7);
-    return logs.filter((l) => l.created_at.startsWith(ym)).reduce((a, l) => a + Number(l.actual_jpy), 0);
+    return logs.filter((l) => l.created_at.startsWith(ym) && l.billing === 'paid').reduce((a, l) => a + Number(l.actual_jpy), 0);
   }, [logs]);
   const reviewSheet = reviewId ? sheets.find((s) => s.id === reviewId) ?? null : null;
 
@@ -291,9 +314,9 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
             onClick={() => void runRead()}
             disabled={!!importing || !!reading || unreadWithImage.length === 0}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-base font-bold bg-primary-600 text-white hover:bg-primary-700 disabled:bg-slate-200 disabled:text-slate-400"
-            title={unreadWithImage.length ? `${unreadWithImage.length} 枚を読みます` : unreadNoImage ? '画像が手元にありません。同じ PDF・写真を選び直してください' : '読む票がありません'}
+            title={unreadWithImage.length ? `${unreadWithImage.length} 枚を ${SURVEY_BATCH_SIZE} 枚ずつまとめて読みます（呼び出し ${Math.ceil(unreadWithImage.length / SURVEY_BATCH_SIZE)} 回）` : unreadNoImage ? '画像が手元にありません。同じ PDF・写真を選び直してください' : '読む票がありません'}
           >
-            <Sparkles size={16} /> AI で読み取る{unreadWithImage.length > 0 && `（${unreadWithImage.length} 枚・見込み ${formatJpy(estimateSurveyCostJpy(unreadWithImage.length))}）`}
+            <Sparkles size={16} /> AI で読み取る{unreadWithImage.length > 0 && `（${unreadWithImage.length} 枚・${billing === 'free' ? `無料枠 0 円／有料なら約 ${formatJpy(estimateSurveyCostJpy(unreadWithImage.length))}` : `有料 見込み ${formatJpy(estimateSurveyCostJpy(unreadWithImage.length))}`}）`}
           </button>
           {/* 「AI で読み取る」と同じ高さ・同じ文字の大きさ（小さくて見にくいとの声。2026-11-23） */}
           <label className="flex items-center">
@@ -326,8 +349,8 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
         {reading && (() => {
           const pct = Math.round((reading.done / Math.max(reading.total, 1)) * 100);
           const left = reading.total - reading.done;
-          // 1枚 = 読み取り 約12秒 ＋ 次まで13秒
-          const leftMin = Math.max(1, Math.ceil((left * 25) / 60));
+          // 1回（最大5枚）= 読み取り 約40秒 ＋ 次の回まで13秒
+          const leftMin = Math.max(1, Math.ceil((Math.ceil(left / SURVEY_BATCH_SIZE) * 53) / 60));
           return (
             <div className="mt-4 rounded-xl border-2 border-primary-200 bg-primary-50 px-5 py-4" role="status" aria-live="polite">
               <div className="flex items-center gap-4">
@@ -336,12 +359,13 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
                   <div className="text-lg font-bold text-slate-800">
                     {reading.stopping ? '中止しています…' : 'AI で読み取っています'}
                     <span className="ml-3 tabular-nums">{reading.done} / {reading.total} 枚</span>
+                    {reading.currentIds.length > 1 && <span className="ml-3 text-base font-normal text-slate-700">（いま {reading.currentIds.length} 枚をまとめて読んでいます）</span>}
                   </div>
                   <div className="mt-2 h-3 rounded-full bg-white border border-primary-200 overflow-hidden">
                     <div className="h-full bg-primary-600 transition-all duration-500" style={{ width: `${Math.max(pct, 3)}%` }} />
                   </div>
                   <div className="mt-2 text-base text-slate-700">
-                    {reading.stopping ? '今の1枚が終わったら止まります。' : `残り およそ ${leftMin} 分。`}
+                    {reading.stopping ? '今の1回が終わったら止まります。' : `残り およそ ${leftMin} 分。`}
                     {reading.msg && <span className="ml-1 text-amber-800">{reading.msg}</span>}
                   </div>
                 </div>
@@ -403,7 +427,7 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
                   {sheets.map((s) => {
                     const a = effectiveAnswers(s);
                     // 読み取り中の行は色を付けて回転アイコン、順番待ちの行は「待ち」（どの票を処理しているか分かるように）
-                    const isCurrent = reading?.currentId === s.id;
+                    const isCurrent = !!reading?.currentIds.includes(s.id);
                     const isQueued = !isCurrent && !!reading?.queue.includes(s.id) && s.status === 'unread';
                     return (
                       <tr key={s.id} className={`border-t border-slate-100 cursor-pointer ${isCurrent ? 'bg-primary-50 ring-2 ring-inset ring-primary-300' : 'hover:bg-slate-50'}`} onClick={() => s.reading && setReviewId(s.id)}>
@@ -455,7 +479,7 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
         <SurveyTally def={def} sheets={sheets} />
       ) : (
         <div className="bg-white rounded-2xl shadow border border-slate-200 overflow-hidden">
-          <div className="px-4 py-2 border-b border-slate-100 text-sm text-slate-600">AI を呼ぶたびに1行。見込みはボタンに出した金額、実績は使ったトークン×単価。今月の合計 {formatJpy(monthTotal)}</div>
+          <div className="px-4 py-2 border-b border-slate-100 text-sm text-slate-600">「AI で読み取る」を押すたびに1行。実績は使ったトークン×単価。無料枠のキーで読んだ分は請求が無いので 0 円とし、有料だった場合の額をかっこで添えます。今月の合計 {formatJpy(monthTotal)}</div>
           {logs.length === 0 ? (
             <div className="p-8 text-center text-base text-slate-600">まだ記録がありません</div>
           ) : (
@@ -477,7 +501,7 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
                     <td className="px-3 py-1.5 text-right tabular-nums">{l.output_tokens.toLocaleString()}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{l.thinking_tokens.toLocaleString()}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{formatJpy(Number(l.estimated_jpy))}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums font-bold">{formatJpy(Number(l.actual_jpy))}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums font-bold">{l.billing === 'paid' ? formatJpy(Number(l.actual_jpy)) : <>0 円 <span className="font-normal text-slate-600">（有料なら {formatJpy(Number(l.actual_jpy))}）</span></>}</td>
                     <td className="px-3 py-1.5">{l.billing === 'paid' ? '有料' : '無料'}</td>
                     <td className="px-3 py-1.5 text-slate-600">{l.note}</td>
                   </tr>

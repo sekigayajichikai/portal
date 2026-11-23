@@ -175,6 +175,45 @@ export function buildSurveyResponseSchema(def: SurveyDefinition) {
   } as const;
 }
 
+/**
+ * まとめ読み（複数枚を1回の呼び出しで読む）用のプロンプト。
+ * 2026-11-20 の試し読み（scripts/survey-test/run-survey-gemini-batch.mjs）と同じ書き換え:
+ * 冒頭の1文を複数枚用に差し替え、末尾に「票ごとの配列で返す」指示を足す。5票まとめで 77/77 一致、取り違えなし
+ */
+export function buildSurveyBatchPrompt(def: SurveyDefinition): string {
+  return (
+    buildSurveyReadPrompt(def).replace(
+      'これは自治会アンケートの回答用紙を1枚スキャンした画像です。',
+      'これは自治会アンケートの回答用紙を複数枚スキャンした画像です。画像の直前に「【票 k: 票名】」というラベルを付けてあります。'
+    ) +
+    `
+
+複数票の返し方
+- 票ごとに 1 要素とし、送った順番どおりに sheets 配列で返す。要素数は送った枚数と必ず同じにする。
+- 各要素の sheet には、その画像の直前のラベルにある票名をそのまま書く。
+- 票どうしで答えを混ぜない。1 枚ずつ独立に読み、迷ったらその票の confidence を下げる。`
+  );
+}
+
+/** まとめ読み用の構造化出力スキーマ（sheets 配列。各要素は1票ぶん＋票名） */
+export function buildSurveyBatchResponseSchema(def: SurveyDefinition) {
+  const one = buildSurveyResponseSchema(def);
+  return {
+    type: 'OBJECT',
+    properties: {
+      sheets: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: { sheet: { type: 'STRING', description: '画像の前に付けたラベルの票名' }, ...one.properties },
+          required: ['sheet', ...one.required],
+        },
+      },
+    },
+    required: ['sheets'],
+  } as const;
+}
+
 /** AI の返事を定義に合わせて整える（範囲外の番号を落とす、足りない設問を補う） */
 export function normalizeReading(def: SurveyDefinition, raw: unknown): SurveySheetReading {
   const r = (raw ?? {}) as Partial<SurveySheetReading>;
