@@ -6,13 +6,14 @@ import { WeeklyDigest } from '@/components/admin/WeeklyDigest';
 import { RichMenuManager } from '@/components/admin/RichMenuManager';
 import { MastersPanel } from '@/components/admin/MastersPanel';
 import { EventsPanel } from '@/components/admin/EventsPanel';
-import { FileText, LogOut, Newspaper, Send, LayoutGrid, Database, Calendar, Trash2, BookOpen } from 'lucide-react';
+import { SurveyPanel } from '@/components/admin/survey/SurveyPanel';
+import { FileText, LogOut, Newspaper, Send, LayoutGrid, Database, Calendar, Trash2, BookOpen, ClipboardList } from 'lucide-react';
 import { TrashDialog } from '@/components/admin/TrashDialog';
 import { HelpDialog } from '@/components/admin/HelpDialog';
 import { appConfirm } from '@/components/ui/feedback';
 
-/** 管理画面の作成対象（タブの並びは 回覧板 → 予定 → 週次配信 → リッチメニュー → 関ヶ谷レポート → マスタ。毎月の作業の順。2026-10-27）。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事）/ 'weekly' = 週次配信 / 'richmenu' = LINE リッチメニュー / 'events' = 予定（号をまたぐ予定カードの一覧・編集）/ 'masters' = マスタ（会場・主催団体・発行元） */
-type AdminMode = 'circulars' | 'reports' | 'weekly' | 'richmenu' | 'events' | 'masters';
+/** 管理画面の作成対象（タブの並びは 回覧板 → 予定 → 週次配信 → リッチメニュー → 関ヶ谷レポート → マスタ。毎月の作業の順。2026-10-27）。'circulars' = 電子回覧板（PDF抽出）/ 'reports' = 関ヶ谷レポート（読み物記事）/ 'weekly' = 週次配信 / 'richmenu' = LINE リッチメニュー / 'events' = 予定（号をまたぐ予定カードの一覧・編集）/ 'masters' = マスタ（会場・主催団体・発行元）/ 'survey' = アンケート（紙の回答用紙の AI 読み取りと集計。2026-11-21 試作） */
+type AdminMode = 'circulars' | 'reports' | 'weekly' | 'richmenu' | 'events' | 'masters' | 'survey';
 
 function AdminContent() {
   const { isAuthenticated, isLoading, logout, aiReady } = useAuth();
@@ -20,7 +21,7 @@ function AdminContent() {
   const [showHelp, setShowHelp] = useState(false);
   // URLの ?mode=reports で直接レポート画面を開ける（ブックマーク用）
   const [mode, setMode] = useState<AdminMode>(() =>
-    (['reports', 'weekly', 'richmenu', 'events', 'masters'].find((m) => m === new URLSearchParams(window.location.search).get('mode')) as AdminMode | undefined) ?? 'circulars'
+    (['reports', 'weekly', 'richmenu', 'events', 'masters', 'survey'].find((m) => m === new URLSearchParams(window.location.search).get('mode')) as AdminMode | undefined) ?? 'circulars'
   );
 
   /**
@@ -175,6 +176,18 @@ function AdminContent() {
             関ヶ谷レポート
           </button>
           <button
+            onClick={() => setMode('survey')}
+            className={`flex items-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition ${
+              mode === 'survey'
+                ? 'border-violet-600 text-violet-700'
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+            title="紙のアンケート回答用紙を AI で読み取って集計（2026-11 試作）"
+          >
+            <ClipboardList size={16} />
+            アンケート
+          </button>
+          <button
             onClick={() => setMode('masters')}
             className={`flex items-center gap-1.5 px-4 py-3 text-sm font-bold border-b-2 transition ml-auto ${
               mode === 'masters'
@@ -191,7 +204,7 @@ function AdminContent() {
 
       <main className="p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
-          {mode === 'circulars' ? <CircularBoard /> : mode === 'reports' ? <ReportBoard /> : mode === 'weekly' ? <WeeklyDigest /> : mode === 'richmenu' ? <RichMenuManager /> : mode === 'events' ? <EventsPanel /> : <MastersPanel />}
+          {mode === 'circulars' ? <CircularBoard /> : mode === 'reports' ? <ReportBoard /> : mode === 'weekly' ? <WeeklyDigest /> : mode === 'richmenu' ? <RichMenuManager /> : mode === 'events' ? <EventsPanel /> : mode === 'survey' ? <SurveyPanel /> : <MastersPanel />}
         </div>
       </main>
     </div>
