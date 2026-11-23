@@ -208,11 +208,29 @@ export interface SurveyBatchReadResult {
   elapsedMs: number;
 }
 
+/** まとめ読みで「票名が合わない」ときに付ける印の書き出し（誤警報の後始末で、この書き出しを目印に探す） */
+export const BATCH_NAME_MISMATCH_FLAG = 'まとめ読みで票名が合わない（返事は「';
+
+/**
+ * AI が返した票名を、照合用に整える。
+ * AI は票名だけでなく名札ごと「【票 5: 20261117_アンケート_p1」のように返すことがある（2026-11-23 の実機で全票がこれになり、
+ * 全部に「票名が合わない」の印が付いた）。名札の飾り（【 】、「票 5:」）と前後の空白を落として、名前だけにする
+ */
+export function normalizeSheetLabel(raw: unknown): string {
+  return String(raw ?? '')
+    .trim()
+    .replace(/^[【\[]\s*/, '')
+    .replace(/\s*[】\]]$/, '')
+    .replace(/^票\s*\d+\s*[:：]\s*/, '')
+    .trim();
+}
+
 /**
  * 用紙を複数枚まとめて1回の呼び出しで読む（無料枠の「1日20回」を節約するため。1回 = 何枚でも1回ぶん）。
  * - 画像の前に「【票 k: 票名】」のラベルを付けて並べ、票ごとの配列で返してもらう
  * - 返事は票名で突き合わせる。順番がずれていたら flags に書き、票名が合わなければ順番で当てて flags に書く
  *   （どちらも「要確認」になるので人が見る）。返事に無い票は null
+ * - 票名の照合は normalizeSheetLabel で名札の飾りを落としてから行う
  */
 export async function readSurveySheetsBatch(
   def: SurveyDefinition,
@@ -235,14 +253,14 @@ export async function readSurveySheetsBatch(
   const parsed = parseJsonObject(extractGeminiText(res)) as { sheets?: Array<Record<string, unknown>> };
   const got = Array.isArray(parsed.sheets) ? parsed.sheets : [];
   const readings = items.map((it, k) => {
-    const byName = got.find((g) => g?.sheet === it.name);
+    const byName = got.find((g) => normalizeSheetLabel(g?.sheet) === it.name);
     const byOrder = got[k];
     const extra: string[] = [];
     let raw: Record<string, unknown> | undefined = byName;
     if (byName && got.indexOf(byName) !== k) extra.push(`まとめ読みで順番がずれた（返事の ${got.indexOf(byName) + 1} 番目）。原本と見比べてください`);
     if (!byName && byOrder) {
       raw = byOrder;
-      extra.push(`まとめ読みで票名が合わない（返事は「${String(byOrder.sheet ?? '無名')}」）。別の票の答えかもしれません。原本と見比べてください`);
+      extra.push(`${BATCH_NAME_MISMATCH_FLAG}${String(byOrder.sheet ?? '無名')}」）。別の票の答えかもしれません。原本と見比べてください`);
     }
     if (!raw) return null;
     const r = normalizeReading(def, raw);

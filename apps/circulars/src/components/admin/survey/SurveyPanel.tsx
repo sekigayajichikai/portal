@@ -29,6 +29,8 @@ import {
   listSurveySheets,
   needsReview,
   readSurveySheetsBatch,
+  normalizeSheetLabel,
+  BATCH_NAME_MISMATCH_FLAG,
   SURVEY_BATCH_SIZE,
   upsertSurveySheet,
   type AiUsageLog,
@@ -54,6 +56,9 @@ const statusLabel: Record<SurveySheet['status'], { text: string; cls: string }> 
   invalid: { text: '無効票', cls: 'bg-slate-200 text-slate-600' },
 };
 
+/** まとめ読みで画像に付ける票名（「ファイル名_pページ」。同じファイル・同じページの票は登録時に1つにしているので重ならない） */
+const sheetLabel = (s: Pick<SurveySheet, 'source_name' | 'source_page'>) => `${s.source_name.replace(/\.[^.]+$/, '')}_p${s.source_page}`;
+
 const localId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void; onEdit: (hasSheets: boolean) => void }> = ({ def, onBack, onEdit }) => {
@@ -75,7 +80,19 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
 
   const reload = async () => {
     setLoading(true);
-    const [s, l] = await Promise.all([listSurveySheets(def.id), listAiUsageLogs(100)]);
+    const [loaded, l] = await Promise.all([listSurveySheets(def.id), listAiUsageLogs(100)]);
+    // 誤警報の後始末: 2026-11-23 のまとめ読みでは、AI が名札ごと「【票 5: 名前」と返したため、正しい票なのに
+    // 「票名が合わない」の印が付いた。返事の名前（飾りを落としたもの）がその票自身の名前と同じなら、印を外して保存し直す
+    const s = await Promise.all(loaded.map(async (row) => {
+      const flags = row.reading?.flags ?? [];
+      const own = sheetLabel(row);
+      const kept = flags.filter((f) => !(f.startsWith(BATCH_NAME_MISMATCH_FLAG) && normalizeSheetLabel(f.slice(BATCH_NAME_MISMATCH_FLAG.length).split('」')[0]) === own));
+      if (!row.reading || kept.length === flags.length) return row;
+      const reading = { ...row.reading, flags: kept };
+      const fixed: SurveySheet = { ...row, reading, status: row.status === 'review' && !needsReview(reading) ? 'read' : row.status };
+      const { created_at: _c, updated_at: _u, ...input } = fixed;
+      return (await upsertSurveySheet(input as Parameters<typeof upsertSurveySheet>[0])) ?? fixed;
+    }));
     setSheets(s);
     setLogs(l);
     setLoading(false);
@@ -155,9 +172,18 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
     const estimate = estimateSurveyCostJpy(targets.length);
     const groups: SurveySheet[][] = [];
     for (let i = 0; i < targets.length; i += SURVEY_BATCH_SIZE) groups.push(targets.slice(i, i + SURVEY_BATCH_SIZE));
+    // 時間の目安: 1回の読み取り 30〜60 秒 ＋ 回と回の間の 13 秒
+    const n = groups.length;
+    const minLow = Math.max(1, Math.ceil((n * 30 + (n - 1) * 13) / 60));
+    const minHigh = Math.max(1, Math.ceil((n * 60 + (n - 1) * 13) / 60));
     const ok = await appConfirm({
       title: 'AI で読み取りますか？',
-      message: `${targets.length} 枚を ${SURVEY_BATCH_SIZE} 枚ずつまとめて、${groups.length} 回の呼び出しで読みます。${billing === 'free' ? `無料枠のキーなので 0 円です（無料枠を ${groups.length} 回ぶん使います。有料なら ${formatJpy(estimate)}）` : `見込み ${formatJpy(estimate)}（有料枠）`}。1回 20〜60 秒、混んでいると数分かかります。終わったら実績を記録します。`,
+      // 何を・いくら・どれくらい の順に1行ずつ（2026-11-23。1段落に詰めると読みにくいため）
+      message: [
+        `${targets.length} 枚を読み取ります（${SURVEY_BATCH_SIZE} 枚ずつ・${n} 回）。`,
+        billing === 'free' ? `費用: 0 円（無料枠を ${n} 回使用。有料なら約 ${formatJpy(estimate)}）` : `費用: 見込み ${formatJpy(estimate)}（有料枠）`,
+        `時間: およそ ${minLow === minHigh ? minLow : `${minLow}〜${minHigh}`} 分`,
+      ].join('\n'),
       confirmLabel: `読み取る（${billing === 'free' ? '0 円' : `見込み ${formatJpy(estimate)}`}）`,
     });
     if (!ok) return;
@@ -176,8 +202,7 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
       try {
         const r = await readSurveySheetsBatch(
           def,
-          // 票名は「ファイル名_pページ」。1回の中で重ならない（同じファイル・同じページの票は登録時に1つにしている）
-          group.map((s) => ({ name: `${s.source_name.replace(/\.[^.]+$/, '')}_p${s.source_page}`, imageBase64: images.current.get(s.id)!.pngBase64, mimeType: 'image/png' as const })),
+          group.map((s) => ({ name: sheetLabel(s), imageBase64: images.current.get(s.id)!.pngBase64, mimeType: 'image/png' as const })),
           { onRetry: (msg) => setReading((prev) => ({ done, total: targets.length, msg, currentIds: groupIds, queue, stopping: prev?.stopping })) }
         );
         total.input += r.usage.input; total.output += r.usage.output; total.thinking += r.usage.thinking; model = r.model;
@@ -212,7 +237,8 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
       });
       if (log) setLogs((prev) => [log, ...prev]); else setDbOk(false);
     }
-    if (done > 0) showToast(`${done} 枚を読みました。${billing === 'free' ? '無料枠なので 0 円' : `実績 ${formatJpy(actual)}`}（トークン ${total.input + total.output + total.thinking}）`);
+    // 通知は短く（費用・トークンの内訳は「AI 利用記録」タブに残る。2026-11-23）
+    if (done > 0) showToast(`読み取り完了（${done} 枚）`);
     if (missing > 0) showError(`${missing} 枚は AI の返事に入っていませんでした。未読のまま残してあるので、もう一度「AI で読み取る」を押してください`);
   };
 
@@ -333,6 +359,11 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
           </label>
           <span className="ml-auto text-sm text-slate-600">今月の AI 利用 {formatJpy(monthTotal)}</span>
         </div>
+        {/* 個人情報の確認（画像を外部の AI に送るため。2026-11-23） */}
+        <p className="mt-3 text-base text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 leading-relaxed">
+          <span className="font-bold">読み取る前の確認:</span> 回答用紙の画像は Google の AI（Gemini）に送られます。
+          氏名・住所・電話番号などの個人情報が書かれた用紙が入っていないことを確かめてから、読み取ってください。
+        </p>
         {unreadNoImage > 0 && !importing && !reading && (
           <div className="mt-3 text-base text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             未読の {unreadNoImage} 枚は、画像が手元にないため読み取れません（画面を再読み込みすると画像は消えます）。

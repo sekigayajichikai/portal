@@ -190,7 +190,7 @@ export function buildSurveyBatchPrompt(def: SurveyDefinition): string {
 
 複数票の返し方
 - 票ごとに 1 要素とし、送った順番どおりに sheets 配列で返す。要素数は送った枚数と必ず同じにする。
-- 各要素の sheet には、その画像の直前のラベルにある票名をそのまま書く。
+- 各要素の sheet には、その画像の直前のラベルの「:」より後ろの票名だけを書く（「【票 1:」や「】」は付けない）。
 - 票どうしで答えを混ぜない。1 枚ずつ独立に読み、迷ったらその票の confidence を下げる。`
   );
 }
