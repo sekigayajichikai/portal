@@ -3,7 +3,7 @@
  *
  * - 画像1枚（用紙1枚）を送り、構造化出力で JSON を受ける
  * - 既定は gemini-3.8-flash（2026-11-20 の試し読みで 5票77設問すべて一致、○に×の票だけ low を返した）。
- *   混雑（503）のときは待って再試行し、それでも駄目なら gemini-3.6-flash に切り替える
+ *   混雑（503）や応答なし（30秒）のときは、すぐ gemini-3.6-flash に切り替え、その後 10 分は最初から 3.6 で読む（2026-11-23）
  * - 費用の見込みと実績はここで計算する（単価は下の表。料金改定時はここを直す）
  * - 本番ブラウザは ai-proxy 経由（シークレット GEMINI_API_KEY）。開発は VITE_GEMINI_API_KEY で直接
  */
@@ -72,6 +72,24 @@ export interface SurveyReadResult {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 1回の呼び出しを待つ上限（ミリ秒）。ふだんは 1枚 5〜20 秒。
+ * 2026-11-23: gemini-3.8-flash が応答を返さないまま止まり、控えのモデルにも切り替わらず画面が進まなくなったため入れた
+ */
+export const SURVEY_READ_TIMEOUT_MS = 30000; // 2026-11-23: 60秒 → 30秒（はなさん「3.6 にすぐ切り替えていい」。ふつうの読み取りは 5〜20 秒）
+/**
+ * 既定のモデルが応答なし・混雑だったら、この時間は既定のモデルを飛ばして最初から控えのモデルで読む。
+ * 1枚ごとに 30 秒待ち直さないため（22枚なら 11 分の無駄になる）
+ */
+export const SURVEY_PRIMARY_SKIP_MS = 10 * 60 * 1000;
+let primarySkipUntil = 0;
+const TIMEOUT_MARK = 'SURVEY_READ_TIMEOUT';
+const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(TIMEOUT_MARK)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+
 /** 429 の retryDelay（秒）を取り出す。無ければ null */
 export function parseRetrySeconds(msg: string): number | null {
   const m = msg.match(/retry in ([\d.]+)s/i) ?? msg.match(/"retryDelay":"(\d+)s"/) ?? msg.match(/retryDelay[^0-9]*(\d+)/);
@@ -109,13 +127,15 @@ export async function readSurveySheet(
       temperature: 0,
     },
   };
-  const models = [opts.model ?? SURVEY_READ_MODEL, SURVEY_READ_FALLBACK_MODEL];
+  const primary = opts.model ?? SURVEY_READ_MODEL;
+  // さっき応答なし・混雑だった既定のモデルは、しばらく飛ばす
+  const models = Date.now() < primarySkipUntil && primary !== SURVEY_READ_FALLBACK_MODEL ? [SURVEY_READ_FALLBACK_MODEL] : [primary, SURVEY_READ_FALLBACK_MODEL];
   const t0 = Date.now();
   let lastErr: unknown;
   for (const model of models) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await callGeminiGenerate(body, model);
+        const res = await withTimeout(callGeminiGenerate(body, model), SURVEY_READ_TIMEOUT_MS);
         const text = extractGeminiText(res);
         const m = text.match(/\{[\s\S]*\}/);
         const parsed = m ? JSON.parse(m[0]) : {};
@@ -129,16 +149,28 @@ export async function readSurveySheet(
       } catch (e) {
         lastErr = e;
         const msg = e instanceof Error ? e.message : String(e);
+        // 応答なし: 同じモデルで待ち直さず、すぐ控えのモデルへ（控えも応答なしなら、その旨のエラーで止める）
+        if (msg === TIMEOUT_MARK) {
+          lastErr = new Error(`${model} から ${SURVEY_READ_TIMEOUT_MS / 1000} 秒たっても応答がありません。時間をおいてやり直してください`);
+          opts.onRetry?.(`${model} から応答がありません。`);
+          if (model === primary) primarySkipUntil = Date.now() + SURVEY_PRIMARY_SKIP_MS;
+          break;
+        }
         if (isDailyQuotaError(msg)) throw new Error(`今日の無料枠を使い切りました（${model}）。明日17時ごろ以降にやり直すか、有料枠のキーに切り替えてください`);
         const busy = /\b503\b|UNAVAILABLE|overloaded|high demand/i.test(msg);
         const rate = /\b429\b|RESOURCE_EXHAUSTED/i.test(msg);
         if (!busy && !rate) throw e;
+        // 既定のモデルが混んでいる（503）ときは、待ち直さずにすぐ控えのモデルへ。回数制限（429）は少し待てば通るので従来どおり待つ
+        if (busy && model === primary && model !== SURVEY_READ_FALLBACK_MODEL) {
+          primarySkipUntil = Date.now() + SURVEY_PRIMARY_SKIP_MS;
+          break;
+        }
         const wait = rate ? Math.min((parseRetrySeconds(msg) ?? 15) + 1, 60) * 1000 : 15000 * (attempt + 1);
         opts.onRetry?.(`${model} が${busy ? '混んでいます' : '回数制限中です'}。${Math.round(wait / 1000)}秒待って再試行（${attempt + 1}/3）`);
         await sleep(wait);
       }
     }
-    opts.onRetry?.(`${model} が混んでいるため控えのモデルに切り替えます`);
+    if (model !== models[models.length - 1]) opts.onRetry?.(`${model} が使えないため、控えのモデル ${models[models.length - 1]} に切り替えます`);
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }

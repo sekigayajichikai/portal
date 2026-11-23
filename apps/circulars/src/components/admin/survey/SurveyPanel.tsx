@@ -50,7 +50,7 @@ const statusLabel: Record<SurveySheet['status'], { text: string; cls: string }> 
   read: { text: 'AI 読取済', cls: 'bg-green-100 text-green-700' },
   review: { text: '要確認', cls: 'bg-amber-100 text-amber-800' },
   confirmed: { text: '確認済み', cls: 'bg-blue-100 text-blue-700' },
-  invalid: { text: '無効票', cls: 'bg-slate-200 text-slate-500' },
+  invalid: { text: '無効票', cls: 'bg-slate-200 text-slate-600' },
 };
 
 const localId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -62,12 +62,15 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
   const [view, setView] = useState<View>('sheets');
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState<string | null>(null);
-  const [reading, setReading] = useState<{ done: number; total: number; msg: string } | null>(null);
+  /** 読み取りの進み具合。currentId = いま AI に送っている票、queue = まだ順番待ちの票、stopping = 中止を押した（今の1枚が終わったら止まる） */
+  const [reading, setReading] = useState<{ done: number; total: number; msg: string; currentId: string | null; queue: string[]; stopping?: boolean } | null>(null);
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [dbOk, setDbOk] = useState(true);
   /** AI に送る画像（保存しない。再読み込みで消える） */
   const images = useRef<Map<string, SheetImage>>(new Map());
   const stopRef = useRef(false);
+  /** images（ref）を書き換えたときに「読み取れる票」を数え直すための合図 */
+  const [imageTick, setImageTick] = useState(0);
 
   const reload = async () => {
     setLoading(true);
@@ -107,9 +110,16 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
     setImporting('画像にしています…');
     try {
       const list = await filesToSheetImages(files, (label) => setImporting(`画像にしています… ${label}`));
-      let dup = 0;
+      let dup = 0, reattached = 0;
       for (const img of list) {
-        if (sheets.some((s) => s.source_name === img.sourceName && s.source_page === img.sourcePage)) { dup++; continue; }
+        const existing = sheets.find((s) => s.source_name === img.sourceName && s.source_page === img.sourcePage);
+        if (existing) {
+          // 画像は保存していないので、再読み込みすると「未読」の票だけが残り、読み取りボタンが押せなくなる。
+          // 同じファイルを選び直したら、残っている未読の票に画像を付け直す（2026-11-23）
+          if (existing.status === 'unread' && !images.current.has(existing.id)) { images.current.set(existing.id, img); reattached++; }
+          else dup++;
+          continue;
+        }
         const row: SurveySheet = {
           id: localId(), survey_id: def.id, region: null, source_name: img.sourceName, source_page: img.sourcePage,
           reading: null, corrected: null, status: 'unread', model: null, usage: null, thumb: img.thumbDataUrl, note: img.rotated ? '向きを自動で直した' : null,
@@ -118,7 +128,9 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
         images.current.set(row.id, img);
         await persist(row);
       }
-      showToast(`${list.length - dup} 枚を追加しました${dup ? `（同じ名前の ${dup} 枚は飛ばしました）` : ''}`);
+      setImageTick((n) => n + 1);
+      const added = list.length - dup - reattached;
+      showToast([added ? `${added} 枚を追加しました` : '', reattached ? `未読の ${reattached} 枚を読み取れる状態に戻しました` : '', dup ? `同じ名前の ${dup} 枚は飛ばしました` : ''].filter(Boolean).join('／') || '追加する票はありませんでした');
     } catch (e) {
       showError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -126,7 +138,9 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
     }
   };
 
-  const unreadWithImage = useMemo(() => sheets.filter((s) => s.status === 'unread' && images.current.has(s.id)), [sheets]);
+  const unreadWithImage = useMemo(() => sheets.filter((s) => s.status === 'unread' && images.current.has(s.id)), [sheets, imageTick]);
+  /** 未読だが画像が手元に無い票の数（再読み込みで画像が消えたもの。選び直すまで読めない） */
+  const unreadNoImage = useMemo(() => sheets.filter((s) => s.status === 'unread' && !images.current.has(s.id)).length, [sheets, imageTick]);
 
   const runRead = async () => {
     const targets = unreadWithImage;
@@ -140,20 +154,24 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
     });
     if (!ok) return;
     stopRef.current = false;
-    setReading({ done: 0, total: targets.length, msg: '' });
+    const ids = targets.map((t) => t.id);
+    setReading({ done: 0, total: targets.length, msg: '', currentId: null, queue: ids });
     const total: TokenUsage = { input: 0, output: 0, thinking: 0 };
     let done = 0, model = SURVEY_READ_MODEL, stopNote: string | null = null;
     for (const s of targets) {
       if (stopRef.current) { stopNote = '利用者が中止'; break; }
       const img = images.current.get(s.id);
       if (!img) continue;
+      const queue = ids.slice(ids.indexOf(s.id) + 1);
+      setReading((prev) => ({ done, total: targets.length, msg: '', currentId: s.id, queue, stopping: prev?.stopping }));
       try {
-        const r = await readSurveySheet(def, img.pngBase64, 'image/png', { onRetry: (msg) => setReading({ done, total: targets.length, msg }) });
+        const r = await readSurveySheet(def, img.pngBase64, 'image/png', { onRetry: (msg) => setReading((prev) => ({ done, total: targets.length, msg, currentId: s.id, queue, stopping: prev?.stopping })) });
         total.input += r.usage.input; total.output += r.usage.output; total.thinking += r.usage.thinking; model = r.model;
         await persist({ ...s, reading: r.reading, status: needsReview(r.reading) ? 'review' : 'read', model: r.model, usage: r.usage });
         done++;
-        setReading({ done, total: targets.length, msg: '' });
-        if (done < targets.length) await new Promise((r) => setTimeout(r, 13000)); // 無料枠 1分5回に合わせる
+        // 次の票まで 13 秒あける（無料枠 1分5回に合わせる）。その間は「次の票を待っています」と出す
+        setReading((prev) => ({ done, total: targets.length, msg: done < targets.length ? '次の票まで少し待っています（回数制限のため 13 秒あけます）' : '', currentId: null, queue, stopping: prev?.stopping }));
+        if (done < targets.length && !stopRef.current) await new Promise((r) => setTimeout(r, 13000));
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         stopNote = `${s.source_name} p${s.source_page} で停止: ${msg}`;
@@ -246,69 +264,114 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
       <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-start gap-3">
-            <button onClick={onBack} className="mt-0.5 p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" title="アンケートの一覧へ"><ArrowLeft size={18} /></button>
+            <button onClick={onBack} className="mt-0.5 p-1.5 rounded-lg hover:bg-slate-100 text-slate-600" title="アンケートの一覧へ"><ArrowLeft size={18} /></button>
             <div>
-              <h2 className="text-xl font-bold text-slate-800">{def.title}</h2>
-              <p className="text-sm text-slate-500 mt-1">
-                紙の回答用紙（スキャン PDF かスマホ写真）を AI が読み、○の付いた番号を表にします。AI が迷った票だけ人が確認します。
-                {def.note && <span className="ml-2 text-slate-400">{def.note}</span>}
+              <h2 className="text-2xl font-bold text-slate-800">{def.title}</h2>
+              <p className="text-base text-slate-600 mt-1">
+                紙の回答用紙（スキャン PDF かスマホ写真）を AI が読み、○や✓などの付いた番号を表にします。AI が迷った票だけ人が確認します。
+                {def.note && <span className="ml-2 text-slate-600">{def.note}</span>}
               </p>
             </div>
           </div>
-          <button onClick={() => onEdit(sheets.length > 0)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200">
+          <button onClick={() => onEdit(sheets.length > 0)} className="flex items-center gap-1.5 px-3 py-1.5 text-base text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200">
             <Edit3 size={14} /> 設問を見る・直す（{def.questions.length} 問）
           </button>
         </div>
         {!dbOk && (
-          <div className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <div className="mt-3 text-base text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             保存先の表（survey_sheets / ai_usage_log）がまだありません。画面は動きますが、再読み込みすると消えます。sql/migrations/2026-11-21-survey-reading.sql を Supabase で実行してください。
           </div>
         )}
         <div className="mt-4 flex items-center gap-2 flex-wrap">
-          <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold cursor-pointer ${importing || reading ? 'bg-slate-100 text-slate-400' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+          <label className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-base font-bold cursor-pointer ${importing || reading ? 'bg-slate-100 text-slate-600' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
             <Upload size={16} /> PDF・写真を選ぶ
             <input type="file" multiple accept="application/pdf,image/*" className="hidden" disabled={!!importing || !!reading} onChange={(e) => { void onFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
           </label>
           <button
             onClick={() => void runRead()}
             disabled={!!importing || !!reading || unreadWithImage.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold bg-primary-600 text-white hover:bg-primary-700 disabled:bg-slate-200 disabled:text-slate-400"
-            title={unreadWithImage.length ? `${unreadWithImage.length} 枚を読みます` : '読む票がありません'}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-base font-bold bg-primary-600 text-white hover:bg-primary-700 disabled:bg-slate-200 disabled:text-slate-400"
+            title={unreadWithImage.length ? `${unreadWithImage.length} 枚を読みます` : unreadNoImage ? '画像が手元にありません。同じ PDF・写真を選び直してください' : '読む票がありません'}
           >
             <Sparkles size={16} /> AI で読み取る{unreadWithImage.length > 0 && `（${unreadWithImage.length} 枚・見込み ${formatJpy(estimateSurveyCostJpy(unreadWithImage.length))}）`}
           </button>
-          <label className="flex items-center gap-1 text-xs text-slate-500 ml-1">
-            <select value={billing} onChange={(e) => setBilling(e.target.value as 'free' | 'paid')} className="border border-slate-300 rounded px-1 py-1 text-xs">
+          {/* 「AI で読み取る」と同じ高さ・同じ文字の大きさ（小さくて見にくいとの声。2026-11-23） */}
+          <label className="flex items-center">
+            <select
+              value={billing}
+              onChange={(e) => setBilling(e.target.value as 'free' | 'paid')}
+              disabled={!!reading}
+              aria-label="使うキーの種類"
+              className="px-3 py-2 rounded-lg text-base font-bold bg-white text-slate-800 border-2 border-slate-400 hover:border-slate-600 cursor-pointer disabled:text-slate-400"
+            >
               <option value="free">無料枠のキー</option>
               <option value="paid">有料枠のキー</option>
             </select>
           </label>
-          <span className="ml-auto text-xs text-slate-500">今月の AI 利用 {formatJpy(monthTotal)}</span>
-          {importing && <span className="text-sm text-slate-500 flex items-center gap-1"><Loader2 size={14} className="animate-spin" />{importing}</span>}
+          <span className="ml-auto text-sm text-slate-600">今月の AI 利用 {formatJpy(monthTotal)}</span>
         </div>
-        {reading && (
-          <div className="mt-3 flex items-center gap-3 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-            <Loader2 size={16} className="animate-spin text-primary-600" />
-            <span>{reading.done} / {reading.total} 枚を読みました。{reading.msg}</span>
-            <button onClick={() => { stopRef.current = true; }} className="ml-auto text-xs text-slate-500 underline">中止</button>
+        {unreadNoImage > 0 && !importing && !reading && (
+          <div className="mt-3 text-base text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            未読の {unreadNoImage} 枚は、画像が手元にないため読み取れません（画面を再読み込みすると画像は消えます）。
+            「PDF・写真を選ぶ」で同じファイルをもう一度選ぶと、読み取れるようになります。
           </div>
         )}
+        {/* 進み具合の帯（大きく。小さい回転アイコンだけだと止まって見えるため。2026-11-23） */}
+        {importing && !reading && (
+          <div className="mt-4 flex items-center gap-4 rounded-xl border-2 border-primary-200 bg-primary-50 px-5 py-4" role="status" aria-live="polite">
+            <Loader2 size={36} className="animate-spin text-primary-600 shrink-0" />
+            <div className="text-lg font-bold text-slate-800">{importing}</div>
+          </div>
+        )}
+        {reading && (() => {
+          const pct = Math.round((reading.done / Math.max(reading.total, 1)) * 100);
+          const left = reading.total - reading.done;
+          // 1枚 = 読み取り 約12秒 ＋ 次まで13秒
+          const leftMin = Math.max(1, Math.ceil((left * 25) / 60));
+          return (
+            <div className="mt-4 rounded-xl border-2 border-primary-200 bg-primary-50 px-5 py-4" role="status" aria-live="polite">
+              <div className="flex items-center gap-4">
+                <Loader2 size={36} className="animate-spin text-primary-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-lg font-bold text-slate-800">
+                    {reading.stopping ? '中止しています…' : 'AI で読み取っています'}
+                    <span className="ml-3 tabular-nums">{reading.done} / {reading.total} 枚</span>
+                  </div>
+                  <div className="mt-2 h-3 rounded-full bg-white border border-primary-200 overflow-hidden">
+                    <div className="h-full bg-primary-600 transition-all duration-500" style={{ width: `${Math.max(pct, 3)}%` }} />
+                  </div>
+                  <div className="mt-2 text-base text-slate-700">
+                    {reading.stopping ? '今の1枚が終わったら止まります。' : `残り およそ ${leftMin} 分。`}
+                    {reading.msg && <span className="ml-1 text-amber-800">{reading.msg}</span>}
+                  </div>
+                </div>
+                <button
+                  onClick={() => { stopRef.current = true; setReading((prev) => (prev ? { ...prev, stopping: true } : prev)); }}
+                  disabled={reading.stopping}
+                  className="shrink-0 px-4 py-2 rounded-lg text-base font-bold bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:text-slate-400"
+                >
+                  中止する
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="flex items-center gap-1 border-b border-slate-200">
         {([['sheets', '票の一覧', Table2], ['tally', '集計', BarChart3], ['usage', 'AI 利用記録', Receipt]] as const).map(([v, label, Icon]) => (
-          <button key={v} onClick={() => setView(v)} className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold border-b-2 ${view === v ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+          <button key={v} onClick={() => setView(v)} className={`flex items-center gap-1.5 px-4 py-2 text-base font-bold border-b-2 ${view === v ? 'border-primary-600 text-primary-700' : 'border-transparent text-slate-600 hover:text-slate-600'}`}>
             <Icon size={15} /> {label}
-            {v === 'sheets' && counts.review > 0 && <span className="ml-1 px-1.5 rounded-full bg-amber-100 text-amber-800 text-[11px]">要確認 {counts.review}</span>}
+            {v === 'sheets' && counts.review > 0 && <span className="ml-1 px-1.5 rounded-full bg-amber-100 text-amber-800 text-sm">要確認 {counts.review}</span>}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <div className="text-slate-500 text-sm">読み込み中…</div>
+        <div className="text-slate-600 text-base">読み込み中…</div>
       ) : view === 'sheets' ? (
         <div className="bg-white rounded-2xl shadow border border-slate-200 overflow-hidden">
-          <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-100 text-xs text-slate-500">
+          <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-100 text-sm text-slate-600">
             <span>{sheets.length} 枚</span>
             <span>未読 {counts.unread}</span>
             <span className="text-amber-700">要確認 {counts.review}</span>
@@ -323,11 +386,11 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
             </div>
           </div>
           {sheets.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-400">「PDF・写真を選ぶ」から回答用紙を入れてください</div>
+            <div className="p-8 text-center text-base text-slate-600">「PDF・写真を選ぶ」から回答用紙を入れてください</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="bg-slate-50 text-slate-500">
+                <thead className="bg-slate-50 text-slate-600">
                   <tr>
                     <th className="px-2 py-2 text-left">用紙</th>
                     <th className="px-2 py-2 text-left">状態</th>
@@ -339,12 +402,23 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
                 <tbody>
                   {sheets.map((s) => {
                     const a = effectiveAnswers(s);
+                    // 読み取り中の行は色を付けて回転アイコン、順番待ちの行は「待ち」（どの票を処理しているか分かるように）
+                    const isCurrent = reading?.currentId === s.id;
+                    const isQueued = !isCurrent && !!reading?.queue.includes(s.id) && s.status === 'unread';
                     return (
-                      <tr key={s.id} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => s.reading && setReviewId(s.id)}>
+                      <tr key={s.id} className={`border-t border-slate-100 cursor-pointer ${isCurrent ? 'bg-primary-50 ring-2 ring-inset ring-primary-300' : 'hover:bg-slate-50'}`} onClick={() => s.reading && setReviewId(s.id)}>
                         <td className="px-2 py-1.5 whitespace-nowrap text-slate-700">
-                          {s.source_name.replace(/\.[^.]+$/, '').slice(0, 24)} <span className="text-slate-400">p{s.source_page}</span>
+                          {s.source_name.replace(/\.[^.]+$/, '').slice(0, 24)} <span className="text-slate-600">p{s.source_page}</span>
                         </td>
-                        <td className="px-2 py-1.5 whitespace-nowrap"><span className={`px-1.5 py-0.5 rounded ${statusLabel[s.status].cls}`}>{statusLabel[s.status].text}</span></td>
+                        <td className="px-2 py-1.5 whitespace-nowrap">
+                          {isCurrent ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary-600 text-white font-bold"><Loader2 size={13} className="animate-spin" /> 読み取り中…</span>
+                          ) : isQueued ? (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">待ち</span>
+                          ) : (
+                            <span className={`px-1.5 py-0.5 rounded ${statusLabel[s.status].cls}`}>{statusLabel[s.status].text}</span>
+                          )}
+                        </td>
                         {def.questions.map((q) => {
                           const conf = s.reading?.confidence[q.key] ?? 'high';
                           const v = a?.[q.key];
@@ -361,10 +435,10 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
                         </td>
                         <td className="px-2 py-1.5 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                           {s.status === 'unread' && images.current.has(s.id) && (
-                            <button onClick={() => void rotateOne(s)} className="text-slate-400 hover:text-slate-700 mr-2" title="180度回す（逆さまのとき）"><RotateCw size={13} /></button>
+                            <button onClick={() => void rotateOne(s)} className="text-slate-600 hover:text-slate-700 mr-2" title="180度回す（逆さまのとき）"><RotateCw size={13} /></button>
                           )}
                           {s.reading && (
-                            <button onClick={() => setReviewId(s.id)} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${s.status === 'review' ? 'bg-amber-600 text-white hover:bg-amber-700' : 'text-slate-500 hover:bg-slate-100'}`}>
+                            <button onClick={() => setReviewId(s.id)} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${s.status === 'review' ? 'bg-amber-600 text-white hover:bg-amber-700' : 'text-slate-600 hover:bg-slate-100'}`}>
                               {s.status === 'review' ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />} {s.status === 'review' ? '確認する' : '見る'}
                             </button>
                           )}
@@ -381,12 +455,12 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
         <SurveyTally def={def} sheets={sheets} />
       ) : (
         <div className="bg-white rounded-2xl shadow border border-slate-200 overflow-hidden">
-          <div className="px-4 py-2 border-b border-slate-100 text-xs text-slate-500">AI を呼ぶたびに1行。見込みはボタンに出した金額、実績は使ったトークン×単価。今月の合計 {formatJpy(monthTotal)}</div>
+          <div className="px-4 py-2 border-b border-slate-100 text-sm text-slate-600">AI を呼ぶたびに1行。見込みはボタンに出した金額、実績は使ったトークン×単価。今月の合計 {formatJpy(monthTotal)}</div>
           {logs.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-400">まだ記録がありません</div>
+            <div className="p-8 text-center text-base text-slate-600">まだ記録がありません</div>
           ) : (
-            <table className="w-full text-xs">
-              <thead className="bg-slate-50 text-slate-500">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600">
                 <tr>
                   <th className="px-3 py-2 text-left">日時</th><th className="px-3 py-2 text-left">用途</th><th className="px-3 py-2 text-right">枚数</th><th className="px-3 py-2 text-left">モデル</th>
                   <th className="px-3 py-2 text-right">入力</th><th className="px-3 py-2 text-right">出力</th><th className="px-3 py-2 text-right">思考</th><th className="px-3 py-2 text-right">見込み</th><th className="px-3 py-2 text-right">実績</th><th className="px-3 py-2 text-left">枠</th><th className="px-3 py-2 text-left">備考</th>
@@ -405,7 +479,7 @@ export const SurveyDetail: React.FC<{ def: SurveyDefinition; onBack: () => void;
                     <td className="px-3 py-1.5 text-right tabular-nums">{formatJpy(Number(l.estimated_jpy))}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums font-bold">{formatJpy(Number(l.actual_jpy))}</td>
                     <td className="px-3 py-1.5">{l.billing === 'paid' ? '有料' : '無料'}</td>
-                    <td className="px-3 py-1.5 text-slate-500">{l.note}</td>
+                    <td className="px-3 py-1.5 text-slate-600">{l.note}</td>
                   </tr>
                 ))}
               </tbody>
@@ -475,27 +549,27 @@ export const SurveyPanel: React.FC = () => {
       <div className="bg-white p-6 rounded-2xl shadow border border-slate-200">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="text-xl font-bold text-slate-800">アンケート</h2>
-            <p className="text-sm text-slate-500 mt-1">
+            <h2 className="text-2xl font-bold text-slate-800">アンケート</h2>
+            <p className="text-base text-slate-600 mt-1">
               紙の回答用紙を AI で読み取り、人が確認して集計します。アンケートごとに設問を登録し、回収した票を入れていきます。
             </p>
           </div>
           <button
             onClick={() => setEditor({ def: { id: newSurveyId(), title: '', sheetTitle: '', questions: [emptyQuestion(1)], status: 'draft', note: null }, isNew: true, hasSheets: false })}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold bg-primary-600 text-white hover:bg-primary-700"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-base font-bold bg-primary-600 text-white hover:bg-primary-700"
           >
             <Plus size={16} /> 新しいアンケート
           </button>
         </div>
         {!dbOk && (
-          <div className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <div className="mt-3 text-base text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             保存先の表（surveys）がまだありません。sql/migrations/2026-11-21-survey-reading.sql を Supabase で実行してください。それまでは再読み込みで消えます。
           </div>
         )}
       </div>
 
       {loading ? (
-        <div className="text-slate-500 text-sm">読み込み中…</div>
+        <div className="text-slate-600 text-base">読み込み中…</div>
       ) : (
         <div className="space-y-3">
           {surveys.map((d) => {
@@ -507,24 +581,24 @@ export const SurveyPanel: React.FC = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-slate-800">{d.title}</span>
-                    <span className={`px-1.5 py-0.5 rounded text-[11px] ${st.cls}`}>{st.text}</span>
-                    {c && c.review > 0 && <span className="px-1.5 py-0.5 rounded text-[11px] bg-amber-100 text-amber-800">要確認 {c.review}</span>}
+                    <span className={`px-1.5 py-0.5 rounded text-sm ${st.cls}`}>{st.text}</span>
+                    {c && c.review > 0 && <span className="px-1.5 py-0.5 rounded text-sm bg-amber-100 text-amber-800">要確認 {c.review}</span>}
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
+                  <div className="text-sm text-slate-600 mt-0.5">
                     {d.questions.length} 問 ／ 票 {c?.total ?? 0}
                     {d.note && <span className="ml-2">{d.note}</span>}
-                    {d.createdAt && <span className="ml-2 text-slate-400">{new Date(d.createdAt).toLocaleDateString('ja-JP')} 作成</span>}
+                    {d.createdAt && <span className="ml-2 text-slate-600">{new Date(d.createdAt).toLocaleDateString('ja-JP')} 作成</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => setEditor({ def: d, isNew: false, hasSheets: (c?.total ?? 0) > 0 })} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500" title="設問を直す"><Edit3 size={15} /></button>
-                  <button onClick={() => void remove(d)} className="p-2 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-700" title="消す"><Trash2 size={15} /></button>
-                  <button onClick={() => setSelected(d)} className="ml-1 px-3 py-1.5 rounded-lg text-sm font-bold bg-slate-800 text-white hover:bg-slate-700">開く</button>
+                  <button onClick={() => setEditor({ def: d, isNew: false, hasSheets: (c?.total ?? 0) > 0 })} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600" title="設問を直す"><Edit3 size={15} /></button>
+                  <button onClick={() => void remove(d)} className="p-2 rounded-lg hover:bg-red-50 text-slate-600 hover:text-red-700" title="消す"><Trash2 size={15} /></button>
+                  <button onClick={() => setSelected(d)} className="ml-1 px-3 py-1.5 rounded-lg text-base font-bold bg-slate-800 text-white hover:bg-slate-700">開く</button>
                 </div>
               </div>
             );
           })}
-          {surveys.length === 0 && <div className="text-sm text-slate-400 p-8 text-center">「新しいアンケート」から作ってください</div>}
+          {surveys.length === 0 && <div className="text-base text-slate-600 p-8 text-center">「新しいアンケート」から作ってください</div>}
         </div>
       )}
       {editor && <SurveyEditorDialog initial={editor.def} isNew={editor.isNew} hasSheets={editor.hasSheets} onClose={() => setEditor(null)} onSave={save} />}

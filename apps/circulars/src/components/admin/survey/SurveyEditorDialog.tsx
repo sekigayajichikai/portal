@@ -56,22 +56,22 @@ export const SurveyEditorDialog: React.FC<{
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100"><X size={18} /></button>
         </div>
         {hasSheets && (
-          <div className="px-5 py-2 bg-amber-50 border-b border-amber-200 text-sm text-amber-800">
+          <div className="px-5 py-2 bg-amber-50 border-b border-amber-200 text-base text-amber-800">
             このアンケートには読み取った票があります。設問や選択肢の数を変えると、読み取り済みの票の番号がずれます。
           </div>
         )}
-        <div className="flex-1 overflow-auto p-5 space-y-4 text-sm">
+        <div className="flex-1 overflow-auto p-5 space-y-4 text-base">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-xs text-slate-500">アンケートの名前</span>
+              <span className="text-sm text-slate-600">アンケートの名前</span>
               <input value={def.title} onChange={(e) => setDef({ ...def, title: e.target.value })} placeholder="例: 2027年 防災意識アンケート" className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2" />
             </label>
             <label className="block">
-              <span className="text-xs text-slate-500">用紙の題名（回答用紙の一番上に印刷されている文字。AI に用紙の構成を伝える）</span>
+              <span className="text-sm text-slate-600">用紙の題名（回答用紙の一番上に印刷されている文字。AI に用紙の構成を伝える）</span>
               <input value={def.sheetTitle} onChange={(e) => setDef({ ...def, sheetTitle: e.target.value })} placeholder="空なら名前と同じ" className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2" />
             </label>
             <label className="block">
-              <span className="text-xs text-slate-500">状態</span>
+              <span className="text-sm text-slate-600">状態</span>
               <select value={def.status ?? 'open'} onChange={(e) => setDef({ ...def, status: e.target.value as SurveyDefinition['status'] })} className="mt-1 border border-slate-300 rounded-lg px-3 py-2">
                 <option value="draft">準備中</option>
                 <option value="open">回収中</option>
@@ -79,7 +79,7 @@ export const SurveyEditorDialog: React.FC<{
               </select>
             </label>
             <label className="block">
-              <span className="text-xs text-slate-500">メモ</span>
+              <span className="text-sm text-slate-600">メモ</span>
               <input value={def.note ?? ''} onChange={(e) => setDef({ ...def, note: e.target.value })} placeholder="配布日、回収の締切など" className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2" />
             </label>
           </div>
@@ -95,22 +95,22 @@ export const SurveyEditorDialog: React.FC<{
                     <option value="multi">複数回答（いくつでも○）</option>
                     <option value="free">自由記述</option>
                   </select>
-                  <button onClick={() => move(i, -1)} className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="上へ"><ArrowUp size={14} /></button>
-                  <button onClick={() => move(i, 1)} className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="下へ"><ArrowDown size={14} /></button>
-                  <button onClick={() => remove(i)} className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-700" title="この設問を消す"><Trash2 size={14} /></button>
+                  <button onClick={() => move(i, -1)} className="p-1.5 rounded hover:bg-slate-100 text-slate-600" title="上へ"><ArrowUp size={14} /></button>
+                  <button onClick={() => move(i, 1)} className="p-1.5 rounded hover:bg-slate-100 text-slate-600" title="下へ"><ArrowDown size={14} /></button>
+                  <button onClick={() => remove(i)} className="p-1.5 rounded hover:bg-red-50 text-slate-600 hover:text-red-700" title="この設問を消す"><Trash2 size={14} /></button>
                 </div>
                 {q.kind !== 'free' && (
                   <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
                     <label className="block">
-                      <span className="text-xs text-slate-500">選択肢（1行に1つ。上から 1, 2, 3… の番号になる）</span>
+                      <span className="text-sm text-slate-600">選択肢（1行に1つ。上から 1, 2, 3… の番号になる）</span>
                       <textarea
                         value={q.choices.map((c) => c.label).join('\n')}
                         onChange={(e) => setQ(i, { choices: e.target.value.split('\n').map((label, j) => ({ no: j + 1, label })) })}
                         rows={Math.max(3, q.choices.length + 1)}
-                        className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-1.5 font-mono text-xs"
+                        className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-1.5 font-mono text-sm"
                       />
                     </label>
-                    <div className="text-xs text-slate-500 pt-5">
+                    <div className="text-sm text-slate-600 pt-5">
                       <div className="mb-1">用紙の枠の並び（見え方の確認）</div>
                       <div className="flex flex-wrap gap-1">
                         {q.choices.map((c) => (
@@ -129,8 +129,8 @@ export const SurveyEditorDialog: React.FC<{
           </div>
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">閉じる</button>
-          <button disabled={busy} onClick={() => void save()} className="flex items-center gap-1 px-4 py-2 text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg">
+          <button onClick={onClose} className="px-4 py-2 text-base text-slate-600 hover:bg-slate-100 rounded-lg">閉じる</button>
+          <button disabled={busy} onClick={() => void save()} className="flex items-center gap-1 px-4 py-2 text-base font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg">
             <Save size={14} /> 保存
           </button>
         </div>
