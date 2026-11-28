@@ -16,6 +16,9 @@
  *   DEFAULT_ORGANIZATION_ID     号を新しく作るときの organization_id（省略可）
  *   SUMMARY_FILE                結果（Markdown）を書き出す先（省略可。GitHub Actions のメール本文に使う）
  *
+ * それ以外の PDF（学校だより・チラシなど）は、記事にはせず「PDFのまま」その月の下書きの号に登録する（2026-11-28 から。
+ * 題名と発行元は AI の提案。IMPORT_OTHER_PDFS=0 で止められる）。
+ *
  * 人が握るところ: 作るのは「下書きの号」と「記事の下書き」だけ。公開・承認・削除はしない。
  * 同じファイル（Drive のファイルID＋md5）は二度取り込まない。同じ号・同じ媒体の2本目（修正版など）は取り込まず知らせるだけ。
  */
@@ -26,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 import { getAccessToken, listChildren, downloadFile, isFolder, isPdf } from './drive.mjs';
 import { loadShared } from './build.mjs';
+import { renderPdfThumbnail } from './thumbnail.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../..');
@@ -48,6 +52,8 @@ if (existsSync(localEnv)) {
 }
 
 const DRY_RUN = process.env.DRY_RUN === '1';
+/** 関ヶ谷だより・会報ふれあい以外の PDF も「PDFのまま」号に登録するか（'0' で止める） */
+const IMPORT_OTHER_PDFS = process.env.IMPORT_OTHER_PDFS !== '0';
 const env = (name, required = true) => {
   const v = process.env[name];
   if (!v && required) throw new Error(`環境変数 ${name} がありません`);
@@ -84,7 +90,39 @@ async function recordSkip(supabase, file, month, media, reason) {
 }
 
 // ---- 結果のまとめ（メール本文・ログ） ----
-const report = { months: {}, failed: 0, imported: 0, updated: 0, skipped: 0, quiet: 0, images: 0 };
+const report = { months: {}, failed: 0, imported: 0, attached: 0, updated: 0, skipped: 0, quiet: 0, images: 0, thumbFailed: 0 };
+/**
+ * PDF の1ページ目からサムネイルを作って Storage に置き、URL を返す（2026-11-28。それまでは管理画面の「サムネイル生成」で後から作っていた）。
+ * 作れなかったときは '' を返す（取り込みは止めない。管理画面で後から作れる）
+ */
+async function makeThumbnail(supabase, buf, month, name) {
+  try {
+    const jpg = await renderPdfThumbnail(buf);
+    const path = `drive/${month}/thumb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+    const { error } = await supabase.storage.from('newsletter-images').upload(path, jpg, { contentType: 'image/jpeg', cacheControl: '3600', upsert: false });
+    if (error) throw new Error(error.message);
+    return supabase.storage.from('newsletter-images').getPublicUrl(path).data.publicUrl;
+  } catch (e) {
+    report.thumbFailed++;
+    console.warn(`サムネイルを作れませんでした: ${name}: ${e?.message ?? e}`);
+    return '';
+  }
+}
+/** 題名の突き合わせ用（空白と全角・半角の違いを無視） */
+const normLabel = (v) => (v ?? '').normalize('NFKC').replace(/[\s　]/g, '').toLowerCase();
+/** 号に登録済みの PDF の指紋（md5）。同じ中身を手で登録済みかを確かめる。1回の実行の中では覚えておく */
+const registeredMd5 = new Map();
+async function md5OfUrl(url) {
+  if (!registeredMd5.has(url)) {
+    try {
+      const res = await fetch(url);
+      registeredMd5.set(url, res.ok ? md5(Buffer.from(await res.arrayBuffer())) : null);
+    } catch {
+      registeredMd5.set(url, null);
+    }
+  }
+  return registeredMd5.get(url);
+}
 /** pic フォルダの画像として扱う種類 */
 const isImage = (f) => /^image\/(jpeg|png|webp)$/.test(f.mimeType ?? '') || /\.(jpe?g|png|webp)$/i.test(f.name ?? '');
 const extOf = (f) => (/\.(jpe?g|png|webp)$/i.exec(f.name ?? '')?.[1] ?? 'jpg').toLowerCase().replace('jpeg', 'jpg');
@@ -138,7 +176,7 @@ async function main() {
     }
     const files = await listChildren(token, monthFolder.id);
     const candidates = files.filter((f) => isPdf(f) && mediaOf(f.name));
-    if (candidates.length === 0) {
+    if (candidates.length === 0 && !IMPORT_OTHER_PDFS) {
       note(month, `関ヶ谷だより・会報ふれあいの PDF はまだありません（フォルダ内 ${files.length} 件）`);
     }
 
@@ -255,7 +293,9 @@ async function main() {
         } catch (e) {
           note(month, `  題名の読み取りに失敗（ファイル名を使います）: ${e?.message ?? e}`);
         }
-        await shared.addPdfUrlToNewsletter(newsletter.id, uploaded.url, label, publisher, 'source');
+        const thumbUrl = await makeThumbnail(supabase, buf, month, file.name);
+        Object.assign(newsletter, await shared.addPdfUrlToNewsletter(newsletter.id, uploaded.url, label, publisher, 'source', thumbUrl));
+        registeredMd5.set(uploaded.url, hash);
 
         // 記事化（本番の「確定して記事を抽出」と同じ）
         const result = await shared.extractArticlesFromPDF(base64, shared.MOCK_CATEGORIES);
@@ -273,6 +313,7 @@ async function main() {
           month_folder: month, media, kind: 'source', newsletter_id: newsletter.id, pdf_url: uploaded.url, pdf_label: label,
           articles_created: savedArticles.length, status: 'imported',
         });
+        imports.push({ drive_file_id: file.id, drive_name: file.name, drive_md5: file.md5Checksum ?? hash, month_folder: month, media, kind: 'source', status: 'imported' });
         report.imported++;
         note(month, `  ✅ 「${label}」を登録し、記事を ${savedArticles.length} 件作りました（${Math.round(result.processingTime / 1000)} 秒）`);
       } catch (e) {
@@ -284,6 +325,126 @@ async function main() {
             { drive_file_id: file.id, drive_name: file.name, drive_md5: file.md5Checksum ?? null, drive_modified_at: file.modifiedTime, month_folder: month, media, kind: 'source', status: 'failed', error: msg.slice(0, 1000) },
             { onConflict: 'drive_file_id' }
           ).then(({ error }) => error && console.warn('失敗の記録に失敗:', error.message));
+        }
+      }
+    }
+
+    // ---- それ以外の PDF（学校だより・チラシなど）→ 記事にはせず「PDFのまま」その月の下書きの号に登録（2026-11-28） ----
+    // 止め具: 公開済みの号には足さない／同じ中身（md5）は1回だけ／同じ題名が登録済みなら足さない／Drive 側の差し替えは知らせるだけ
+    const others = IMPORT_OTHER_PDFS ? files.filter((f) => isPdf(f) && !mediaOf(f.name)) : [];
+    for (const file of others) {
+      const prev = imports.find((r) => r.drive_file_id === file.id);
+      const rec = { drive_file_id: file.id, drive_name: file.name, drive_md5: file.md5Checksum ?? null, drive_modified_at: file.modifiedTime, month_folder: month, media: null, kind: 'attachment' };
+      const skip = async (line, reason) => {
+        note(month, line);
+        report.skipped++;
+        if (!DRY_RUN) {
+          const { error } = await supabase.from('drive_imports').upsert({ ...rec, status: 'skipped', error: reason }, { onConflict: 'drive_file_id' });
+          if (error) console.warn('対象外の記録に失敗:', error.message);
+        }
+        imports.push({ ...rec, status: 'skipped' });
+      };
+      try {
+        // 1) 同じファイルを処理済み
+        if (prev && prev.status !== 'failed') {
+          if (prev.drive_md5 === file.md5Checksum || prev.status === 'skipped') {
+            quiet(month, `${prev.status === 'skipped' ? '対象外' : '登録済み'}: ${file.name}`);
+          } else if (prev.status !== 'updated') {
+            note(month, `⚠ 更新あり: ${file.name} は登録した後に Drive 側で差し替えられています（号の PDF は前の版のまま。差し替えるなら管理画面で手で）`);
+            report.updated++;
+            if (!DRY_RUN) await supabase.from('drive_imports').update({ status: 'updated', drive_name: file.name, drive_modified_at: file.modifiedTime }).eq('id', prev.id);
+          } else {
+            quiet(month, `更新あり（通知済み）: ${file.name}`);
+          }
+          continue;
+        }
+        // 2) 同じ中身の PDF を、この月にもう登録している（別名で重ねて置かれた等）
+        const twin = file.md5Checksum ? imports.find((r) => r.month_folder === month && r.status === 'imported' && r.drive_md5 === file.md5Checksum && r.drive_file_id !== file.id) : null;
+        if (twin) {
+          await skip(`取り込まず: ${file.name} は「${twin.drive_name}」と同じ中身です（重複）`, `同じ中身を登録済み: ${twin.drive_name}`);
+          continue;
+        }
+        // 3) 号を決める（下書きを優先。公開済みの号には足さない）
+        newsletters ??= await shared.getNewsletters();
+        const title = monthTitle(month);
+        const sameTitle = newsletters.filter((n) => n.status !== 'archived' && n.title.replace(/\s/g, '') === title);
+        let newsletter = sameTitle.find((n) => n.status === 'draft') ?? sameTitle[0];
+        if (newsletter && newsletter.status !== 'draft') {
+          await skip(`対象外: ${file.name} → 号「${newsletter.title}」は公開済みなので自動では足しません`, `号「${newsletter.title}」は公開済み`);
+          continue;
+        }
+        if (DRY_RUN) {
+          note(month, `PDFのまま登録: ${file.name} → DRY RUN: ${newsletter ? `下書きの号「${newsletter.title}」` : `号「${title}」を下書きで作って`}に登録します（記事にはしません）`);
+          report.attached++;
+          continue;
+        }
+
+        // 4) ダウンロードして、同じ中身が手で登録済みでないかを確かめる
+        const buf = await downloadFile(token, file.id);
+        const hash = md5(buf);
+        rec.drive_md5 = file.md5Checksum ?? hash;
+        const entries = newsletter ? pdfEntriesOf(newsletter) : [];
+        let sameBody = null;
+        for (const e of entries) {
+          if (e.url && (await md5OfUrl(e.url)) === hash) {
+            sameBody = e;
+            break;
+          }
+        }
+        if (sameBody) {
+          await skip(`対象外: ${file.name} → 号「${newsletter.title}」に同じ PDF（${sameBody.label || '題名なし'}）が登録済みです`, `同じ中身が登録済み: ${sameBody.label || ''}`);
+          continue;
+        }
+
+        // 5) 題名・発行元（AI の提案。あとで管理画面で直せる）。同じ題名が登録済みなら足さない（修正版が別ファイルで置かれた等）
+        const fallbackTitle = file.name.replace(/\.pdf$/i, '');
+        let label = fallbackTitle;
+        let publisher = '';
+        try {
+          if (publisherNames.length === 0) publisherNames = await shared.getPublisherNames().catch(() => []);
+          const meta = await shared.extractPDFMetadata(buf.toString('base64'), publisherNames);
+          if (meta.suggestedTitle) label = meta.suggestedIssueNumber ? `${meta.suggestedTitle} ${meta.suggestedIssueNumber}` : meta.suggestedTitle;
+          publisher = meta.suggestedPublisher || '';
+        } catch (e) {
+          note(month, `題名の読み取りに失敗（ファイル名を使います）: ${file.name}: ${e?.message ?? e}`);
+        }
+        const sameLabel = entries.find((e) => e.label && normLabel(e.label) === normLabel(label));
+        if (sameLabel) {
+          await skip(`⚠ 取り込まず: ${file.name} → 号「${newsletter.title}」に同じ題名の PDF（${sameLabel.label}）が登録済みです。差し替えるなら管理画面で手で行ってください`, `同じ題名が登録済み: ${sameLabel.label}`);
+          continue;
+        }
+
+        // 6) 号が無ければ下書きで作り、PDF を「PDFのまま」（attachment）で登録する
+        if (!newsletter) {
+          const saved = await shared.saveNewsletter(
+            { organization_id: process.env.DEFAULT_ORGANIZATION_ID || null, title, issue_date: ymdJst(), source_pdf_url: null, status: 'draft', created_by: null, published_at: null, parent_id: null },
+            []
+          );
+          newsletter = saved.newsletter;
+          newsletters.push(newsletter);
+          note(month, `号「${title}」を下書きで作りました`);
+        }
+        const uploaded = await shared.uploadPDF(new File([buf], file.name, { type: 'application/pdf' }), fallbackTitle);
+        registeredMd5.set(uploaded.url, hash);
+        const thumbUrl = await makeThumbnail(supabase, buf, month, file.name);
+        Object.assign(newsletter, await shared.addPdfUrlToNewsletter(newsletter.id, uploaded.url, label, publisher, 'attachment', thumbUrl));
+        const { error: recErr } = await supabase.from('drive_imports').upsert(
+          { ...rec, newsletter_id: newsletter.id, pdf_url: uploaded.url, pdf_label: label, articles_created: 0, status: 'imported', error: null },
+          { onConflict: 'drive_file_id' }
+        );
+        if (recErr) console.warn('取込記録の保存に失敗:', recErr.message);
+        imports.push({ ...rec, status: 'imported' });
+        report.attached++;
+        note(month, `✅ PDFのまま登録: 「${label}」${publisher ? `（${publisher}）` : '（発行元は未設定）'} ← ${file.name}`);
+      } catch (e) {
+        report.failed++;
+        const msg = e?.message ?? String(e);
+        note(month, `❌ 失敗: ${file.name}: ${msg}`);
+        if (!DRY_RUN) {
+          await supabase
+            .from('drive_imports')
+            .upsert({ ...rec, status: 'failed', error: msg.slice(0, 1000) }, { onConflict: 'drive_file_id' })
+            .then(({ error }) => error && console.warn('失敗の記録に失敗:', error.message));
         }
       }
     }
@@ -356,8 +517,8 @@ async function main() {
 
   // ---- まとめ ----
   const lines = [];
-  const anyChange = report.imported + report.images + report.updated + report.skipped + report.failed > 0;
-  const head = [report.imported > 0 ? `PDF ${report.imported} 本` : null, report.images > 0 ? `写真 ${report.images} 枚` : null].filter(Boolean).join('・');
+  const anyChange = report.imported + report.attached + report.images + report.updated + report.skipped + report.failed > 0;
+  const head = [report.imported > 0 ? `記事にした PDF ${report.imported} 本` : null, report.attached > 0 ? `PDFのまま ${report.attached} 本` : null, report.images > 0 ? `写真 ${report.images} 枚` : null].filter(Boolean).join('・');
   lines.push(
     report.failed > 0 ? `❌ 失敗 ${report.failed} 件があります` : head ? `✅ 取り込み: ${head}` : anyChange ? '取り込みはありません（お知らせがあります）' : '新着はありませんでした'
   );
@@ -365,6 +526,8 @@ async function main() {
   for (const [month, ls] of Object.entries(report.months)) {
     lines.push('', `## ${monthTitle(month)}（フォルダ ${month}）`, ...ls.map((l) => `- ${l}`));
   }
+  if (report.attached > 0) lines.push('', '「PDFのまま登録」した PDF は、題名と発行元が AI の提案です。号の画面で確かめ、要らないものは削除してください。');
+  if (report.thumbFailed > 0) lines.push('', `サムネイルを作れなかった PDF が ${report.thumbFailed} 本あります。号の画面の「サムネイル生成」で作れます。`);
   lines.push('', '管理画面: https://sekigayajichikai.vercel.app/admin（回覧板タブ → その号を開いて記事を確認。公開は人が行います）');
   const summary = lines.join('\n');
   console.log('\n' + summary);
@@ -374,7 +537,7 @@ async function main() {
   const day = jstNow().getUTCDate();
   const notify = anyChange || day >= 25;
   if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(process.env.GITHUB_OUTPUT, `notify=${notify}\nsubject=${report.failed > 0 ? '【要確認】' : ''}回覧板ポータル Drive 取り込み: ${lines[0]}\n`);
+    appendFileSync(process.env.GITHUB_OUTPUT, `notify=${notify}\nsubject=${DRY_RUN ? '【試し】' : ''}${report.failed > 0 ? '【要確認】' : ''}回覧板ポータル Drive 取り込み: ${lines[0]}\n`);
   }
   if (report.failed > 0) process.exitCode = 1;
 }
