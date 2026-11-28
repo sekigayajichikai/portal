@@ -37,6 +37,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # サムネイルを描くときに使う日本語フォント（フォントが埋め込まれていない PDF の文字が四角になるのを防ぐ）。入らなくても取り込みは続ける
+      - name: 日本語フォントを入れる
+        run: sudo apt-get install -y --no-install-recommends fonts-noto-cjk || echo '日本語フォントを入れられませんでした（サムネイルの文字が四角になることがあります）'
       - name: 取り込み
         id: run
         env:
